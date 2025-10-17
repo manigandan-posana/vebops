@@ -28,6 +28,22 @@ public class ProposalItem extends BaseTenantEntity {
     @Column(nullable = false, precision = 18, scale = 2)
     private BigDecimal amount;
 
+    // add fields + getters/setters
+    @Column(length = 32)
+    private String hsn;            // HSN/SAC
+
+    @Column(precision = 5, scale = 2)
+    private BigDecimal taxRate;    // IGST % (e.g. 18.00)
+
+    @Column(precision = 18, scale = 2)
+    private BigDecimal taxAmount;  // computed line tax = qty*rate*tax%
+
+    public String getHsn() { return hsn; }
+    public void setHsn(String hsn) { this.hsn = hsn; }
+    public BigDecimal getTaxRate() { return taxRate; }
+    public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
+    public BigDecimal getTaxAmount() { return taxAmount; }
+    public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
     public Proposal getProposal() { return proposal; }
     public void setProposal(Proposal proposal) { this.proposal = proposal; }
     public Item getItem() { return item; }

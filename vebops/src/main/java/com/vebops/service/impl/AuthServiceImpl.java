@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.vebops.repository.CustomerRepository;
 import com.vebops.repository.FieldEngineerRepository;
-import com.vebops.domain.Customer;
 
 import java.util.Comparator;
 import java.util.List;
