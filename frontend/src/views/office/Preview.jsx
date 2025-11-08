@@ -314,7 +314,7 @@ export default function Preview () {
                 const disc = Number(it.discount) || 0
                 const rate = Number(it.basePrice) || 0
                 // Compute line after discount; discount is still applied internally
-                const line = Math.round(rate * qty * (1 - disc / 100))
+                const line = Math.round(rate * qty * (1 - disc / 100) * 100) / 100
                 const desc = getDescription(it.name)
                 return (
                   <tr key={idx} className='border-b border-slate-200'>
