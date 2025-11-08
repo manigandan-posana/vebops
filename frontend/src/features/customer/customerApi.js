@@ -164,6 +164,20 @@ export const customerApi = baseApi.injectEndpoints({
       invalidatesTags: (_r,_e,{id}) => [{ type: 'Proposals', id }, { type: 'Proposals', id: 'LIST' }]
     }),
 
+    rejectProposal: b.mutation({
+      async queryFn ({ id, note }, _api, _extra, baseQuery) {
+        if (!id) return { error: { status: 0, data: { message: 'id is required' } } }
+        const params = note ? { note } : undefined
+        const res = await baseQuery({
+          url: `/customers/proposals/${id}/reject`,
+          method: 'POST',
+          params
+        })
+        return res.error ? { error: res.error } : { data: res.data }
+      },
+      invalidatesTags: (_r,_e,{id}) => [{ type: 'Proposals', id }, { type: 'Proposals', id: 'LIST' }]
+    }),
+
     
 
     
@@ -181,4 +195,5 @@ export const {
   useLazyGetInvoicePdfQuery,
   useCustomerDownloadLatestProposalPdfMutation,
   useApproveProposalMutation,
+  useRejectProposalMutation,
 } = customerApi

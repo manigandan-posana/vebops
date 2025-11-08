@@ -717,18 +717,21 @@ function AssignFEModal({ woId, onClose }) {
   const { data: engineers, isLoading, error } = useGetFieldEngineersQuery()
   const [search, setSearch] = React.useState('')
   const [woAssign, { isLoading: assigning }] = useWoAssignMutation()
+  const [note, setNote] = React.useState('')
 
   const list = (Array.isArray(engineers) ? engineers : []).filter(e => {
     const name  = e.userName  || ''
     const email = e.userEmail || ''
     return !search ? true : `${name} ${email}`.toLowerCase().includes(search.toLowerCase())
   })
+  const totalEngineers = Array.isArray(engineers) ? engineers.length : 0
 
   const assign = async (feId) => {
-    const res = await woAssign({ id: woId, feId })
+    const res = await woAssign({ id: woId, feId, note: note?.trim() || undefined })
     if (res?.error) toast.error(String(res.error?.data?.message || 'Assign failed'))
     else {
       toast.success('Assigned')
+      setNote('')
       onClose()
     }
   }
@@ -743,8 +746,23 @@ function AssignFEModal({ woId, onClose }) {
           onChange={(e)=>setSearch(e.target.value)}
         />
       </div>
+      {!isLoading && totalEngineers === 0 && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          No field engineers are available. Please create a field engineer from the Users page before assigning the work order.
+        </div>
+      )}
       {isLoading && <p className="text-slate-600">Loading…</p>}
       {error && <p className="text-red-600">Failed to load FEs</p>}
+      <div className="mb-3">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Instruction for engineer (optional)</label>
+        <textarea
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          rows={3}
+          placeholder="Add notes or instructions"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
       <div className="max-h-80 overflow-auto space-y-2">
         {list.map((fe) => (
           <div key={fe.id} className="flex items-center justify-between p-2 rounded border">

@@ -12,6 +12,7 @@ public interface ProposalRepository extends JpaRepository<Proposal, Long> {
     List<Proposal> findByTenantIdAndCustomer_Id(Long tenantId, Long customerId);
     Optional<Proposal> findByTenantIdAndId(Long tenantId, Long id);
     List<Proposal> findByTenantId(Long tenantId);
+    Optional<Proposal> findTopByTenantIdAndCustomer_IdOrderByCreatedAtDesc(Long tenantId, Long customerId);
     long countByStatus(ProposalStatus status);
     long countByTenantIdAndStatus(Long tenantId, ProposalStatus status);
 }

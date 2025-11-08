@@ -57,6 +57,11 @@ export const feApi = baseApi.injectEndpoints({
         responseHandler: (response) => response.blob()
       })
     }),
+
+    getWorkOrderDetail: b.query({
+      query: (id) => ({ url: `/fe/wo/${id}`, method: 'GET' }),
+      providesTags: (_r, _e, id) => [{ type: 'WorkOrders', id }]
+    }),
   }),
   overrideExisting: true
 })
@@ -66,4 +71,5 @@ export const {
   useGetAssignedQuery,
   useLazyGetCompletionReportPdfQuery,
   usePostProgressMutation,
+  useGetWorkOrderDetailQuery,
 } = feApi

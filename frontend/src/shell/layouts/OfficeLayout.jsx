@@ -7,6 +7,7 @@ import OfficeDashboard from "../../views/office/Dashboard";
 import Service from "../../views/office/Service";
 import ServiceHistory from "../../views/office/ServiceHistory";
 import ServiceDetail from "../../views/office/ServiceDetail";
+import ProposalHistory from "../../views/office/ProposalHistory";
 import Kits from "../../views/office/Kits";
 import Preview from "../../views/office/Preview";
 import Users from "../../views/office/Users";
@@ -20,6 +21,7 @@ const items = [
   { to: "/office/dashboard", label: "Activity" },
   { to: "/office/service", label: "New Service" },
   { to: "/office/service-history", label: "Service History" },
+  { to: "/office/proposal-history", label: "Proposal History" },
   { to: "/office/kits", label: "Kits" },
   { to: "/office/company", label: "Company" },
   { to: "/office/operations", label: "Operations" },
@@ -43,6 +45,8 @@ export default function OfficeLayout() {
           <Route path="service-history" element={<ServiceHistory />} />
           {/* Service detail */}
           <Route path="service-history/:id" element={<ServiceDetail />} />
+          {/* Proposal history */}
+          <Route path="proposal-history" element={<ProposalHistory />} />
           {/* Kit management page */}
           <Route path="kits" element={<Kits />} />
           {/* Company profile page */}

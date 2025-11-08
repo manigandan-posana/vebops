@@ -4,7 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vebops.context.TenantContext;
 import com.vebops.domain.Customer;
+import com.vebops.domain.Document;
+import com.vebops.domain.Proposal;
 import com.vebops.domain.Service;
+import com.vebops.domain.enums.DocumentEntityType;
+import com.vebops.domain.enums.DocumentKind;
+import com.vebops.domain.enums.ProposalStatus;
 import com.vebops.repository.ServiceRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -16,9 +21,13 @@ import java.util.Map;
 import java.util.Base64;
 import java.util.List;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.Optional;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import com.vebops.service.FileStorageService;
 
 
@@ -192,23 +201,27 @@ public class ServiceController {
     @PostMapping
     @PreAuthorize("hasAnyRole('OFFICE','BACK_OFFICE')")
     public ResponseEntity<Service> createService(@Valid @RequestBody Map<String, Object> payload) throws JsonProcessingException {
-        // Extract sections
-        @SuppressWarnings("unchecked")
-        Map<String, Object> buyer = payload.getOrDefault("buyer", Map.of()) instanceof Map
-                ? (Map<String, Object>) payload.get("buyer")
-                : java.util.Collections.emptyMap();
+        Map<String, Object> buyer = toMap(payload.get("buyer"));
+        Map<String, Object> consignee = toMap(payload.get("consignee"));
+        Object items = payload.get("items");
+        Map<String, Object> meta = toMap(payload.get("meta"));
+        Object totals = payload.get("totals");
+
+        // Normalise frequently used meta fields up-front so that both the
+        // persisted JSON and the downstream PDF generation have cleaned
+        // document numbers without stray hash prefixes.
+        if (meta.containsKey("invoiceNo")) {
+            meta.put("invoiceNo", sanitizeDocCode(meta.get("invoiceNo")));
+        }
+        if (meta.containsKey("pinvNo")) {
+            meta.put("pinvNo", sanitizeDocCode(meta.get("pinvNo")));
+        }
+
         // Extract canonical buyer fields:
         String buyerName    = stringOrNull(buyer.get("name"));
         String buyerGst     = stringOrNull(buyer.get("gst"));
         String buyerContact = stringOrNull(buyer.get("contact"));
-        String buyerEmail   = stringOrNull(buyer.get("email"));  // NEW
-        @SuppressWarnings("unchecked")
-        Map<String, Object> consignee = payload.getOrDefault("consignee", Map.of()) instanceof Map
-                ? (Map<String, Object>) payload.get("consignee")
-                : java.util.Collections.emptyMap();
-        Object items = payload.get("items");
-        Object meta = payload.get("meta");
-        Object totals = payload.get("totals");
+        String buyerEmail   = stringOrNull(buyer.get("email"));
         Service svc = new Service();
         Long tenantId = TenantContext.getTenantId();
         if (tenantId != null) svc.setTenantId(tenantId);
@@ -229,7 +242,7 @@ public class ServiceController {
         svc.setConsigneeState((String) consignee.getOrDefault("state", null));
         // Serialise arbitrary payload sections
         svc.setItemsJson(items != null ? objectMapper.writeValueAsString(items) : null);
-        svc.setMetaJson(meta != null ? objectMapper.writeValueAsString(meta) : null);
+        svc.setMetaJson(!meta.isEmpty() ? objectMapper.writeValueAsString(meta) : null);
         svc.setTotalsJson(totals != null ? objectMapper.writeValueAsString(totals) : null);
         Service saved = repository.save(svc);
 
@@ -243,10 +256,6 @@ public class ServiceController {
             // addresses are stored under the "email" key on the buyer map, but
             // our front‑end uses "contact" for phone numbers. We look up by
             // mobile first, then by email, and finally by name.
-            @SuppressWarnings("unchecked")
-            Map<String, Object> buyerMap = payload.getOrDefault("buyer", java.util.Map.of()) instanceof Map
-                    ? (Map<String, Object>) payload.get("buyer")
-                    : java.util.Collections.emptyMap();
             String lookupEmail   = buyerEmail;
             String lookupMobile  = buyerContact;
             String lookupName    = buyerName;
@@ -290,6 +299,13 @@ public class ServiceController {
             prop.setTotal(totalAmt);
             prop.setStatus(com.vebops.domain.enums.ProposalStatus.DRAFT);
             proposalRepo.save(prop);
+
+            // Persist the generated proposal id back into the service meta so
+            // follow-up workflows (sharing to customer portal, proposal history)
+            // can resolve the relationship without fuzzy matching.
+            meta.put("proposalId", prop.getId());
+            saved.setMetaJson(objectMapper.writeValueAsString(meta));
+            saved = repository.save(saved);
         } catch (Exception ignored) {
             // Suppress any exceptions here; the primary service creation should
             // still succeed even if proposal creation fails. Consider logging in
@@ -426,15 +442,19 @@ public class ServiceController {
     // ---------- DOWNLOAD: /office/services/{id}/invoice ----------
     @GetMapping(value="/{id}/invoice", produces = MediaType.APPLICATION_PDF_VALUE)
     @PreAuthorize("hasAnyRole('OFFICE','BACK_OFFICE','ADMIN')") // include ADMIN if needed
-    public ResponseEntity<byte[]> downloadServiceInvoice(@PathVariable("id") Long id) {
+    public ResponseEntity<byte[]> downloadServiceInvoice(@PathVariable("id") Long id,
+                                                         @RequestParam(name = "type", required = false) String type) {
         Long tid = com.vebops.context.TenantContext.getTenantId();
-        var doc = ensureServiceInvoiceDoc(tid, id);
+        boolean proforma = type != null && !type.isBlank() && (
+                "PROFORMA".equalsIgnoreCase(type) || "PINV".equalsIgnoreCase(type));
+        var doc = ensureServiceInvoiceDoc(tid, id, proforma);
         if (doc == null) return ResponseEntity.notFound().build();
         // Load the stored bytes from disk or decode base64
         byte[] bytes = loadDocumentBytes(doc);
         if (bytes == null || bytes.length == 0) return ResponseEntity.notFound().build();
 
-        String fname = (doc.getFilename() == null || doc.getFilename().isBlank()) ? ("service-" + id + ".pdf") : doc.getFilename();
+        String fallback = proforma ? "service-" + id + "-proforma.pdf" : "service-" + id + ".pdf";
+        String fname = (doc.getFilename() == null || doc.getFilename().isBlank()) ? fallback : doc.getFilename();
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fname.replace("\"", "") + "\"")
             .contentType(MediaType.APPLICATION_PDF)
@@ -454,19 +474,26 @@ public class ServiceController {
     @PreAuthorize("hasAnyRole('OFFICE','BACK_OFFICE','ADMIN')") // include ADMIN if needed
     public ResponseEntity<Void> sendServiceInvoice(
             @PathVariable("id") Long id,
-            @RequestBody(required = false) Map<String,Object> body) {
+            @RequestBody(required = false) Map<String,Object> body,
+            @RequestParam(name = "type", required = false) String type) {
         Long tid = com.vebops.context.TenantContext.getTenantId();
         String toEmail = body == null ? null : String.valueOf(body.getOrDefault("toEmail","")).trim();
         String toWhatsapp = body == null ? null : String.valueOf(body.getOrDefault("toWhatsapp","")).trim();
 
-        var doc = ensureServiceInvoiceDoc(tid, id);
+        boolean proforma = type != null && !type.isBlank() && (
+                "PROFORMA".equalsIgnoreCase(type) || "PINV".equalsIgnoreCase(type));
+
+        var doc = ensureServiceInvoiceDoc(tid, id, proforma);
         if (doc == null) return ResponseEntity.notFound().build();
 
         // Load the stored PDF contents
         byte[] bytes = loadDocumentBytes(doc);
         if (bytes == null || bytes.length == 0) return ResponseEntity.notFound().build();
 
-        String filename = (doc.getFilename() == null || doc.getFilename().isBlank()) ? ("service-" + id + ".pdf") : doc.getFilename();
+        String fallback = proforma ? "service-" + id + "-proforma.pdf" : "service-" + id + ".pdf";
+        String filename = (doc.getFilename() == null || doc.getFilename().isBlank()) ? fallback : doc.getFilename();
+        String subjectLabel = proforma ? "Proforma Invoice" : "Invoice";
+        String emailBody = "Please find attached " + subjectLabel.toLowerCase() + ".";
 
         // Email (if provided)
         if (toEmail != null && !toEmail.isBlank() && mailSender != null) {
@@ -474,27 +501,155 @@ public class ServiceController {
                 var message = mailSender.createMimeMessage();
                 var helper = new org.springframework.mail.javamail.MimeMessageHelper(message, true);
                 helper.setTo(toEmail);
-                helper.setSubject("Invoice for Service " + id);
-                helper.setText("Please find attached invoice.");
+                helper.setSubject(subjectLabel + " for Service " + id);
+                helper.setText(emailBody);
                 helper.addAttachment(filename, new org.springframework.core.io.ByteArrayResource(bytes));
                 mailSender.send(message);
             } catch (Exception ignored) {}
             try {
-                emailService.send(tid, toEmail, "Invoice for Service " + id, "Please find attached invoice.", "INVOICE", id, false);
+                emailService.send(tid, toEmail, subjectLabel + " for Service " + id, emailBody,
+                        proforma ? "PROFORMA" : "INVOICE", id, false);
             } catch (Exception ignored) {}
         }
 
         // WhatsApp placeholder: log via emailService (real WA integration isn’t wired here)
         if (toWhatsapp != null && !toWhatsapp.isBlank()) {
             try {
-                emailService.send(tid, toWhatsapp, "Invoice for Service " + id, "Please find attached invoice.", "INVOICE", id, false);
+                emailService.send(tid, toWhatsapp, subjectLabel + " for Service " + id, emailBody,
+                        proforma ? "PROFORMA" : "INVOICE", id, false);
             } catch (Exception ignored) {}
         }
 
         return ResponseEntity.ok().build();
     }
 
-    
+
+    /**
+     * Attach the generated service invoice (or proforma invoice) to the related
+     * proposal so that it becomes visible in the customer portal. The method
+     * stores the PDF under the proposal document bucket, marks the proposal as
+     * SENT when it was previously a draft, and persists the proposal id back on
+     * the service metadata for future lookups.
+     */
+    @PostMapping("/{id}/proposal/share")
+    @PreAuthorize("hasAnyRole('OFFICE','BACK_OFFICE','ADMIN')")
+    public ResponseEntity<Map<String, Object>> shareServiceProposal(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) Map<String, Object> body) {
+        Long tid = TenantContext.getTenantId();
+        Optional<Service> svcOpt = repository.findById(id);
+        if (svcOpt.isEmpty() || !java.util.Objects.equals(svcOpt.get().getTenantId(), tid)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+        Service svc = svcOpt.get();
+
+        Map<String, Object> meta = new LinkedHashMap<>(readMap(svc.getMetaJson()));
+        String requestedDocType = body != null
+                ? String.valueOf(body.getOrDefault("docType", "PROFORMA"))
+                : "PROFORMA";
+        boolean proforma = requestedDocType == null || requestedDocType.isBlank()
+                || "PROFORMA".equalsIgnoreCase(requestedDocType)
+                || "PINV".equalsIgnoreCase(requestedDocType);
+
+        Long proposalId = null;
+        Object rawProposalId = meta.get("proposalId");
+        if (rawProposalId instanceof Number) {
+            proposalId = ((Number) rawProposalId).longValue();
+        } else if (rawProposalId instanceof String s && !s.isBlank()) {
+            try { proposalId = Long.parseLong(s.trim()); } catch (NumberFormatException ignored) {}
+        }
+
+        Proposal proposal = null;
+        if (proposalId != null) {
+            proposal = proposalRepo.findByTenantIdAndId(tid, proposalId).orElse(null);
+        }
+
+        if (proposal == null) {
+            // Attempt to resolve by matching customer details from the service record.
+            String lookupEmail = stringOrNull(svc.getBuyerEmail());
+            String lookupMobile = stringOrNull(svc.getBuyerContact());
+            String lookupName = stringOrNull(svc.getBuyerName());
+            Customer customer = null;
+            if (lookupEmail != null) {
+                customer = customerRepo.findByTenantIdAndEmailIgnoreCase(tid, lookupEmail).orElse(null);
+            }
+            if (customer == null && lookupMobile != null) {
+                customer = customerRepo.findByTenantIdAndMobile(tid, lookupMobile).orElse(null);
+            }
+            if (customer == null && lookupName != null) {
+                var possibles = customerRepo.findByTenantIdAndNameContainingIgnoreCase(tid, lookupName);
+                customer = possibles.isEmpty() ? null : possibles.get(0);
+            }
+            if (customer != null) {
+                proposal = proposalRepo.findTopByTenantIdAndCustomer_IdOrderByCreatedAtDesc(tid, customer.getId()).orElse(null);
+            }
+        }
+
+        if (proposal == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "No related proposal found for this service"));
+        }
+
+        // Ensure proposal id is recorded on service meta for future lookups
+        meta.put("proposalId", proposal.getId());
+        try {
+            svc.setMetaJson(objectMapper.writeValueAsString(meta));
+            repository.save(svc);
+        } catch (Exception ignored) {}
+
+        Document invoiceDoc = ensureServiceInvoiceDoc(tid, id, proforma);
+        if (invoiceDoc == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Invoice PDF not available for this service"));
+        }
+        byte[] pdf = loadDocumentBytes(invoiceDoc);
+        if (pdf == null || pdf.length == 0) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Stored PDF could not be read"));
+        }
+
+        Document doc = new Document();
+        doc.setTenantId(tid);
+        doc.setEntityType(DocumentEntityType.PROPOSAL);
+        doc.setEntityId(proposal.getId());
+        doc.setKind(DocumentKind.PDF);
+        doc.setUploadedAt(Instant.now());
+        doc = documentRepo.saveAndFlush(doc);
+
+        String baseName = computeFileName(meta, id, proforma);
+        if (baseName == null || baseName.isBlank()) {
+            baseName = proforma ? ("proposal-" + proposal.getId() + "-proforma") : ("proposal-" + proposal.getId());
+        } else if (!baseName.toLowerCase().contains("proposal")) {
+            baseName = baseName + (proforma ? "-proforma" : "-proposal");
+        }
+        String fname = baseName + ".pdf";
+        try {
+            String stored = fileStorage.saveProposalDoc(tid, proposal.getId(), doc.getId(), fname, pdf);
+            doc.setFilename(stored);
+        } catch (Exception e) {
+            documentRepo.delete(doc);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Failed to store proposal PDF"));
+        }
+
+        doc.setUrl(String.format("/customer/proposals/%d/documents/%d/download", proposal.getId(), doc.getId()));
+        doc = documentRepo.save(doc);
+
+        if (proposal.getStatus() == ProposalStatus.DRAFT || proposal.getStatus() == ProposalStatus.REJECTED) {
+            proposal.setStatus(ProposalStatus.SENT);
+        }
+        proposalRepo.save(proposal);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("proposalId", proposal.getId());
+        response.put("documentId", doc.getId());
+        response.put("status", proposal.getStatus().name());
+        response.put("filename", doc.getFilename());
+        response.put("docType", proforma ? "PROFORMA" : "INVOICE");
+        return ResponseEntity.ok(response);
+    }
+
+
     // ---- Helper: decode a data: URL into bytes ----
     /**
      * Load the binary contents of a stored Document.  Documents may store
@@ -562,21 +717,42 @@ public class ServiceController {
         }
         return code;
     }
-    private String computeFileName(Map<String,Object> meta, Long id) {
+    private String computeFileName(Map<String,Object> meta, Long id, boolean proforma) {
         String inv = sanitizeDocCode(meta.get("invoiceNo"));
         String pinv = sanitizeDocCode(meta.get("pinvNo"));
-        String base = !inv.isEmpty() ? inv : (!pinv.isEmpty() ? pinv : "service-" + id);
-        return base.isBlank() ? ("service-" + id) : base;
+        String base;
+        if (proforma) {
+            base = !pinv.isEmpty() ? pinv : (!inv.isEmpty() ? inv : "service-" + id + "-proforma");
+        } else {
+            base = !inv.isEmpty() ? inv : (!pinv.isEmpty() ? pinv : "service-" + id);
+        }
+        if (base == null || base.isBlank()) {
+            return proforma ? ("service-" + id + "-proforma") : ("service-" + id);
+        }
+        return base;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> toMap(Object source) {
+        if (source instanceof Map<?,?> raw) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            raw.forEach((k, v) -> copy.put(String.valueOf(k), v));
+            return copy;
+        }
+        return new LinkedHashMap<>();
     }
     // ---- Helper: ensure there is a Document; generate+save if missing ----
-    private com.vebops.domain.Document ensureServiceInvoiceDoc(Long tid, Long id) {
-        // 1) find existing doc (SR first, then INVOICE as fallback)
-        List<com.vebops.domain.Document> docs =
-            documentRepo.findByEntityTypeAndEntityIdAndTenantId(com.vebops.domain.enums.DocumentEntityType.SR, id, tid);
-        if (docs == null || docs.isEmpty()) {
-            docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(com.vebops.domain.enums.DocumentEntityType.INVOICE, id, tid);
+    private com.vebops.domain.Document ensureServiceInvoiceDoc(Long tid, Long id, boolean proforma) {
+        List<com.vebops.domain.Document> docs;
+        if (proforma) {
+            docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.PROFORMA, id, tid);
+        } else {
+            docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.SR, id, tid);
+            if (docs == null || docs.isEmpty()) {
+                docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.INVOICE, id, tid);
+            }
         }
-        com.vebops.domain.Document doc = (docs != null && !docs.isEmpty()) ? docs.get(0) : null;
+        Document doc = (docs != null && !docs.isEmpty()) ? docs.get(0) : null;
 
         // 2) if missing or invalid, generate now.  Attempt to load bytes
         // from disk or decode base64.  If successful, return existing doc.
@@ -591,25 +767,31 @@ public class ServiceController {
         }
         var svc = svcOpt.get();
 
-        Map<String,Object> meta   = readMap(svc.getMetaJson());
+        Map<String,Object> meta   = new LinkedHashMap<>(readMap(svc.getMetaJson()));
         List<Map<String,Object>> items  = readList(svc.getItemsJson());
         Map<String,Object> totals = readMap(svc.getTotalsJson());
         var company = companyRepo.findByTenantId(tid).orElse(null);
+
+        // Ensure docType flag is embedded so downstream renders respect the
+        // requested document flavour (invoice vs proforma).
+        meta.put("docType", proforma ? "PROFORMA" : "INVOICE");
 
         // Generate PDF from your HTML-based builder (already present in PdfUtil)
         byte[] pdf = com.vebops.util.PdfUtil.buildServiceInvoicePdfHtml(svc, meta, items, totals, company);
         if (pdf == null || pdf.length == 0) return null;
 
         if (doc == null) {
-            doc = new com.vebops.domain.Document();
+            doc = new Document();
             doc.setTenantId(tid);
-            doc.setEntityType(com.vebops.domain.enums.DocumentEntityType.SR);
+            doc.setEntityType(proforma ? DocumentEntityType.PROFORMA : DocumentEntityType.SR);
             doc.setEntityId(id);
-            doc.setKind(com.vebops.domain.enums.DocumentKind.PDF);
+            doc.setKind(DocumentKind.PDF);
             doc.setUploadedAt(Instant.now());
+        } else if (proforma && doc.getEntityType() != DocumentEntityType.PROFORMA) {
+            doc.setEntityType(DocumentEntityType.PROFORMA);
         }
         // Determine a filename from meta (invoiceNo or PINV/PINV etc.)
-        String fname = computeFileName(meta, id) + ".pdf";
+        String fname = computeFileName(meta, id, proforma) + ".pdf";
         doc.setFilename(fname);
         // Persist doc to obtain ID if needed
         doc = documentRepo.save(doc);
