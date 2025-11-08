@@ -17,6 +17,7 @@ import {
   useSendServiceInvoiceMutation
 } from '../../features/office/officeApi'
 import { Toaster, toast } from 'react-hot-toast'
+import { displayDocNumber } from '../../utils/docNumbers'
 
 // Format currency in Indian Rupees. Falls back to 0 when the input is
 // undefined or NaN. This replicates the helper used on the service
@@ -166,7 +167,10 @@ export default function ServiceHistory () {
                 let totals = {}
                 try { meta = srv.metaJson ? JSON.parse(srv.metaJson) : {} } catch (e) { meta = {} }
                 try { totals = srv.totalsJson ? JSON.parse(srv.totalsJson) : {} } catch (e) { totals = {} }
-                const invoiceNo = meta?.invoiceNo || meta?.pinvNo || srv.id
+                const invoiceNo = displayDocNumber(
+                  meta?.invoiceNo,
+                  displayDocNumber(meta?.pinvNo, srv.id ? `INV-${srv.id}` : '—')
+                )
                 const serviceType = meta?.serviceType || ''
                 const grandTotal = totals?.grand
                 const createdAt = srv.createdAt ? new Date(srv.createdAt) : null
