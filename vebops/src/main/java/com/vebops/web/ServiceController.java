@@ -553,11 +553,20 @@ public class ServiceController {
         }
     }
     // ---- Helper: compute filename from meta ----
+    private String sanitizeDocCode(Object value) {
+        if (value == null) return "";
+        String code = String.valueOf(value).trim();
+        if (code.isEmpty()) return "";
+        while (code.startsWith("#")) {
+            code = code.substring(1).trim();
+        }
+        return code;
+    }
     private String computeFileName(Map<String,Object> meta, Long id) {
-        Object inv = meta.get("invoiceNo");
-        Object pinv = meta.get("pinvNo");
-        String base = (inv != null ? String.valueOf(inv) : (pinv != null ? String.valueOf(pinv) : "service-" + id));
-        return base.trim().isEmpty() ? ("service-" + id) : base.trim();
+        String inv = sanitizeDocCode(meta.get("invoiceNo"));
+        String pinv = sanitizeDocCode(meta.get("pinvNo"));
+        String base = !inv.isEmpty() ? inv : (!pinv.isEmpty() ? pinv : "service-" + id);
+        return base.isBlank() ? ("service-" + id) : base;
     }
     // ---- Helper: ensure there is a Document; generate+save if missing ----
     private com.vebops.domain.Document ensureServiceInvoiceDoc(Long tid, Long id) {

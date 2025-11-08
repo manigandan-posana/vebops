@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { FileText, IndianRupee, Search, Trash2, Percent, Printer } from "lucide-react";
 import KITS from "./data/htpower_kits.json";
+import { normalizeDocNumber } from "../../utils/docNumbers";
 /**
  * Sales & Purchase Docs — Service Request / PINV / Invoice / Purchase Order
  * React + Tailwind (copy-paste ready)
@@ -630,7 +631,10 @@ export default function ServiceDocsPage() {
               {docType !== "PO" ? (
                 <>
                   <Labeled label={docType==="PINV" ? "PINV No." : "Invoice No."}>
-                    <TextInput value={docType==="PINV"?meta.pinvNo:meta.invoiceNo} onChange={(e)=> setMeta(m => ({...m, [docType==="PINV"?"pinvNo":"invoiceNo"]: e.target.value }))} />
+                    <TextInput value={docType==="PINV"?meta.pinvNo:meta.invoiceNo} onChange={(e)=> setMeta(m => ({
+                      ...m,
+                      [docType==="PINV"?"pinvNo":"invoiceNo"]: normalizeDocNumber(e.target.value),
+                    }))} />
                   </Labeled>
                   <Labeled label={docType==="PINV" ? "PINV Date" : "Invoice Date"}>
                     <TextInput type="date" value={docType==="PINV"?meta.pinvDate:meta.invoiceDate} onChange={(e)=> setMeta(m => ({...m, [docType==="PINV"?"pinvDate":"invoiceDate"]: e.target.value }))} />

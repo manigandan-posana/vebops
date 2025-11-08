@@ -3,10 +3,10 @@ import { Toaster, toast } from 'react-hot-toast'
 import { useSelector } from 'react-redux'
 import {
   useGetMyInvoicesQuery,
-  useGetInvoicePdfQuery,
   useLazyGetInvoicePdfQuery,
 } from '../../features/customer/customerApi'
 import { downloadBlob } from '../../utils/file'
+import { displayDocNumber, normalizeDocNumber } from '../../utils/docNumbers'
 
 const selectAuth = (s) => s?.auth || {}
 
@@ -23,7 +23,8 @@ export default function Invoices(){
     return
   }
   const blob = res.data // ✅ now truly a Blob
-  const filename = `invoice-${inv.invoiceNo || inv.id}.pdf`
+  const code = normalizeDocNumber(inv.invoiceNo)
+  const filename = `invoice-${code || inv.id}.pdf`
   downloadBlob(blob, filename)
   toast.success('Downloaded')
 }
@@ -68,7 +69,7 @@ export default function Invoices(){
 
             {!isLoading && invoices.map((inv) => {
               const id = inv.id
-              const code = inv.invoiceNo || (id ? `INV-${id}` : '—')
+              const code = displayDocNumber(inv.invoiceNo, id ? `INV-${id}` : '—')
               const date = inv.invoiceDate || '—'
               const total = typeof inv.total === 'number' ? inv.total.toFixed(2) : inv.total ?? '—'
               const status = inv.status || '—'

@@ -10,6 +10,7 @@
 import React from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { IndianRupee } from 'lucide-react'
+import { displayDocNumber } from '../../utils/docNumbers'
 // Import the getService hook rather than the paginated getServices hook. This
 // endpoint fetches a single service by ID and returns the raw Service
 // object (with metaJson/itemsJson/totalsJson strings). See officeApi.js.
@@ -99,9 +100,9 @@ export default function ServiceDetail () {
         <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
           <h2 className='mb-4 text-lg font-semibold text-slate-900'>Invoice & Service Info</h2>
           <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
-            <LabeledRow label='Invoice No.' value={meta.invoiceNo} />
+            <LabeledRow label='Invoice No.' value={displayDocNumber(meta.invoiceNo)} />
             <LabeledRow label='Invoice Date' value={meta.invoiceDate} />
-            <LabeledRow label='PINV No.' value={meta.pinvNo} />
+            <LabeledRow label='PINV No.' value={displayDocNumber(meta.pinvNo)} />
             <LabeledRow label='PINV Date' value={meta.pinvDate} />
             <LabeledRow label='Buyer Order No.' value={meta.buyerOrderNo} />
             <LabeledRow label='Order Date' value={meta.orderDate} />

@@ -9,6 +9,7 @@
 import React, { useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useGetCompanyQuery } from '../../features/office/officeApi'
+import { displayDocNumber } from '../../utils/docNumbers'
 
 // GST state codes mapping. Keys are lower‑cased state names (spaces normalized) and values are
 // two‑digit GST codes. Used to display the state code next to the state in billing/shipping
@@ -93,7 +94,9 @@ export default function Preview () {
   const docTitle = isProforma ? 'PROFORMA INVOICE' : 'INVOICE'
   const docNoLabel = isProforma ? 'PINV No.' : 'Invoice No.'
   const docDateLabel = isProforma ? 'PINV Date' : 'Date'
-  const docNoValue = isProforma ? (meta.pinvNo || '—') : (meta.invoiceNo || '—')
+  const docNoValue = isProforma
+    ? displayDocNumber(meta.pinvNo)
+    : displayDocNumber(meta.invoiceNo)
   const docDateValue = isProforma ? (meta.pinvDate || '—') : (meta.invoiceDate || '—')
 
   const money = (n) =>

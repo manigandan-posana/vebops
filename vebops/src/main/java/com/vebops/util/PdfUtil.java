@@ -115,26 +115,24 @@ public class PdfUtil {
       // proforma number/date is provided in meta then treat the document as a
       // proforma invoice; otherwise fall back to a standard invoice. This is
       // analogous to the docType logic in Preview.jsx.
-      String invoiceNo = null;
-      String invoiceDate = null;
-      String pinvNo = null;
-      String pinvDate = null;
+      String invoiceNo = "";
+      String invoiceDate = "";
+      String pinvNo = "";
+      String pinvDate = "";
       if (meta != null) {
-        Object invNoObj = meta.get("invoiceNo");
-        if (invNoObj != null) invoiceNo = String.valueOf(invNoObj);
+        invoiceNo = cleanDocNumber(meta.get("invoiceNo"));
         Object invDateObj = meta.get("invoiceDate");
-        if (invDateObj != null) invoiceDate = String.valueOf(invDateObj);
-        Object pinvNoObj = meta.get("pinvNo");
-        if (pinvNoObj != null) pinvNo = String.valueOf(pinvNoObj);
+        if (invDateObj != null) invoiceDate = String.valueOf(invDateObj).trim();
+        pinvNo = cleanDocNumber(meta.get("pinvNo"));
         Object pinvDateObj = meta.get("pinvDate");
-        if (pinvDateObj != null) pinvDate = String.valueOf(pinvDateObj);
+        if (pinvDateObj != null) pinvDate = String.valueOf(pinvDateObj).trim();
       }
-      boolean isProforma = (pinvNo != null && !pinvNo.isBlank()) || (pinvDate != null && !pinvDate.isBlank());
+      boolean isProforma = (!pinvNo.isBlank()) || (!pinvDate.isBlank());
       String docTitle = isProforma ? "PROFORMA INVOICE" : "INVOICE";
       String docNoLabel = isProforma ? "PINV No." : "Invoice No.";
       String docDateLabel = isProforma ? "PINV Date" : "Date";
-      String docNoValue = isProforma ? (pinvNo != null && !pinvNo.isBlank() ? pinvNo : "—") : (invoiceNo != null && !invoiceNo.isBlank() ? invoiceNo : "—");
-      String docDateValue = isProforma ? (pinvDate != null && !pinvDate.isBlank() ? pinvDate : "—") : (invoiceDate != null && !invoiceDate.isBlank() ? invoiceDate : "—");
+      String docNoValue = isProforma ? (pinvNo.isBlank() ? "—" : pinvNo) : (invoiceNo.isBlank() ? "—" : invoiceNo);
+      String docDateValue = isProforma ? (pinvDate.isBlank() ? "—" : pinvDate) : (invoiceDate.isBlank() ? "—" : invoiceDate);
 
       // -------------------------------------------------------------------------
       // Compute totals and prepare derived values. Subtotal is the sum of
@@ -786,6 +784,16 @@ private static String money(java.math.BigDecimal v){
     return "₹" + x.toPlainString();
 }
 
+    private static String cleanDocNumber(Object value) {
+        if (value == null) return "";
+        String code = String.valueOf(value).trim();
+        if (code.isEmpty()) return "";
+        while (code.startsWith("#")) {
+            code = code.substring(1).trim();
+        }
+        return code;
+    }
+
 // If tenant state code differs from place of supply code -> IGST; else split evenly CGST/SGST
 private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.math.BigDecimal pct){
     String tenantCode = safe(cfg.tenantStateCode).replaceAll("\\D","");
@@ -1084,22 +1092,25 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
                             rowDesc = "Supply of " + desc;
                         }
                     }
-                    itemsRows.append("<td style=\"text-align:left; padding:6px;\">");
-                    itemsRows.append("<div>" + escapeHtml(desc) + "</div>");
+                    itemsRows.append("<td>");
+                    itemsRows.append("<div class='item-name'>" + escapeHtml(desc) + "</div>");
                     if (rowDesc != null && !rowDesc.isBlank()) {
-                        itemsRows.append("<div style='font-size:10px;color:#6b7280;'>" + escapeHtml(rowDesc) + "</div>");
+                        itemsRows.append("<div class='item-sub'>" + escapeHtml(rowDesc) + "</div>");
                     }
                     itemsRows.append("</td>");
                     // HSN/SAC
-                    itemsRows.append("<td style=\"text-align:center; padding:6px;\">" + escapeHtml(hsn) + "</td>");
+                    itemsRows.append("<td class='text-center'>" + escapeHtml(hsn) + "</td>");
                     // Qty
-                    itemsRows.append("<td style=\"text-align:center; padding:6px;\">" + qty.stripTrailingZeros().toPlainString() + "</td>");
+                    itemsRows.append("<td class='text-center'>" + qty.stripTrailingZeros().toPlainString() + "</td>");
                     // Rate (unit price)
-                    itemsRows.append("<td style=\"text-align:right; padding:6px;\">" + money(rate) + "</td>");
+                    itemsRows.append("<td class='text-right'>" + money(rate) + "</td>");
                     // Amount (after discount)
-                    itemsRows.append("<td style=\"text-align:right; padding:6px;\">" + money(discounted) + "</td>");
+                    itemsRows.append("<td class='text-right'>" + money(discounted) + "</td>");
                     itemsRows.append("</tr>");
                 }
+            }
+            if (itemsRows.length() == 0) {
+                itemsRows.append("<tr class='empty'><td colspan='5'>No line items recorded</td></tr>");
             }
             // Transport and taxes
             java.math.BigDecimal transport = java.math.BigDecimal.ZERO;
@@ -1157,97 +1168,6 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
             }
             String narration = meta != null && meta.get("narration") != null ? escapeHtml(String.valueOf(meta.get("narration"))) : "";
 
-            // Compose HTML
-            StringBuilder html = new StringBuilder();
-            html.append("<html><head><meta charset='UTF-8' />");
-            html.append("<style>");
-            html.append("body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#374151;margin:0;padding:0;}");
-            html.append(".container{width:100%;padding:20px;box-sizing:border-box;}");
-            html.append(".flex{display:flex;}");
-            html.append(".justify-between{justify-content:space-between;}");
-            html.append(".items-start{align-items:flex-start;}");
-            html.append(".gap-4{gap:16px;}");
-            html.append(".w-50{width:50%;}");
-            html.append("table{border-collapse:collapse;width:100%;}");
-            html.append("th,td{padding:6px;border-bottom:1px solid #e5e7eb;vertical-align:top;}");
-            html.append("th{background-color:#f7f9ff;color:#334155;font-weight:600;font-size:12px;}");
-            html.append("td{font-size:12px;color:#374151;}");
-            html.append(".section-title{font-size:10px;font-weight:bold;color:#0ea5e9;text-transform:uppercase;margin-bottom:4px;}");
-            html.append(".section-content{font-size:12px;color:#374151;white-space:pre-line;}");
-            html.append(".summary{border:1px solid #e5e7eb;background:#f7f9ff;padding:12px;width:200px;}");
-            html.append(".summary .label{font-size:12px;color:#64748b;}");
-            html.append(".summary .value{font-size:18px;font-weight:bold;color:#1f2937;}");
-            html.append("</style></head><body>");
-            html.append("<div class='container'>");
-            html.append("<div class='flex justify-between items-start gap-4'>");
-            // left header
-            html.append("<div class='flex gap-4'>");
-            html.append("<div style='width:64px;height:64px;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;'>");
-            if (companyLogo != null) {
-                html.append("<img src='" + companyLogo + "' style='max-width:100%;max-height:100%;object-fit:contain;' />");
-            } else {
-                html.append("<span style='font-size:12px;color:#94a3b8;'>Logo</span>");
-            }
-            html.append("</div>");
-            html.append("<div>");
-            html.append("<div style='font-size:20px;font-weight:bold;color:#1f2937;'>" + escapeHtml(companyName.isEmpty() ? "—" : companyName) + "</div>");
-            html.append("<div style='font-size:12px;color:#6b7280;line-height:1.4;'>" + escapeHtml(companyAddress.isEmpty() ? "—" : companyAddress) + "<br/>");
-            html.append(escapeHtml(companyGstinPan));
-            html.append("</div>");
-            html.append("</div>");
-            html.append("</div>");
-            // right header
-            html.append("<div style='text-align:right;'>");
-            html.append("<div style='font-size:24px;font-weight:bold;color:#1f2937;'>" + docTitle + "</div>");
-            html.append("<div style='font-size:12px;color:#475569;margin-top:4px;'>");
-            html.append("<span style='font-weight:600;'>" + docNoLabel + ":</span> " + (docNoValue == null || docNoValue.isBlank() ? "—" : escapeHtml(docNoValue)) + "<br/>");
-            html.append("<span style='font-weight:600;'>" + docDateLabel + ":</span> " + (docDateValue == null || docDateValue.isBlank() ? "—" : escapeHtml(docDateValue)));
-            html.append("</div>");
-            html.append("</div>");
-            html.append("</div>");
-            html.append("<hr style='border:0;border-top:1px solid #e5e7eb;margin:12px 0;' />");
-            // Bill/Ship
-            html.append("<div class='flex gap-4'>");
-            // Bill To
-            html.append("<div class='w-50'>");
-            html.append("<div class='section-title'>Bill To</div>");
-            html.append("<div class='section-content'><span style='font-weight:bold;'>" + (buyerName.isEmpty() ? "—" : escapeHtml(buyerName)) + "</span><br/>");
-            html.append(escapeHtml(buyerAddress));
-            if (!buyerPin.isBlank()) html.append("<br/>" + escapeHtml(buyerPin));
-            if (!buyerState.isBlank()) {
-                String line = escapeHtml(buyerState);
-                if (!buyerStateCode.isBlank()) {
-                    line += " (" + buyerStateCode + ")";
-                }
-                html.append("<br/>" + line);
-            }
-            if (!buyerGst.isBlank()) html.append("<br/>GSTIN: " + escapeHtml(buyerGst));
-            if (!buyerContact.isBlank()) html.append("<br/>Contact: " + escapeHtml(buyerContact));
-            html.append("</div>");
-            html.append("</div>");
-            // Ship To
-            html.append("<div class='w-50'>");
-            html.append("<div class='section-title'>Ship To</div>");
-            html.append("<div class='section-content'><span style='font-weight:bold;'>" + (consigneeName.isEmpty() ? "—" : escapeHtml(consigneeName)) + "</span><br/>");
-            html.append(escapeHtml(consigneeAddress));
-            if (!consigneePin.isBlank()) html.append("<br/>" + escapeHtml(consigneePin));
-            if (!consigneeState.isBlank()) {
-                String line = escapeHtml(consigneeState);
-                if (!consigneeStateCode.isBlank()) {
-                    line += " (" + consigneeStateCode + ")";
-                }
-                html.append("<br/>" + line);
-            }
-            if (!consigneeGst.isBlank()) html.append("<br/>GSTIN: " + escapeHtml(consigneeGst));
-            html.append("</div>");
-            html.append("</div>");
-            html.append("</div>");
-            // Meta grid
-            html.append("<div style='margin-top:12px;'>");
-            html.append("<table style='width:100%;font-size:12px;'>");
-            html.append("<tr>");
-            html.append("<th style='text-align:left;width:16.6%;'>Service Type</th><td style='width:16.7%;'>" + (serviceType.isBlank() ? "—" : escapeHtml(serviceType)) + "</td>");
-            // Compose place of supply with state code if available
             String posDisplay;
             if (placeOfSupply == null || placeOfSupply.isBlank()) {
                 posDisplay = "—";
@@ -1257,82 +1177,192 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
                     posDisplay += " (" + placeOfSupplyCode + ")";
                 }
             }
-            html.append("<th style='text-align:left;width:16.6%;'>Place of Supply</th><td style='width:16.7%;'>" + posDisplay + "</td>");
-            html.append("<th style='text-align:left;width:16.6%;'>Buyer’s Order / PO No.</th><td style='width:16.7%;'>" + (buyerOrderNo.isBlank() ? "—" : escapeHtml(buyerOrderNo)) + "</td>");
-            html.append("</tr>");
-            html.append("<tr>");
-            html.append("<th style='text-align:left;'>PO / WO Date</th><td>" + (orderDate.isBlank() ? "—" : escapeHtml(orderDate)) + "</td>");
-            html.append("<th style='text-align:left;'>Delivery Challan No.</th><td>" + (dcNo.isBlank() ? "—" : escapeHtml(dcNo)) + "</td>");
-            html.append("<th style='text-align:left;'>Work Completion Cert No.</th><td>" + (wcNo.isBlank() ? "—" : escapeHtml(wcNo)) + "</td>");
-            html.append("</tr>");
-            html.append("</table>");
+
+            // Compose HTML
+            StringBuilder html = new StringBuilder();
+            html.append("<html><head><meta charset='UTF-8' />");
+            html.append("<style>");
+            html.append("body{margin:0;padding:32px;background:#eef2ff;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;}");
+            html.append(".invoice-wrapper{max-width:920px;margin:0 auto;}");
+            html.append(".invoice-card{background:#ffffff;border-radius:28px;box-shadow:0 28px 80px rgba(15,23,42,0.12);overflow:hidden;}");
+            html.append(".header{display:flex;justify-content:space-between;gap:24px;padding:36px;background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;}");
+            html.append(".header-left{display:flex;gap:20px;align-items:center;}");
+            html.append(".logo{width:80px;height:80px;border-radius:20px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;overflow:hidden;}");
+            html.append(".logo img{max-width:100%;max-height:100%;object-fit:contain;}");
+            html.append(".logo span{font-size:12px;opacity:0.75;}");
+            html.append(".company-title{margin:0;font-size:24px;font-weight:700;letter-spacing:0.4px;}");
+            html.append(".company-meta{margin-top:8px;font-size:12px;line-height:1.6;opacity:0.9;}");
+            html.append(".doc-meta{text-align:right;}");
+            html.append(".doc-title{margin:0;font-size:28px;font-weight:700;letter-spacing:1px;}");
+            html.append(".meta-line{display:block;margin-top:10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;}");
+            html.append(".section{padding:28px 36px;border-bottom:1px solid #e2e8f0;}");
+            html.append(".section:last-child{border-bottom:none;}");
+            html.append(".flex-wrap{display:flex;flex-wrap:wrap;gap:24px;}");
+            html.append(".info-card{flex:1 1 280px;background:#f8fafc;border-radius:20px;padding:22px;}");
+            html.append(".info-title{margin:0 0 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;}");
+            html.append(".info-value{font-size:14px;font-weight:600;color:#0f172a;line-height:1.6;}");
+            html.append(".info-value div+div{margin-top:4px;}");
+            html.append(".meta-grid{display:flex;flex-wrap:wrap;gap:18px;}");
+            html.append(".meta-item{flex:1 1 240px;min-width:180px;}");
+            html.append(".meta-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:6px;}");
+            html.append(".meta-value{font-size:13px;font-weight:500;color:#0f172a;}");
+            html.append("table.items{width:100%;border-collapse:collapse;}");
+            html.append("table.items thead th{background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;padding:12px;border-bottom:1px solid #dbeafe;text-align:left;}");
+            html.append("table.items thead th.text-center{text-align:center;}");
+            html.append("table.items thead th.text-right{text-align:right;}");
+            html.append("table.items tbody td{padding:12px;font-size:12px;color:#0f172a;border-bottom:1px solid #e2e8f0;}");
+            html.append("table.items tbody tr:nth-child(even){background:#f8fafc;}");
+            html.append("table.items tbody td.text-right{text-align:right;}");
+            html.append("table.items tbody td.text-center{text-align:center;}");
+            html.append("table.items tbody tr.empty td{text-align:center;color:#64748b;font-style:italic;}");
+            html.append(".item-name{font-weight:600;}");
+            html.append(".item-sub{margin-top:4px;font-size:11px;color:#64748b;}");
+            html.append(".totals-wrap{display:flex;justify-content:flex-end;}");
+            html.append(".totals-card{width:320px;background:linear-gradient(140deg,#0f172a,#1e293b);color:#fff;border-radius:24px;padding:26px;box-shadow:0 22px 55px rgba(15,23,42,0.38);}");
+            html.append(".totals-card table{width:100%;border-collapse:collapse;}");
+            html.append(".totals-card td{padding:6px 0;font-size:12px;color:rgba(255,255,255,0.85);}");
+            html.append(".totals-card td.label{text-transform:uppercase;letter-spacing:0.8px;}");
+            html.append(".totals-card td.value{text-align:right;font-weight:600;}");
+            html.append(".totals-card tr.grand td{padding-top:14px;font-size:16px;font-weight:700;color:#fff;}");
+            html.append(".totals-card tr.words td{padding-top:14px;font-size:11px;line-height:1.6;color:rgba(255,255,255,0.8);text-transform:none;letter-spacing:0;}");
+            html.append(".footer-wrap{display:flex;flex-wrap:wrap;gap:24px;}");
+            html.append(".footer-card{flex:1 1 280px;background:#f8fafc;border-radius:20px;padding:22px;}");
+            html.append(".footer-card ul{margin:8px 0 0 20px;padding:0;}");
+            html.append(".footer-card li{font-size:12px;color:#0f172a;line-height:1.6;margin-bottom:6px;}");
+            html.append(".footer-card p{font-size:12px;color:#0f172a;line-height:1.6;margin:4px 0;}");
+            html.append("</style></head><body>");
+            html.append("<div class='invoice-wrapper'><div class='invoice-card'>");
+            html.append("<div class='header'>");
+            html.append("<div class='header-left'>");
+            html.append("<div class='logo'>");
+            if (companyLogo != null) {
+                html.append("<img src='" + companyLogo + "' alt='Logo' />");
+            } else {
+                html.append("<span>Logo</span>");
+            }
             html.append("</div>");
-            // Items table
-            html.append("<div style='margin-top:16px;'>");
-            html.append("<table class='border'>");
-            html.append("<thead>");
-            html.append("<tr>");
-            // Define column headers.  Rename "Base Rate" to "Rate" and remove the
-            // "Discount %" column as per revised invoice requirements.
-            html.append("<th style='text-align:left;'>Item Description</th>");
-            html.append("<th>HSN/SAC</th>");
-            html.append("<th>Qty</th>");
-            html.append("<th style='text-align:right;'>Rate</th>");
-            html.append("<th style='text-align:right;'>Amount</th>");
-            html.append("</tr>");
-            html.append("</thead><tbody>");
+            html.append("<div>");
+            html.append("<h1 class='company-title'>" + escapeHtml(companyName.isEmpty() ? "—" : companyName) + "</h1>");
+            StringBuilder sellerMeta = new StringBuilder();
+            if (!companyAddress.isBlank()) sellerMeta.append(escapeHtml(companyAddress));
+            if (!companyGstinPan.isBlank()) {
+                if (sellerMeta.length() > 0) sellerMeta.append("<br/>");
+                sellerMeta.append(escapeHtml(companyGstinPan));
+            }
+            if (sellerMeta.length() == 0) sellerMeta.append("—");
+            html.append("<div class='company-meta'>" + sellerMeta + "</div>");
+            html.append("</div>");
+            html.append("</div>");
+            html.append("<div class='doc-meta'>");
+            html.append("<h1 class='doc-title'>" + docTitle + "</h1>");
+            html.append("<span class='meta-line'>" + docNoLabel + ": " + escapeHtml(docNoValue) + "</span>");
+            html.append("<span class='meta-line'>" + docDateLabel + ": " + escapeHtml(docDateValue) + "</span>");
+            html.append("</div>");
+            html.append("</div>");
+            html.append("<div class='section'>");
+            html.append("<div class='flex-wrap'>");
+            html.append("<div class='info-card'>");
+            html.append("<div class='info-title'>Bill To</div>");
+            html.append("<div class='info-value'>");
+            html.append("<div>" + escapeHtml(buyerName.isEmpty() ? "—" : buyerName) + "</div>");
+            if (!buyerAddress.isBlank()) html.append("<div>" + escapeHtml(buyerAddress) + "</div>");
+            if (!buyerPin.isBlank()) html.append("<div>" + escapeHtml(buyerPin) + "</div>");
+            if (!buyerState.isBlank()) {
+                String line = escapeHtml(buyerState);
+                if (!buyerStateCode.isBlank()) line += " (" + buyerStateCode + ")";
+                html.append("<div>" + line + "</div>");
+            }
+            if (!buyerGst.isBlank()) html.append("<div>GSTIN: " + escapeHtml(buyerGst) + "</div>");
+            if (!buyerContact.isBlank()) html.append("<div>Contact: " + escapeHtml(buyerContact) + "</div>");
+            html.append("</div></div>");
+            html.append("<div class='info-card'>");
+            html.append("<div class='info-title'>Ship To</div>");
+            html.append("<div class='info-value'>");
+            html.append("<div>" + escapeHtml(consigneeName.isEmpty() ? "—" : consigneeName) + "</div>");
+            if (!consigneeAddress.isBlank()) html.append("<div>" + escapeHtml(consigneeAddress) + "</div>");
+            if (!consigneePin.isBlank()) html.append("<div>" + escapeHtml(consigneePin) + "</div>");
+            if (!consigneeState.isBlank()) {
+                String line = escapeHtml(consigneeState);
+                if (!consigneeStateCode.isBlank()) line += " (" + consigneeStateCode + ")";
+                html.append("<div>" + line + "</div>");
+            }
+            if (!consigneeGst.isBlank()) html.append("<div>GSTIN: " + escapeHtml(consigneeGst) + "</div>");
+            html.append("</div></div>");
+            html.append("</div>");
+            html.append("</div>");
+            html.append("<div class='section'>");
+            html.append("<div class='meta-grid'>");
+            html.append("<div class='meta-item'><div class='meta-label'>Service Type</div><div class='meta-value'>" + (serviceType.isBlank() ? "—" : escapeHtml(serviceType)) + "</div></div>");
+            html.append("<div class='meta-item'><div class='meta-label'>Place of Supply</div><div class='meta-value'>" + posDisplay + "</div></div>");
+            html.append("<div class='meta-item'><div class='meta-label'>Buyer’s Order / PO No.</div><div class='meta-value'>" + (buyerOrderNo.isBlank() ? "—" : escapeHtml(buyerOrderNo)) + "</div></div>");
+            html.append("<div class='meta-item'><div class='meta-label'>PO / WO Date</div><div class='meta-value'>" + (orderDate.isBlank() ? "—" : escapeHtml(orderDate)) + "</div></div>");
+            html.append("<div class='meta-item'><div class='meta-label'>Delivery Challan No.</div><div class='meta-value'>" + (dcNo.isBlank() ? "—" : escapeHtml(dcNo)) + "</div></div>");
+            html.append("<div class='meta-item'><div class='meta-label'>Work Completion Cert No.</div><div class='meta-value'>" + (wcNo.isBlank() ? "—" : escapeHtml(wcNo)) + "</div></div>");
+            html.append("</div>");
+            html.append("</div>");
+            html.append("<div class='section'>");
+            html.append("<table class='items'>");
+            html.append("<thead><tr>");
+            html.append("<th>Item Description</th>");
+            html.append("<th class='text-center'>HSN/SAC</th>");
+            html.append("<th class='text-center'>Qty</th>");
+            html.append("<th class='text-right'>Rate</th>");
+            html.append("<th class='text-right'>Amount</th>");
+            html.append("</tr></thead><tbody>");
             html.append(itemsRows.toString());
             html.append("</tbody></table>");
             html.append("</div>");
-            // Totals table
-            html.append("<div style='margin-top:12px;display:flex;justify-content:flex-end;'>");
-            html.append("<table style='font-size:12px;'>");
-            html.append("<tr><td style='padding-right:8px;'>Subtotal:</td><td style='font-weight:bold;text-align:right;'>" + subtotalStr + "</td></tr>");
-            html.append("<tr><td style='padding-right:8px;'>Discount savings:</td><td style='font-weight:bold;text-align:right;'>" + discountSavingsStr + "</td></tr>");
-            html.append("<tr><td style='padding-right:8px;'>Transport:</td><td style='font-weight:bold;text-align:right;'>" + transportStr + "</td></tr>");
-            if (cgst.compareTo(java.math.BigDecimal.ZERO) > 0) html.append("<tr><td style='padding-right:8px;'>CGST (" + (totals != null && totals.get("cgstRate") != null ? totals.get("cgstRate").toString() : "") + "%):</td><td style='font-weight:bold;text-align:right;'>" + cgstStr + "</td></tr>");
-            if (sgst.compareTo(java.math.BigDecimal.ZERO) > 0) html.append("<tr><td style='padding-right:8px;'>SGST (" + (totals != null && totals.get("sgstRate") != null ? totals.get("sgstRate").toString() : "") + "%):</td><td style='font-weight:bold;text-align:right;'>" + sgstStr + "</td></tr>");
-            if (igst.compareTo(java.math.BigDecimal.ZERO) > 0) html.append("<tr><td style='padding-right:8px;'>IGST (" + (totals != null && totals.get("igstRate") != null ? totals.get("igstRate").toString() : "") + "%):</td><td style='font-weight:bold;text-align:right;'>" + igstStr + "</td></tr>");
-            html.append("<tr><td style='padding-right:8px;font-weight:bold;'>Grand Total:</td><td style='font-weight:bold;text-align:right;'>" + grandStr + "</td></tr>");
-            html.append("<tr><td style='padding-right:8px;'>Amount in words:</td><td style='text-align:right;'>" + escapeHtml(amountInWords) + "</td></tr>");
-            html.append("</table>");
+            html.append("<div class='section'>");
+            html.append("<div class='totals-wrap'><div class='totals-card'><table>");
+            html.append("<tr><td class='label'>Subtotal</td><td class='value'>" + subtotalStr + "</td></tr>");
+            html.append("<tr><td class='label'>Discount savings</td><td class='value'>" + discountSavingsStr + "</td></tr>");
+            html.append("<tr><td class='label'>Transport</td><td class='value'>" + transportStr + "</td></tr>");
+            if (cgst.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                String rate = totals != null && totals.get("cgstRate") != null ? totals.get("cgstRate").toString() : "";
+                html.append("<tr><td class='label'>CGST " + rate + "%</td><td class='value'>" + cgstStr + "</td></tr>");
+            }
+            if (sgst.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                String rate = totals != null && totals.get("sgstRate") != null ? totals.get("sgstRate").toString() : "";
+                html.append("<tr><td class='label'>SGST " + rate + "%</td><td class='value'>" + sgstStr + "</td></tr>");
+            }
+            if (igst.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                String rate = totals != null && totals.get("igstRate") != null ? totals.get("igstRate").toString() : "";
+                html.append("<tr><td class='label'>IGST " + rate + "%</td><td class='value'>" + igstStr + "</td></tr>");
+            }
+            html.append("<tr class='grand'><td class='label'>Grand Total</td><td class='value'>" + grandStr + "</td></tr>");
+            html.append("<tr class='words'><td colspan='2'>Amount in words:<br/>" + escapeHtml(amountInWords) + "</td></tr>");
+            html.append("</table></div></div>");
             html.append("</div>");
-            // Bank/Terms/Narration and Summary
-            html.append("<div style='margin-top:16px;display:flex;gap:24px;'>");
-            html.append("<div style='flex:1;'>");
-            // Bank details
-            html.append("<div>");
-            html.append("<div class='section-title'>Company's Bank Details</div>");
-            html.append("<div class='section-content'>");
-            html.append("<div><span style='font-weight:600;'>Bank Name: </span>" + (companyBankName.isBlank() ? "—" : escapeHtml(companyBankName)) + "</div>");
-            html.append("<div><span style='font-weight:600;'>A/C No: </span>" + (companyAccNo.isBlank() ? "—" : escapeHtml(companyAccNo)) + "</div>");
-            html.append("<div><span style='font-weight:600;'>Branch: </span>" + (companyBranch.isBlank() ? "—" : escapeHtml(companyBranch)) + "</div>");
-            html.append("<div><span style='font-weight:600;'>IFSC: </span>" + (companyIfsc.isBlank() ? "—" : escapeHtml(companyIfsc)) + "</div>");
+            html.append("<div class='section'>");
+            html.append("<div class='footer-wrap'>");
+            html.append("<div class='footer-card'>");
+            html.append("<div class='info-title'>Company's Bank Details</div>");
+            html.append("<div class='info-value'>");
+            html.append("<div>Bank Name: " + (companyBankName.isBlank() ? "—" : escapeHtml(companyBankName)) + "</div>");
+            html.append("<div>A/C No: " + (companyAccNo.isBlank() ? "—" : escapeHtml(companyAccNo)) + "</div>");
+            html.append("<div>Branch: " + (companyBranch.isBlank() ? "—" : escapeHtml(companyBranch)) + "</div>");
+            html.append("<div>IFSC: " + (companyIfsc.isBlank() ? "—" : escapeHtml(companyIfsc)) + "</div>");
             html.append("</div>");
             html.append("</div>");
-            // Terms list
-            if (!termsList.isEmpty()) {
-                html.append("<div style='margin-top:12px;'>");
-                // Escape the ampersand in the static label to avoid XML parsing errors
-                html.append("<div class='section-title'>Terms &amp; Conditions</div>");
-                html.append("<ul style='font-size:12px;color:#374151;padding-left:20px;list-style-type:decimal;'>");
-                for (String t : termsList) {
-                    html.append("<li>" + t + "</li>");
+            if (!termsList.isEmpty() || !narration.isBlank()) {
+                html.append("<div class='footer-card'>");
+                if (!termsList.isEmpty()) {
+                    html.append("<div class='info-title'>Terms &amp; Conditions</div>");
+                    html.append("<ul>");
+                    for (String t : termsList) {
+                        html.append("<li>" + t + "</li>");
+                    }
+                    html.append("</ul>");
                 }
-                html.append("</ul>");
-                html.append("</div>");
-            }
-            // Narration
-            if (!narration.isBlank()) {
-                html.append("<div style='margin-top:12px;'>");
-                html.append("<div class='section-title'>Narration / Remarks</div>");
-                html.append("<div class='section-content'>" + narration + "</div>");
+                if (!narration.isBlank()) {
+                    html.append("<div class='info-title' style='margin-top:16px;'>Narration / Remarks</div>");
+                    html.append("<p>" + narration + "</p>");
+                }
                 html.append("</div>");
             }
             html.append("</div>");
-            // Summary card removed per requirements – no separate Total/Amount Due box
             html.append("</div>");
-            html.append("</div>");
+            html.append("</div></div></div>");
             html.append("</body></html>");
 
             // Render PDF using OpenHTMLToPDF
