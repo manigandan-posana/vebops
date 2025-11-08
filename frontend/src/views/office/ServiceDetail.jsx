@@ -7,13 +7,15 @@
 // table of individual line items with totals. The component offers a
 // back link to return to the history list.
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { IndianRupee } from 'lucide-react'
+import { IndianRupee, Send, Share2, FileDown } from 'lucide-react'
+import { Toaster, toast } from 'react-hot-toast'
+import { displayDocNumber } from '../../utils/docNumbers'
 // Import the getService hook rather than the paginated getServices hook. This
 // endpoint fetches a single service by ID and returns the raw Service
 // object (with metaJson/itemsJson/totalsJson strings). See officeApi.js.
-import { useGetServiceQuery } from '../../features/office/officeApi'
+import { useGetServiceQuery, useDownloadServiceInvoiceMutation, useSendServiceInvoiceMutation, useShareServiceProposalMutation } from '../../features/office/officeApi'
 
 // Local helper to format currency in Indian Rupees.
 const fmtINR = (n) =>
@@ -36,10 +38,74 @@ export default function ServiceDetail () {
   // return a single record when provided an ID. Using getService
   // ensures we fetch the correct Service entity.
   const { data: service, isFetching, error } = useGetServiceQuery(id)
+  const [downloadInvoice] = useDownloadServiceInvoiceMutation()
+  const [sendServiceInvoice, sendState] = useSendServiceInvoiceMutation()
+  const [shareServiceProposal] = useShareServiceProposalMutation()
+  const [modal, setModal] = useState({ open: false, serviceId: null, method: 'email', contact: '', docType: 'INVOICE' })
+  const [sharingDocType, setSharingDocType] = useState(null)
+
+  const openSendModal = (docType = 'INVOICE') => {
+    const contact = service?.buyerContact || service?.buyerEmail || ''
+    setModal({ open: true, serviceId: service?.id || Number(id), method: 'email', contact, docType })
+  }
+
+  const closeModal = () => setModal((m) => ({ ...m, open: false }))
+
+  const handleSend = async () => {
+    if (!modal.serviceId) {
+      toast.error('Service not ready yet')
+      return
+    }
+    const contact = modal.contact?.trim()
+    if (!contact) {
+      toast.error('Please enter an email or mobile number')
+      return
+    }
+    const payload = { id: modal.serviceId, type: modal.docType || 'INVOICE' }
+    if (modal.method === 'email') payload.toEmail = contact
+    else payload.toWhatsapp = contact
+    const res = await sendServiceInvoice(payload)
+    if ('error' in res) {
+      toast.error(res.error?.data?.message || 'Failed to send document')
+    } else {
+      toast.success(`${modal.docType === 'PROFORMA' ? 'Proforma' : 'Invoice'} sent`)
+      closeModal()
+    }
+  }
+
+  const handleDownload = async (docType = 'INVOICE') => {
+    if (!service?.id) return
+    try {
+      const trigger = downloadInvoice({ id: service.id, type: docType })
+      if (trigger && typeof trigger.unwrap === 'function') {
+        await trigger.unwrap()
+      } else if (trigger && typeof trigger.then === 'function') {
+        await trigger
+      }
+    } catch (e) {
+      const msg = e?.data?.message || e?.error || e?.message || 'Download failed'
+      toast.error(String(msg))
+    }
+  }
+
+  const handleShare = async (docType = 'PROFORMA') => {
+    if (!service?.id) return
+    try {
+      setSharingDocType(docType)
+      const res = await shareServiceProposal({ id: service.id, docType }).unwrap()
+      const pid = res?.proposalId ? `P-${res.proposalId}` : 'Proposal'
+      toast.success(`${pid} shared to portal`)
+    } catch (e) {
+      toast.error(String(e?.data?.message || e?.error || e?.message || 'Failed to share'))
+    } finally {
+      setSharingDocType(null)
+    }
+  }
 
   if (isFetching) {
     return (
       <div className='min-h-screen bg-slate-50 p-6 lg:p-10'>
+        <Toaster />
         <div className='mx-auto max-w-4xl'>Loading…</div>
       </div>
     )
@@ -47,6 +113,7 @@ export default function ServiceDetail () {
   if (error || !service) {
     return (
       <div className='min-h-screen bg-slate-50 p-6 lg:p-10'>
+        <Toaster />
         <div className='mx-auto max-w-4xl space-y-4'>
           <div className='text-xl font-semibold text-red-600'>Service not found</div>
           <button onClick={() => navigate(-1)} className='rounded-md bg-blue-600 px-4 py-2 text-white'>Go Back</button>
@@ -62,15 +129,75 @@ export default function ServiceDetail () {
   try { meta = service.metaJson ? JSON.parse(service.metaJson) : {} } catch (e) { meta = {} }
   try { items = service.itemsJson ? JSON.parse(service.itemsJson) : [] } catch (e) { items = [] }
   try { totals = service.totalsJson ? JSON.parse(service.totalsJson) : {} } catch (e) { totals = {} }
+  const proposalId = meta?.proposalId || meta?.proposalID || null
+  const proposalStatus = meta?.proposalStatus || null
+  const proposalLink = proposalId
+    ? (
+        <span className='inline-flex items-center gap-2'>
+          <Link to={`/office/proposal-history?focus=${proposalId}`} className='text-blue-600 hover:underline'>P-{proposalId}</Link>
+          {proposalStatus && (
+            <span className='rounded-full bg-slate-100 px-2 py-0.5 text-[11px] uppercase tracking-wide text-slate-600'>{String(proposalStatus)}</span>
+          )}
+        </span>
+      )
+    : '—'
 
   return (
     <div className='min-h-screen bg-slate-50 p-6 lg:p-10'>
+      <Toaster />
       <div className='mx-auto max-w-4xl space-y-6'>
         <div className='flex items-center justify-between'>
           <h1 className='text-2xl font-semibold text-slate-900'>Service Detail</h1>
           <Link to='/office/service-history' className='rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black'>
             Back to History
           </Link>
+        </div>
+        <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
+          <h2 className='mb-3 text-base font-semibold text-slate-900'>Actions</h2>
+          <div className='flex flex-wrap gap-2'>
+            <button
+              className='inline-flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60'
+              onClick={() => handleDownload('INVOICE')}
+              disabled={!service?.id}
+            >
+              <FileDown size={16} /> Invoice PDF
+            </button>
+            <button
+              className='inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60'
+              onClick={() => handleDownload('PROFORMA')}
+              disabled={!service?.id}
+            >
+              <FileDown size={16} /> Proforma PDF
+            </button>
+            <button
+              className='inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60'
+              onClick={() => openSendModal('INVOICE')}
+              disabled={!service?.id}
+            >
+              <Send size={16} /> Send Invoice
+            </button>
+            <button
+              className='inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60'
+              onClick={() => openSendModal('PROFORMA')}
+              disabled={!service?.id}
+            >
+              <Send size={16} /> Send Proforma
+            </button>
+            <button
+              className='inline-flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60'
+              onClick={() => handleShare('PROFORMA')}
+              disabled={!service?.id || sharingDocType === 'PROFORMA'}
+            >
+              <Share2 size={16} /> {sharingDocType === 'PROFORMA' ? 'Sharing…' : 'Share Proforma to Portal'}
+            </button>
+            <button
+              className='inline-flex items-center gap-1 rounded-lg bg-fuchsia-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-fuchsia-700 disabled:opacity-60'
+              onClick={() => handleShare('INVOICE')}
+              disabled={!service?.id || sharingDocType === 'INVOICE'}
+            >
+              <Share2 size={16} /> {sharingDocType === 'INVOICE' ? 'Sharing…' : 'Share Invoice to Portal'}
+            </button>
+          </div>
         </div>
         {/* Buyer & Consignee */}
         <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
@@ -99,10 +226,11 @@ export default function ServiceDetail () {
         <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
           <h2 className='mb-4 text-lg font-semibold text-slate-900'>Invoice & Service Info</h2>
           <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
-            <LabeledRow label='Invoice No.' value={meta.invoiceNo} />
+            <LabeledRow label='Invoice No.' value={displayDocNumber(meta.invoiceNo)} />
             <LabeledRow label='Invoice Date' value={meta.invoiceDate} />
-            <LabeledRow label='PINV No.' value={meta.pinvNo} />
+            <LabeledRow label='PINV No.' value={displayDocNumber(meta.pinvNo)} />
             <LabeledRow label='PINV Date' value={meta.pinvDate} />
+            <LabeledRow label='Linked Proposal' value={proposalLink} />
             <LabeledRow label='Buyer Order No.' value={meta.buyerOrderNo} />
             <LabeledRow label='Order Date' value={meta.orderDate} />
             <LabeledRow label='Delivery Challan No.' value={meta.dcNo} />
@@ -210,6 +338,77 @@ export default function ServiceDetail () {
           </div>
         </div>
       </div>
+      {modal.open && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40'>
+          <div className='w-[90vw] max-w-md rounded-lg bg-white p-5 shadow-lg'>
+            <h2 className='mb-4 text-lg font-semibold text-slate-900'>Send Document</h2>
+            <div className='mb-4 flex flex-wrap gap-4'>
+              <label className='inline-flex items-center gap-1'>
+                <input
+                  type='radio'
+                  name='sendMethod'
+                  value='email'
+                  checked={modal.method === 'email'}
+                  onChange={() => setModal((m) => ({ ...m, method: 'email' }))}
+                />
+                <span>Email</span>
+              </label>
+              <label className='inline-flex items-center gap-1'>
+                <input
+                  type='radio'
+                  name='sendMethod'
+                  value='whatsapp'
+                  checked={modal.method === 'whatsapp'}
+                  onChange={() => setModal((m) => ({ ...m, method: 'whatsapp' }))}
+                />
+                <span>WhatsApp</span>
+              </label>
+              <label className='inline-flex items-center gap-1'>
+                <input
+                  type='radio'
+                  name='docType'
+                  value='INVOICE'
+                  checked={(modal.docType || 'INVOICE') === 'INVOICE'}
+                  onChange={() => setModal((m) => ({ ...m, docType: 'INVOICE' }))}
+                />
+                <span>Invoice</span>
+              </label>
+              <label className='inline-flex items-center gap-1'>
+                <input
+                  type='radio'
+                  name='docType'
+                  value='PROFORMA'
+                  checked={(modal.docType || 'INVOICE') === 'PROFORMA'}
+                  onChange={() => setModal((m) => ({ ...m, docType: 'PROFORMA' }))}
+                />
+                <span>Proforma</span>
+              </label>
+            </div>
+            <input
+              type='text'
+              className='mb-4 w-full rounded-md border border-slate-300 p-2 text-sm'
+              placeholder={modal.method === 'email' ? 'Customer email' : 'Customer mobile'}
+              value={modal.contact}
+              onChange={(e) => setModal((m) => ({ ...m, contact: e.target.value }))}
+            />
+            <div className='flex justify-end gap-2'>
+              <button
+                className='rounded-md bg-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-300'
+                onClick={closeModal}
+              >
+                Cancel
+              </button>
+              <button
+                className='rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60'
+                disabled={sendState.isLoading}
+                onClick={handleSend}
+              >
+                {sendState.isLoading ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

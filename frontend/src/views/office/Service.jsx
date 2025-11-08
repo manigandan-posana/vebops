@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { IndianRupee, Search, Trash2 } from 'lucide-react'
 import { useSelector } from 'react-redux'
 import { useCreateServiceMutation, useGetKitsQuery, useGetCompanyQuery, useAutocompleteServiceBuyersQuery } from '../../features/office/officeApi'
+import { normalizeDocNumber } from '../../utils/docNumbers'
 import toast from 'react-hot-toast'
 
 /* -------------------------------------------------------------------------- */
@@ -459,10 +460,15 @@ export default function Service () {
 
   // Compose service payload for submission. This serialises items into a simple array.
   const buildPayload = () => {
+    const cleanMeta = {
+      ...meta,
+      invoiceNo: normalizeDocNumber(meta.invoiceNo),
+      pinvNo: normalizeDocNumber(meta.pinvNo),
+    }
     return {
       buyer,
       consignee,
-      meta,
+      meta: cleanMeta,
       items,
       totals,
     }
@@ -583,13 +589,13 @@ export default function Service () {
           <Section title='Invoice Meta & Terms'>
             <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
               <Labeled label='Invoice No.'>
-                <TextInput value={meta.invoiceNo} onChange={(e) => setMeta((m) => ({ ...m, invoiceNo: e.target.value }))} />
+                <TextInput value={meta.invoiceNo} onChange={(e) => setMeta((m) => ({ ...m, invoiceNo: normalizeDocNumber(e.target.value) }))} />
               </Labeled>
               <Labeled label='Invoice Date'>
                 <TextInput type='date' value={meta.invoiceDate} onChange={(e) => setMeta((m) => ({ ...m, invoiceDate: e.target.value }))} />
               </Labeled>
               <Labeled label='PINV No.'>
-                <TextInput value={meta.pinvNo} onChange={(e) => setMeta((m) => ({ ...m, pinvNo: e.target.value }))} placeholder='e.g. PINV-24-001' />
+                <TextInput value={meta.pinvNo} onChange={(e) => setMeta((m) => ({ ...m, pinvNo: normalizeDocNumber(e.target.value) }))} placeholder='e.g. PINV-24-001' />
               </Labeled>
               <Labeled label='PINV Date'>
                 <TextInput type='date' value={meta.pinvDate} onChange={(e) => setMeta((m) => ({ ...m, pinvDate: e.target.value }))} />

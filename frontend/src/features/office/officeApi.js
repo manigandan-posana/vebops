@@ -253,12 +253,17 @@ export const officeApi = baseApi.injectEndpoints({
      */
     // features/office/officeApi.js (or .ts)
     downloadServiceInvoice: b.mutation({
-      async queryFn(id, _api, _extra, baseQuery) {
+      async queryFn(arg, _api, _extra, baseQuery) {
+        const params = typeof arg === 'object' && arg !== null ? arg : { id: arg };
+        const id = params?.id;
+        const type = params?.type || 'INVOICE';
+        if (!id) return { error: { status: 0, data: { message: 'id is required' } } };
         // Always fetch raw bytes; do not let RTK parse JSON/text
         const res = await baseQuery({
           url: `/office/services/${id}/invoice`,
           method: 'GET',
           headers: { Accept: 'application/pdf' },
+          params: type && type !== 'INVOICE' ? { type } : undefined,
           // Force bytes; this works across RTKQ versions
           responseHandler: (r) => r.arrayBuffer(),
           cache: 'no-store',
@@ -268,7 +273,10 @@ export const officeApi = baseApi.injectEndpoints({
 
         try {
           const cd = res.meta?.response?.headers?.get('Content-Disposition');
-          const filename = extractFilename(cd) || `service-invoice-${id}.pdf`;
+          const fallback = type && type.toUpperCase() === 'PROFORMA'
+            ? `service-${id}-proforma.pdf`
+            : `service-invoice-${id}.pdf`;
+          const filename = extractFilename(cd) || fallback;
 
           // Build a proper PDF Blob from the raw bytes
           const pdfBlob = new Blob([res.data], { type: 'application/pdf' });
@@ -295,14 +303,34 @@ export const officeApi = baseApi.injectEndpoints({
      * Accepts a payload with optional toEmail and toWhatsapp fields.
      */
     sendServiceInvoice: b.mutation({
-      async queryFn ({ id, toEmail, toWhatsapp }, _api, _extra, baseQuery) {
+      async queryFn ({ id, toEmail, toWhatsapp, type = 'INVOICE' }, _api, _extra, baseQuery) {
         if (!id) return { error: { status: 0, data: { message: 'id is required' } } };
         const body = {};
         if (toEmail && toEmail.trim()) body.toEmail = toEmail;
         if (toWhatsapp && toWhatsapp.trim()) body.toWhatsapp = toWhatsapp;
-        const res = await baseQuery({ url: `/office/services/${id}/invoice/send`, method: 'POST', body });
+        const res = await baseQuery({
+          url: `/office/services/${id}/invoice/send`,
+          method: 'POST',
+          body,
+          params: type && type !== 'INVOICE' ? { type } : undefined
+        });
         return res.error ? { error: res.error } : { data: res.data };
       }
+    }),
+
+    shareServiceProposal: b.mutation({
+      async queryFn ({ id, docType = 'PROFORMA' }, _api, _extra, baseQuery) {
+        if (!id) return { error: { status: 0, data: { message: 'id is required' } } };
+        const payload = {};
+        if (docType) payload.docType = docType;
+        const res = await baseQuery({
+          url: `/office/services/${id}/proposal/share`,
+          method: 'POST',
+          body: payload
+        });
+        return res.error ? { error: res.error } : { data: res.data };
+      },
+      invalidatesTags: ['Proposals', { type: 'ServiceRequests', id: 'LIST' }]
     }),
 
     /**
@@ -862,4 +890,5 @@ export const {
   useGetServiceQuery,
   useDownloadServiceInvoiceMutation,
   useSendServiceInvoiceMutation,
+  useShareServiceProposalMutation,
 } = officeApi

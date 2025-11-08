@@ -40,6 +40,11 @@ public class FEController {
         return (feId == null) ? svc.assignedForCurrentUser() : svc.assigned(feId);
     }
 
+    @GetMapping("/wo/{id}")
+    public ResponseEntity<FeService.FeWorkOrderDetail> detail(@PathVariable Long id) {
+        return svc.detail(id);
+    }
+
 
     @PostMapping("/wo/{woId}/progress")
     public ResponseEntity<Void> progress(@PathVariable Long woId, @RequestBody ProgressRequest req) {
