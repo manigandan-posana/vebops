@@ -357,30 +357,25 @@ public class ServiceController {
             }
             // Fetch company details for header (optional)
             com.vebops.domain.CompanyDetails company = companyRepo.findByTenantId(tid).orElse(null);
-            // Build PDF using HTML renderer.  The new helper generates a PDF
-            // from an HTML template that mirrors the Preview.jsx design.  When
-            // successfully generated, persist the PDF on disk and record a
-            // Document entity with a reference to the stored file instead of
-            // embedding the base64 content in the database.
-            byte[] pdfBytes = com.vebops.util.PdfUtil.buildServiceInvoicePdfHtml(saved, metaMap, itemsList, totalsMap, company);
+            // Ensure we have a mutable meta map so we can stamp the desired document type.
+            metaMap = new java.util.LinkedHashMap<>(metaMap);
+            String rawDocType = String.valueOf(metaMap.getOrDefault("docType", "INVOICE")).trim().toUpperCase();
+            boolean proforma = "PROFORMA".equals(rawDocType) || "PINV".equals(rawDocType);
+            metaMap.put("docType", proforma ? "PROFORMA" : "INVOICE");
+            // Build PDF using the in-app renderer. When successfully generated, persist the
+            // PDF on disk and record a Document entity with a reference to the stored file
+            // instead of embedding the base64 content in the database.
+            byte[] pdfBytes = com.vebops.util.PdfUtil.buildServiceInvoicePdf(saved, metaMap, itemsList, totalsMap, company);
             if (pdfBytes != null && pdfBytes.length > 0) {
                 // Create a new Document entry and persist it to obtain an ID.
                 com.vebops.domain.Document doc = new com.vebops.domain.Document();
                 doc.setTenantId(tid);
                 doc.setKind(com.vebops.domain.enums.DocumentKind.PDF);
-                doc.setEntityType(com.vebops.domain.enums.DocumentEntityType.SR);
+                doc.setEntityType(proforma
+                        ? com.vebops.domain.enums.DocumentEntityType.PROFORMA
+                        : com.vebops.domain.enums.DocumentEntityType.INVOICE);
                 doc.setEntityId(saved.getId());
-                // Derive a filename from meta (invoiceNo) or default to service‑ID
-                String fileName = null;
-                Object invNo = metaMap.get("invoiceNo");
-                if (invNo instanceof String invStr && !invStr.trim().isEmpty()) {
-                    fileName = invStr.trim();
-                }
-                if (fileName == null) {
-                    fileName = "service-" + saved.getId();
-                }
-                // Ensure .pdf extension
-                String baseFilename = fileName + ".pdf";
+                String baseFilename = computeFileName(metaMap, saved.getId(), proforma) + ".pdf";
                 doc.setFilename(baseFilename);
                 // Persist document to get an ID
                 doc = documentRepo.save(doc);
@@ -746,19 +741,24 @@ public class ServiceController {
         List<com.vebops.domain.Document> docs;
         if (proforma) {
             docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.PROFORMA, id, tid);
-        } else {
-            docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.SR, id, tid);
             if (docs == null || docs.isEmpty()) {
-                docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.INVOICE, id, tid);
+                docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.SR, id, tid);
+            }
+        } else {
+            docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.INVOICE, id, tid);
+            if (docs == null || docs.isEmpty()) {
+                docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.SR, id, tid);
             }
         }
         Document doc = (docs != null && !docs.isEmpty()) ? docs.get(0) : null;
 
-        // 2) if missing or invalid, generate now.  Attempt to load bytes
-        // from disk or decode base64.  If successful, return existing doc.
-        byte[] existing = (doc != null) ? loadDocumentBytes(doc) : null;
-        if (existing != null && existing.length > 0) {
-            return doc;
+        DocumentEntityType desiredType = proforma ? DocumentEntityType.PROFORMA : DocumentEntityType.INVOICE;
+
+        if (doc != null && doc.getEntityType() == desiredType) {
+            byte[] existing = loadDocumentBytes(doc);
+            if (existing != null && existing.length > 0) {
+                return doc;
+            }
         }
 
         var svcOpt = repository.findById(id);
@@ -777,22 +777,21 @@ public class ServiceController {
         meta.put("docType", proforma ? "PROFORMA" : "INVOICE");
 
         // Generate PDF from your HTML-based builder (already present in PdfUtil)
-        byte[] pdf = com.vebops.util.PdfUtil.buildServiceInvoicePdfHtml(svc, meta, items, totals, company);
+        byte[] pdf = com.vebops.util.PdfUtil.buildServiceInvoicePdf(svc, meta, items, totals, company);
         if (pdf == null || pdf.length == 0) return null;
 
         if (doc == null) {
             doc = new Document();
             doc.setTenantId(tid);
-            doc.setEntityType(proforma ? DocumentEntityType.PROFORMA : DocumentEntityType.SR);
             doc.setEntityId(id);
             doc.setKind(DocumentKind.PDF);
-            doc.setUploadedAt(Instant.now());
-        } else if (proforma && doc.getEntityType() != DocumentEntityType.PROFORMA) {
-            doc.setEntityType(DocumentEntityType.PROFORMA);
         }
+        doc.setEntityType(desiredType);
+        doc.setUploadedAt(Instant.now());
         // Determine a filename from meta (invoiceNo or PINV/PINV etc.)
         String fname = computeFileName(meta, id, proforma) + ".pdf";
         doc.setFilename(fname);
+        doc.setUrl(null);
         // Persist doc to obtain ID if needed
         doc = documentRepo.save(doc);
         try {
