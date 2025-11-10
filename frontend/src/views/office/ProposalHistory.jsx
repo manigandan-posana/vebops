@@ -1,36 +1,81 @@
 // src/views/office/ProposalHistory.jsx
 //
-// Read-only history of proposals shared with customers. Displays proposal
-// status, customer details, totals and provides quick access to any
-// documents uploaded by the customer (notably purchase orders). Office
-// users can filter by status, search by customer or proposal code and
-// download supporting documents directly from the table.
+// Proposal history reworked with Material UI for a dense enterprise look while
+// preserving the existing behaviours: filtering, pagination, detail viewing and
+// document downloads.
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Chip,
+  Container,
+  Divider,
+  Grid,
+  InputAdornment,
+  MenuItem,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography
+} from '@mui/material'
+import { FileDown, RefreshCcw, Search } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
 import {
-  useListProposalsQuery,
+  useDownloadProposalDocumentFileMutation,
   useListProposalDocumentsQuery,
-  useDownloadProposalDocumentFileMutation
+  useListProposalsQuery
 } from '../../features/office/officeApi'
-import { FileDown, RefreshCcw } from 'lucide-react'
 
 const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
     .format(Number.isFinite(+n) ? +n : 0)
 
-const statusTone = (status) => {
-  const map = {
-    APPROVED: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-    REJECTED: 'bg-rose-100 text-rose-700 border border-rose-200',
-    SENT: 'bg-blue-100 text-blue-700 border border-blue-200',
-    DRAFT: 'bg-slate-100 text-slate-700 border border-slate-200'
-  }
-  return map[status] || 'bg-slate-100 text-slate-700 border border-slate-200'
+const STATUSES = ['ALL', 'DRAFT', 'SENT', 'APPROVED', 'REJECTED']
+
+const shouldFocusOnEnter = (el) => {
+  if (typeof window === 'undefined') return false
+  if (!el) return false
+  const style = window.getComputedStyle(el)
+  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
 }
 
-const STATUSES = ['ALL', 'DRAFT', 'SENT', 'APPROVED', 'REJECTED']
+const handleEnterNavigation = (event) => {
+  if (event.key !== 'Enter' || event.shiftKey) return
+  const target = event.currentTarget
+  const form = target?.form || target?.closest('form')
+  if (!form) return
+  event.preventDefault()
+  const focusables = Array.from(form.querySelectorAll('input, select, textarea, button')).filter((el) => shouldFocusOnEnter(el))
+  const idx = focusables.indexOf(target)
+  if (idx >= 0 && idx < focusables.length - 1) {
+    const next = focusables[idx + 1]
+    next.focus()
+    if (typeof next.select === 'function') next.select()
+  } else {
+    const submit = form.querySelector('button[type="submit"], input[type="submit"]')
+    if (submit) submit.click()
+  }
+}
+
+const statusColor = (status) => {
+  const map = {
+    APPROVED: 'success',
+    REJECTED: 'error',
+    SENT: 'info',
+    DRAFT: 'default'
+  }
+  return map[status] || 'default'
+}
 
 export default function ProposalHistory () {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -40,9 +85,7 @@ export default function ProposalHistory () {
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState(20)
   const [page, setPage] = useState(0)
-  const { data: raw = [], isFetching, refetch } = useListProposalsQuery(
-    status === 'ALL' ? {} : { status }
-  )
+  const { data: raw = [], isFetching, refetch } = useListProposalsQuery(status === 'ALL' ? {} : { status })
 
   const proposals = Array.isArray(raw) ? raw : (Array.isArray(raw?.content) ? raw.content : [])
 
@@ -56,7 +99,7 @@ export default function ProposalHistory () {
     return proposals.filter((p) => {
       const code = `P-${p.id}`
       const customer = p?.customer?.name || p?.customerName || ''
-      const po = p?.customerPoNumber || ''
+      const po = p?.customerPoNumber || p?.customerPO?.poNumber || ''
       return (
         code.toLowerCase().includes(q) ||
         customer.toLowerCase().includes(q) ||
@@ -123,186 +166,237 @@ export default function ProposalHistory () {
     : []
 
   return (
-    <div className='min-h-screen bg-slate-50 p-6 lg:p-10'>
-      <Toaster />
-      <div className='mx-auto max-w-6xl space-y-6'>
-        <div className='flex flex-wrap items-center justify-between gap-4'>
-          <h1 className='text-2xl font-semibold text-slate-900'>Proposal History</h1>
-          <button
-            className='inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black'
-            onClick={() => refetch()}
-            disabled={isFetching}
-          >
-            <RefreshCcw size={16} /> {isFetching ? 'Refreshing…' : 'Refresh'}
-          </button>
-        </div>
-
-        <div className='flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
-          <div className='flex flex-col gap-1'>
-            <label className='text-xs font-semibold uppercase text-slate-500'>Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className='h-11 rounded-lg border border-slate-200 px-3'
+    <Box sx={{ bgcolor: 'background.default', minHeight: '100%', py: 3 }}>
+      <Container maxWidth='xl'>
+        <Toaster />
+        <Stack spacing={3}>
+          <Stack direction='row' justifyContent='space-between' alignItems='center'>
+            <Typography variant='h5' fontWeight={600}>Proposal History</Typography>
+            <Button
+              variant='outlined'
+              size='small'
+              startIcon={<RefreshCcw size={16} />}
+              onClick={() => refetch()}
+              disabled={isFetching}
             >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
-          <div className='flex flex-col gap-1 flex-1 min-w-[220px]'>
-            <label className='text-xs font-semibold uppercase text-slate-500'>Search</label>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder='Search by proposal, customer or PO number'
-              className='h-11 rounded-lg border border-slate-200 px-3'
-            />
-          </div>
-          <div className='flex flex-col gap-1'>
-            <label className='text-xs font-semibold uppercase text-slate-500'>Rows</label>
-            <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className='h-11 rounded-lg border border-slate-200 px-3'>
-              {[10, 20, 50].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+              {isFetching ? 'Refreshing…' : 'Refresh'}
+            </Button>
+          </Stack>
 
-        <div className='overflow-hidden rounded-2xl border border-slate-200'>
-          <table className='min-w-full divide-y divide-slate-200'>
-            <thead className='bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500'>
-              <tr>
-                <th className='px-3 py-2 text-left'>Proposal</th>
-                <th className='px-3 py-2 text-left'>Customer</th>
-                <th className='px-3 py-2 text-left'>Status</th>
-                <th className='px-3 py-2 text-right'>Total</th>
-                <th className='px-3 py-2 text-left'>Created</th>
-                <th className='px-3 py-2 text-left'>Customer PO</th>
-                <th className='px-3 py-2 text-center'>Details</th>
-              </tr>
-            </thead>
-            <tbody className='divide-y divide-slate-100 bg-white text-sm'>
-              {isFetching && current.length === 0 && (
-                <tr>
-                  <td colSpan={7} className='px-3 py-6 text-center text-slate-500'>Loading…</td>
-                </tr>
-              )}
-              {!isFetching && current.length === 0 && (
-                <tr>
-                  <td colSpan={7} className='px-3 py-6 text-center text-slate-500'>No proposals found.</td>
-                </tr>
-              )}
-              {current.map((p) => {
-                const code = `P-${p.id}`
-                const customer = p?.customer?.name || p?.customerName || '—'
-                const statusBadge = p?.status || 'UNKNOWN'
-                const total = p?.total || p?.grandTotal
-                const created = p?.createdAt ? new Date(p.createdAt) : null
-                const createdLabel = created ? created.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
-                const poNumber = p?.customerPoNumber || p?.customerPO?.poNumber || '—'
-                const isFocused = selected?.id === p.id
-                return (
-                  <tr key={p.id} className={isFocused ? 'bg-indigo-50/60' : undefined}>
-                    <td className='px-3 py-2 text-slate-900 font-medium'>{code}</td>
-                    <td className='px-3 py-2 text-slate-700'>{customer}</td>
-                    <td className='px-3 py-2'>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusTone(statusBadge)}`}>
-                        {statusBadge}
-                      </span>
-                    </td>
-                    <td className='px-3 py-2 text-right font-semibold text-slate-900'>{fmtINR(total)}</td>
-                    <td className='px-3 py-2 text-slate-700'>{createdLabel}</td>
-                    <td className='px-3 py-2 text-slate-700'>{poNumber || '—'}</td>
-                    <td className='px-3 py-2 text-center'>
-                      <button
-                        className='rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black'
-                        onClick={() => openDetails(p)}
-                      >
-                        {isFocused ? 'Viewing' : 'View'}
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+          <Card variant='outlined' sx={{ borderRadius: 2 }}>
+            <CardContent>
+              <Grid container spacing={2} alignItems='center'>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    select
+                    label='Status'
+                    value={status}
+                    onChange={(event) => setStatus(event.target.value)}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  >
+                    {STATUSES.map((s) => (
+                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    onKeyDown={handleEnterNavigation}
+                    placeholder='Search by proposal, customer or PO number'
+                    size='small'
+                    fullWidth
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position='start'>
+                          <Search size={16} />
+                        </InputAdornment>
+                      )
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    select
+                    label='Rows'
+                    value={pageSize}
+                    onChange={(event) => setPageSize(Number(event.target.value))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  >
+                    {[10, 20, 50].map((n) => (
+                      <MenuItem key={n} value={n}>{n}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
 
-        <div className='flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600'>
-          <span>
-            Showing <span className='font-semibold text-slate-900'>{total === 0 ? 0 : start + 1}</span>–
-            <span className='font-semibold text-slate-900'>{total === 0 ? 0 : Math.min(start + pageSize, total)}</span> of{' '}
-            <span className='font-semibold text-slate-900'>{total}</span>
-          </span>
-          <div className='inline-flex items-center gap-2'>
-            <button onClick={() => setPage(0)} disabled={page === 0} className='rounded-md border px-3 py-1.5 disabled:opacity-50'>« First</button>
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className='rounded-md border px-3 py-1.5 disabled:opacity-50'>‹ Prev</button>
-            <span className='px-2'>Page {total === 0 ? 0 : page + 1} of {totalPages}</span>
-            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className='rounded-md border px-3 py-1.5 disabled:opacity-50'>Next ›</button>
-            <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1} className='rounded-md border px-3 py-1.5 disabled:opacity-50'>Last »</button>
-          </div>
-        </div>
+          <Card variant='outlined' sx={{ borderRadius: 2 }}>
+            <CardContent>
+              <Stack spacing={2.5}>
+                <TableContainer>
+                  <Table size='small'>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell width='10%'>Proposal</TableCell>
+                        <TableCell>Customer</TableCell>
+                        <TableCell width='12%'>Status</TableCell>
+                        <TableCell align='right' width='12%'>Total</TableCell>
+                        <TableCell width='14%'>Created</TableCell>
+                        <TableCell width='14%'>Customer PO</TableCell>
+                        <TableCell align='center' width='10%'>Details</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {isFetching && current.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} align='center'>
+                            <Typography variant='body2' color='text.secondary'>Loading…</Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {!isFetching && current.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} align='center'>
+                            <Typography variant='body2' color='text.secondary'>No proposals found.</Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {current.map((p) => {
+                        const code = `P-${p.id}`
+                        const customer = p?.customer?.name || p?.customerName || '—'
+                        const statusBadge = p?.status || 'UNKNOWN'
+                        const totalValue = fmtINR(p?.total || p?.grandTotal)
+                        const created = p?.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
+                        const poNumber = p?.customerPoNumber || p?.customerPO?.poNumber || '—'
+                        const isFocused = selected?.id === p.id
+                        return (
+                          <TableRow hover key={p.id} selected={isFocused}>
+                            <TableCell>
+                              <Typography variant='body2' fontWeight={600}>{code}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant='body2'>{customer}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Chip
+                                size='small'
+                                label={statusBadge}
+                                color={statusColor(statusBadge)}
+                                variant='outlined'
+                              />
+                            </TableCell>
+                            <TableCell align='right'>
+                              <Typography variant='body2' fontWeight={600}>{totalValue}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant='body2'>{created}</Typography>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant='body2'>{poNumber}</Typography>
+                            </TableCell>
+                            <TableCell align='center'>
+                              <Button
+                                size='small'
+                                variant={isFocused ? 'contained' : 'outlined'}
+                                onClick={() => openDetails(p)}
+                              >
+                                {isFocused ? 'Viewing' : 'View'}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
 
-        {selected && (
-          <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
-            <div className='flex items-start justify-between gap-3'>
-              <div>
-                <h2 className='text-lg font-semibold text-slate-900'>Proposal {`P-${selected.id}`}</h2>
-                <p className='text-sm text-slate-600'>Customer: {selected?.customer?.name || selected?.customerName || '—'}</p>
-              </div>
-              <button className='text-sm text-blue-600 hover:underline' onClick={closeDetails}>Close</button>
-            </div>
-            <div className='mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2'>
-              <Detail label='Status' value={selected?.status || '—'} />
-              <Detail label='Total Amount' value={fmtINR(selected?.total || selected?.grandTotal)} />
-              <Detail label='Customer PO Number' value={selected?.customerPoNumber || selected?.customerPO?.poNumber || '—'} />
-              <Detail label='Last Updated'
-                value={selected?.updatedAt ? new Date(selected.updatedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent='space-between' alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                  <Typography variant='body2' color='text.secondary'>
+                    Showing {total === 0 ? 0 : start + 1}–{total === 0 ? 0 : Math.min(start + pageSize, total)} of {total}
+                  </Typography>
+                  <Stack direction='row' spacing={1}>
+                    <Button size='small' variant='outlined' disabled={page === 0} onClick={() => setPage(0)}>First</Button>
+                    <Button size='small' variant='outlined' disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</Button>
+                    <Typography variant='body2' color='text.secondary' sx={{ px: 1.5, display: 'flex', alignItems: 'center' }}>
+                      Page {total === 0 ? 0 : page + 1} of {totalPages}
+                    </Typography>
+                    <Button size='small' variant='outlined' disabled={page >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>Next</Button>
+                    <Button size='small' variant='outlined' disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>Last</Button>
+                  </Stack>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          {selected && (
+            <Card variant='outlined' sx={{ borderRadius: 2 }}>
+              <CardHeader
+                title={<Typography variant='h6' fontWeight={600}>Proposal {`P-${selected.id}`}</Typography>}
+                subheader={<Typography variant='body2' color='text.secondary'>Customer: {selected?.customer?.name || selected?.customerName || '—'}</Typography>}
+                action={<Button size='small' onClick={closeDetails}>Close</Button>}
               />
-            </div>
+              <Divider />
+              <CardContent>
+                <Grid container spacing={2}>
+                  <Detail label='Status' value={selected?.status || '—'} />
+                  <Detail label='Total amount' value={fmtINR(selected?.total || selected?.grandTotal)} />
+                  <Detail label='Customer PO number' value={selected?.customerPoNumber || selected?.customerPO?.poNumber || '—'} />
+                  <Detail
+                    label='Last updated'
+                    value={selected?.updatedAt ? new Date(selected.updatedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                  />
+                </Grid>
 
-            <div className='mt-6'>
-              <h3 className='text-sm font-semibold uppercase tracking-wide text-slate-500'>Documents</h3>
-              {docsLoading && <p className='mt-2 text-sm text-slate-600'>Loading documents…</p>}
-              {!docsLoading && (!docs || docs.length === 0) && (
-                <p className='mt-2 text-sm text-slate-600'>No documents uploaded yet.</p>
-              )}
-              {!docsLoading && Array.isArray(docs) && docs.length > 0 && (
-                <ul className='mt-3 space-y-2'>
-                  {docs.map((doc) => {
-                    const isPO = poDocs.some((po) => po.id === doc.id)
-                    return (
-                      <li key={doc.id} className='flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2'>
-                        <div>
-                          <p className='text-sm font-medium text-slate-800'>{doc.originalName || doc.filename || `Document #${doc.id}`}</p>
-                          <p className='text-xs text-slate-500'>Uploaded {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString('en-IN') : '—'}{isPO ? ' • Customer PO' : ''}</p>
-                        </div>
-                        <button
-                          className='inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700'
-                          onClick={() => handleDownload(doc)}
-                        >
-                          <FileDown size={14} /> Download
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+                <Divider sx={{ my: 3 }} />
+
+                <Typography variant='subtitle2' fontWeight={600} gutterBottom>Documents</Typography>
+                {docsLoading && <Typography variant='body2' color='text.secondary'>Loading documents…</Typography>}
+                {!docsLoading && (!docs || docs.length === 0) && (
+                  <Typography variant='body2' color='text.secondary'>No documents uploaded yet.</Typography>
+                )}
+                {!docsLoading && Array.isArray(docs) && docs.length > 0 && (
+                  <Stack spacing={1.5} mt={1.5}>
+                    {docs.map((doc) => {
+                      const isPO = poDocs.some((po) => po.id === doc.id)
+                      return (
+                        <Card key={doc.id} variant='outlined' sx={{ borderRadius: 1.5 }}>
+                          <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
+                            <Stack spacing={0.3}>
+                              <Typography variant='body2' fontWeight={600}>{doc.originalName || doc.filename || `Document #${doc.id}`}</Typography>
+                              <Typography variant='caption' color='text.secondary'>
+                                Uploaded {doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString('en-IN') : '—'}{isPO ? ' • Customer PO' : ''}
+                              </Typography>
+                            </Stack>
+                            <Button size='small' variant='contained' onClick={() => handleDownload(doc)} startIcon={<FileDown size={16} />}>
+                              Download
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </Stack>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </Stack>
+      </Container>
+    </Box>
   )
 }
 
 function Detail ({ label, value }) {
   return (
-    <div>
-      <div className='text-xs font-semibold uppercase tracking-wide text-slate-500'>{label}</div>
-      <div className='text-sm text-slate-900'>{value || '—'}</div>
-    </div>
+    <Grid item xs={12} md={6}>
+      <Typography variant='caption' fontWeight={600} color='text.secondary' sx={{ textTransform: 'uppercase' }}>{label}</Typography>
+      <Typography variant='body2'>{value || '—'}</Typography>
+    </Grid>
   )
 }
-
