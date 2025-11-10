@@ -1,109 +1,131 @@
-import React from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { useLoginMutation } from '../../features/auth/authApi'
-import { useSelector } from 'react-redux'
-import { useNavigate, useLocation } from 'react-router-dom'
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useLoginMutation } from '../../features/auth/authApi';
+import { useSelector } from 'react-redux';
+import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  Grid,
+  Box,
+  Paper,
+  Typography,
+  TextField,
+  Button,
+  Stack,
+  Alert,
+  CircularProgress,
+} from '@mui/material';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
-  password: z.string().min(4, 'Password required')
-})
+  password: z.string().min(4, 'Password required'),
+});
 
 export default function Login(){
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema) })
-  const [login, { isLoading, error }] = useLoginMutation()
-  const nav = useNavigate()
-  const loc = useLocation()
-  const auth = useSelector(s => s.auth)
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema) });
+  const [login, { isLoading, error }] = useLoginMutation();
+  const nav = useNavigate();
+  const loc = useLocation();
+  const auth = useSelector(s => s.auth);
 
-  // match the reference background photo (replace if you have your own asset)
   const SIDE_IMAGE =
-    'https://lh3.googleusercontent.com/aida-public/AB6AXuC86RzcYV65UFbzxDZ1vvNAgySZHvyt2tx7Ddpxc_ivtf8JIFNavoztyymZ6_NltC7eLXH2ysy06H5qs_swubQxL_N8eTXQMmkpnC0kKG1bZfrGJU6_89_7s8-fGS2Y9JzhQ-D7lxZ0ICBQ_nIkbfzEN4RuNq_0FvqQ6gKvMXjYSTNX-UP17KNHmxGoSyZGpYxq7CLbMyIs1L7aehOX0rmINMN04eR9UQaEC8s0-dYzwwlzdSQIoSuUPWXHOpaUdPjDQ_3MOp1Ft1Y'
+    'https://lh3.googleusercontent.com/aida-public/AB6AXuC86RzcYV65UFbzxDZ1vvNAgySZHvyt2tx7Ddpxc_ivtf8JIFNavoztyymZ6_NltC7eLXH2ysy06H5qs_swubQxL_N8eTXQMmkpnC0kKG1bZfrGJU6_89_7s8-fGS2Y9JzhQ-D7lxZ0ICBQ_nIkbfzEN4RuNq_0FvqQ6gKvMXjYSTNX-UP17KNHmxGoSyZGpYxq7CLbyIs1L7aehOX0rmINMN04eR9UQaEC8s0-dYzwwlzdSQIoSuUPWXHOpaUdPjDQ_3MOp1Ft1Y';
 
   const onSubmit = async (data) => {
-    const res = await login(data)
-    if (res?.error) return
-    const role = res?.data?.role || auth?.role || 'BACK_OFFICE'
-    if (role === 'ADMIN') nav('/admin/dashboard', { replace: true })
-    else if (role === 'BACK_OFFICE' || role === 'OFFICE') nav('/office/dashboard', { replace: true })
-    else if (role === 'FE') nav('/fe/assigned', { replace: true })
-    else if (role === 'CUSTOMER') nav('/customer/proposals', { replace: true })
-    else nav((loc.state?.from?.pathname) || '/office/dashboard', { replace: true })
-  }
+    const res = await login(data);
+    if (res?.error) return;
+    const role = res?.data?.role || auth?.role || 'BACK_OFFICE';
+    if (role === 'ADMIN') nav('/admin/dashboard', { replace: true });
+    else if (role === 'BACK_OFFICE' || role === 'OFFICE') nav('/office/dashboard', { replace: true });
+    else if (role === 'FE') nav('/fe/assigned', { replace: true });
+    else if (role === 'CUSTOMER') nav('/customer/proposals', { replace: true });
+    else nav((loc.state?.from?.pathname) || '/office/dashboard', { replace: true });
+  };
 
   return (
-    <div className="min-h-screen bg-white grid lg:grid-cols-12">
-      {/* LEFT: form panel */}
-      <section className="lg:col-span-5 xl:col-span-4 flex">
-        <div className="w-full flex items-center">
-          <div className="w-full max-w-sm sm:max-w-md mx-auto px-6 sm:px-8 lg:pl-16 lg:pr-10 py-12">
-            {/* Brand row */}
-            <div className="flex items-center gap-3">
-              {/* If you have a wordmark image, replace this span with an <img> */}
-              <img src='/VebOps.png' className='w-40 object-contain'/>
-            </div>
-
-            <h1 className="mt-8 text-3xl font-bold tracking-tight text-slate-900">
-              Sign in to your account
-            </h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Welcome back! Please enter your details to access your Vebops dashboard.
-            </p>
-
-            <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Email address</label>
-                <input
-                  className="mt-2 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-900 shadow-sm outline-none focus:border-[#1173d4] focus:ring-2 focus:ring-[#1173d4] sm:text-sm"
+    <Grid container sx={{ minHeight: '100vh' }}>
+      <Grid item xs={12} md={5} lg={4} sx={{ display: 'flex', alignItems: 'stretch' }}>
+        <Box
+          sx={{
+            flexGrow: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            px: { xs: 3, sm: 6, lg: 8 },
+            py: { xs: 6, md: 10 },
+            background: 'linear-gradient(180deg, rgba(15,124,125,0.05) 0%, rgba(27,77,140,0.08) 100%)',
+          }}
+        >
+          <Paper elevation={0} sx={{ p: { xs: 4, sm: 5 }, width: '100%', maxWidth: 420, borderRadius: 4 }}>
+            <Stack spacing={3}>
+              <Box component="img" src="/VebOps.png" alt="VebOps" sx={{ width: 180, objectFit: 'contain' }} />
+              <Box>
+                <Typography variant="h4" fontWeight={600} color="text.primary">
+                  Sign in to your account
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Welcome back! Please enter your details to access your Vebops dashboard.
+                </Typography>
+              </Box>
+              <Stack component="form" spacing={2.5} onSubmit={handleSubmit(onSubmit)}>
+                <TextField
+                  label="Email address"
                   placeholder="you@company.com"
+                  type="email"
+                  fullWidth
                   autoComplete="email"
+                  error={Boolean(errors.email)}
+                  helperText={errors.email?.message}
                   {...register('email')}
                 />
-                {errors.email && <p className="mt-2 text-sm text-red-600">{errors.email.message}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Password</label>
-                <input
+                <TextField
+                  label="Password"
                   type="password"
-                  className="mt-2 block w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-slate-900 shadow-sm outline-none focus:border-[#1173d4] focus:ring-2 focus:ring-[#1173d4] sm:text-sm"
                   placeholder="••••••••"
+                  fullWidth
                   autoComplete="current-password"
+                  error={Boolean(errors.password)}
+                  helperText={errors.password?.message}
                   {...register('password')}
                 />
-                {errors.password && <p className="mt-2 text-sm text-red-600">{errors.password.message}</p>}
-              </div>
-
-              {error && (
-                <div className="text-red-700 text-sm bg-red-50 border border-red-200 p-2 rounded-md">
-                  Login failed
-                </div>
-              )}
-
-              <button
-                className="flex w-full justify-center rounded-md bg-[#1173d4] py-2.5 px-4 text-sm font-medium text-white shadow-sm hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-transparent focus:ring-offset-2 disabled:opacity-70"
-                disabled={isLoading || isSubmitting}
-              >
-                {(isLoading || isSubmitting) ? 'Signing in...' : 'Sign in'}
-              </button>
-            </form>
-
-          </div>
-        </div>
-      </section>
-
-      {/* RIGHT: full-bleed photo */}
-      <aside className="relative hidden lg:block lg:col-span-7 xl:col-span-8">
-        <div className="absolute inset-0 h-full w-full bg-gradient-to-br from-cyan-100 to-blue-200 opacity-50" />
-        <img
+                {error && (
+                  <Alert severity="error" variant="outlined">
+                    Login failed
+                  </Alert>
+                )}
+                <Button
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  disabled={isLoading || isSubmitting}
+                  sx={{ py: 1.5, borderRadius: 2, boxShadow: '0px 16px 32px rgba(27,77,140,0.25)' }}
+                >
+                  {isLoading || isSubmitting ? <CircularProgress size={22} color="inherit" /> : 'Sign in'}
+                </Button>
+              </Stack>
+            </Stack>
+          </Paper>
+        </Box>
+      </Grid>
+      <Grid
+        item
+        md={7}
+        lg={8}
+        sx={{
+          display: { xs: 'none', md: 'block' },
+          position: 'relative',
+          background: 'linear-gradient(135deg, rgba(27,77,140,0.35) 0%, rgba(15,124,125,0.35) 100%)',
+        }}
+      >
+        <Box
+          component="img"
           src={SIDE_IMAGE}
           alt="Power lines under a blue sky"
-          className="absolute inset-0 h-full w-full object-cover"
-          loading="eager"
+          sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
         />
-      </aside>
-    </div>
-  )
+      </Grid>
+    </Grid>
+  );
 }

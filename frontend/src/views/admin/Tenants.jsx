@@ -1,4 +1,3 @@
-// src/pages/admin/Tenants.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -7,152 +6,55 @@ import {
   useCreateBackOfficeMutation,
   useDeleteTenantMutation,
   useUpdateBackOfficeProfileMutation,
-  useGetUsersQuery, // resolve BO user id by email
+  useGetUsersQuery,
   useResetPasswordMutation,
 } from "../../features/admin/adminApi";
-
-// 🔁 lucide-react icons (replacing inline svgs only)
 import {
-  Plus,
-  Search,
-  Users,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  AlertCircle,
-  Info,
-} from "lucide-react";
+  Box,
+  Stack,
+  Typography,
+  Button,
+  TextField,
+  Card,
+  CardHeader,
+  Divider,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  IconButton,
+  Tooltip,
+  Alert,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
+  Switch,
+  FormControlLabel,
+  InputAdornment,
+} from "@mui/material";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import LockResetRoundedIcon from "@mui/icons-material/LockResetRounded";
+import HighlightOffRoundedIcon from "@mui/icons-material/HighlightOffRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 
-/* ------------------------ tiny base UI (unchanged behavior) ------------------------ */
-const Button = ({ children, className = "", type = "button", ...rest }) => (
-  <button
-    type={type}
-    {...rest}
-    className={
-      "inline-flex items-center justify-center h-10 px-4 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed " +
-      className
-    }
-  >
-    {children}
-  </button>
-);
-
-const Input = (props) => (
-  <input
-    {...props}
-    className={
-      "w-full h-10 rounded-sm border border-gray-300 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 " +
-      (props.className || "")
-    }
-  />
-);
-
-const Label = ({ children }) => (
-  <label className="text-xs font-medium text-gray-700">{children}</label>
-);
-
-const StatusDot = ({ active }) => (
-  <span
-    className={
-      "inline-block w-2.5 h-2.5 rounded-full " +
-      (active ? "bg-emerald-500" : "bg-red-500")
-    }
-  />
-);
-
-/* ------------------------ Dialog building blocks (UI only) ------------------------ */
-
-const ModalShell = ({ children, onClose, dim = true }) => (
-  <div
-    className={
-      "fixed inset-0 z-50 flex items-center justify-center p-4 " +
-      (dim ? "bg-black/40" : "")
-    }
-    onClick={onClose}
-  >
-    <div
-      className="w-full max-w-lg"
-      onClick={(e) => {
-        e.stopPropagation();
-      }}
-    >
-      {children}
-    </div>
-  </div>
-);
-
-const topStripe = {
-  success: "from-emerald-500 via-emerald-500 to-emerald-400",
-  danger: "from-rose-500 via-rose-500 to-orange-400",
-  info: "from-blue-600 via-blue-600 to-indigo-500",
-};
-
-const IconCircle = ({ variant = "info", children }) => {
-  const ring =
-    variant === "success"
-      ? "text-emerald-600 bg-emerald-50 ring-1 ring-emerald-200"
-      : variant === "danger"
-      ? "text-rose-600 bg-rose-50 ring-1 ring-rose-200"
-      : "text-blue-600 bg-blue-50 ring-1 ring-blue-200";
-  return (
-    <div
-      className={
-        "mx-auto mb-3 h-10 w-10 rounded-full flex items-center justify-center " +
-        ring
-      }
-    >
-      {children}
-    </div>
-  );
-};
-
-const DialogCard = ({
-  title,
-  subtitle,
-  variant = "info",
-  children,
-  footer,
-  compact = false,
-}) => (
-  <div className="bg-white shadow-xl border border-gray-100 overflow-hidden">
-    <div className={`h-1 w-full bg-gradient-to-r ${topStripe[variant]}`} />
-    <div className={`px-6 ${compact ? "pt-5" : "pt-7"} pb-1 text-center`}>
-      {variant === "success" && (
-        <IconCircle variant="success">
-          <Check className="h-5 w-5" />
-        </IconCircle>
-      )}
-      {variant === "danger" && (
-        <IconCircle variant="danger">
-          <AlertCircle className="h-5 w-5" />
-        </IconCircle>
-      )}
-      {variant === "info" && (
-        <IconCircle variant="info">
-          <Info className="h-5 w-5" />
-        </IconCircle>
-      )}
-
-      <h3 className="text-[17px] font-semibold text-slate-900">{title}</h3>
-      {subtitle ? (
-        <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
-      ) : null}
-    </div>
-    <div className="px-6 pt-4 pb-5">{children}</div>
-    {footer ? (
-      <div className="px-6 pb-6 flex items-center justify-center gap-3">
-        {footer}
-      </div>
-    ) : null}
-  </div>
-);
-
-/* ------------------------ Page ------------------------ */
+const emailValid = (x) => /[^\s@]+@[^\s@]+\.[^\s@]+/.test(String(x || "").trim());
 
 export default function Tenants() {
   const navigate = useNavigate();
 
-  // list controls (server-side)
   const [q, setQ] = useState("");
   const [statusFilter] = useState("ALL");
   const [subFilter] = useState("ALL");
@@ -173,39 +75,29 @@ export default function Tenants() {
   const [createBackOffice, { isLoading: creating }] = useCreateBackOfficeMutation();
   const [deleteTenant, { isLoading: deleting }] = useDeleteTenantMutation();
   const [updateBackoffice, { isLoading: patching }] = useUpdateBackOfficeProfileMutation();
-
-  // Pull all users once; used to resolve BO user id by email
   const { data: allUsers = [] } = useGetUsersQuery();
   const [resetPassword, { isLoading: resetting }] = useResetPasswordMutation();
 
-  // alerts
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
-  // to control fancy overlays specifically for create + delete flows
   const [showCreateSuccess, setShowCreateSuccess] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
-  const [lastAction, setLastAction] = useState(null); // 'create' | 'delete' | null
+  const [lastAction, setLastAction] = useState(null);
 
-  // Create Tenant modal state
   const [showCreate, setShowCreate] = useState(false);
   const [code, setCode] = useState("");
   const [tenantName, setTenantName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
 
-  // Reset Password modal state
-  const [resetTarget, setResetTarget] = useState(null); // { tenant, userId, email, displayName }
+  const [resetTarget, setResetTarget] = useState(null);
   const [sendResetEmail, setSendResetEmail] = useState(true);
-  const [resetResult, setResetResult] = useState(null); // { tempPassword }
+  const [resetResult, setResetResult] = useState(null);
   const [resetErr, setResetErr] = useState("");
 
-  const codeSet = useMemo(
-    () => new Set(items.map((t) => (t.code || "").toLowerCase())),
-    [items]
-  );
+  const codeSet = useMemo(() => new Set(items.map((t) => (t.code || "").toLowerCase())), [items]);
   const codeExists = code && codeSet.has(code.trim().toLowerCase());
-  const emailValid = (x) => /^\S+@\S+\.\S+$/.test(String(x || "").trim());
 
   const validateCreate = () => {
     const c = code.trim();
@@ -213,8 +105,7 @@ export default function Tenants() {
     const dn = displayName.trim();
     const em = email.trim();
     if (!c) return "Tenant code is required.";
-    if (!/^[A-Za-z0-9._-]+$/.test(c))
-      return "Code may include letters, numbers, dot, underscore, hyphen.";
+    if (!/^[A-Za-z0-9._-]+$/.test(c)) return "Code may include letters, numbers, dot, underscore, hyphen.";
     if (!codeExists && !n) return "Tenant name is required.";
     if (!dn) return "Display name is required.";
     if (!emailValid(em)) return "Enter a valid email address.";
@@ -222,7 +113,8 @@ export default function Tenants() {
   };
 
   async function onCreateTenant() {
-    setMsg(""); setErr("");
+    setMsg("");
+    setErr("");
     setLastAction("create");
     const v = validateCreate();
     if (v) {
@@ -238,9 +130,12 @@ export default function Tenants() {
         email: email.trim(),
       }).unwrap();
       setMsg("Tenant created. Primary Back Office user password emailed.");
-      setShowCreate(false); // behavior preserved
-      setShowCreateSuccess(true); // pretty success dialog
-      setCode(""); setTenantName(""); setDisplayName(""); setEmail("");
+      setShowCreate(false);
+      setShowCreateSuccess(true);
+      setCode("");
+      setTenantName("");
+      setDisplayName("");
+      setEmail("");
       refetch();
     } catch (e) {
       setErr(e?.data?.message || "Failed to create tenant.");
@@ -249,7 +144,8 @@ export default function Tenants() {
   }
 
   async function toggleActive(t) {
-    setMsg(""); setErr("");
+    setMsg("");
+    setErr("");
     try {
       await updateTenant({ id: t.id, active: !t.active }).unwrap();
       refetch();
@@ -259,22 +155,16 @@ export default function Tenants() {
     }
   }
 
-  /* ---------------- fancy confirm dialog (UI only; logic same) ---------------- */
   const [confirmDlg, setConfirmDlg] = useState(null);
   function askConfirm({ title, text, danger = false, onConfirm }) {
-    setConfirmDlg({
-      title,
-      text,
-      danger,
-      onConfirm,
-    });
+    setConfirmDlg({ title, text, danger, onConfirm });
   }
 
   async function onDeleteTenant(t, e) {
     e?.stopPropagation?.();
     setLastAction("delete");
     askConfirm({
-      title: "You are about to delete tenant",
+      title: "Delete tenant",
       text: `Are you sure you want to delete “${t.name || t.code}”? This action cannot be undone.`,
       danger: true,
       onConfirm: async () => {
@@ -308,8 +198,7 @@ export default function Tenants() {
     return [...new Set(out.filter((p) => p >= 0 && p < N))].sort((a, b) => a - b);
   }, [page, totalPages]);
 
-  /* ----------------------- EDIT MODAL ----------------------- */
-  const [editing, setEditing] = useState(null); // row object
+  const [editing, setEditing] = useState(null);
   const [eCode, setECode] = useState("");
   const [eName, setEName] = useState("");
   const [eDisplay, setEDisplay] = useState("");
@@ -333,7 +222,8 @@ export default function Tenants() {
 
   function openEdit(t, e) {
     e?.stopPropagation?.();
-    setErr(""); setMsg("");
+    setErr("");
+    setMsg("");
     setEditing(t);
     setECode(t.code || "");
     setEName(t.name || "");
@@ -346,7 +236,6 @@ export default function Tenants() {
     setResolvedBoUserId(null);
   }
 
-  // Resolve BO user once editing row is set and/or users list arrives
   useEffect(() => {
     if (editing) {
       const id = editing.backOfficeUserId || resolveBoUserIdFromRow(editing);
@@ -358,7 +247,8 @@ export default function Tenants() {
 
   async function saveEdit() {
     if (!editing) return;
-    setErr(""); setMsg("");
+    setErr("");
+    setMsg("");
 
     const code = norm(eCode) || undefined;
     const name = norm(eName) || undefined;
@@ -375,7 +265,6 @@ export default function Tenants() {
     const displayChanged = displayName !== undefined && !eqIC(displayName, origDisplay);
     const emailChanged = email !== undefined && !eqIC(email, origEmail);
 
-    // Resolve a BO user id robustly
     const uid =
       editing.backOfficeUserId ||
       resolvedBoUserId ||
@@ -389,7 +278,6 @@ export default function Tenants() {
     }
 
     try {
-      // STEP 1: update tenant code/name first (if changed)
       if (codeChanged || nameChanged) {
         const patch = { id: editing.id };
         if (codeChanged) patch.code = code;
@@ -397,8 +285,7 @@ export default function Tenants() {
         await updateTenant(patch).unwrap();
       }
 
-      // STEP 2: update user display/email (if we have a BO user id and those fields changed)
-      if ((displayChanged || emailChanged)) {
+      if (displayChanged || emailChanged) {
         if (!uid) {
           if (!(codeChanged || nameChanged)) {
             setErr("Cannot update Back Office user (no linked user found).");
@@ -417,7 +304,7 @@ export default function Tenants() {
       setMsg(
         (codeChanged || nameChanged) && (displayChanged || emailChanged)
           ? "Tenant and Back Office user updated."
-          : (codeChanged || nameChanged)
+          : codeChanged || nameChanged
           ? "Tenant updated."
           : "Back Office user updated."
       );
@@ -430,7 +317,6 @@ export default function Tenants() {
     }
   }
 
-  // reset password handler
   function openReset(t, e) {
     e?.stopPropagation?.();
     setResetErr("");
@@ -459,10 +345,7 @@ export default function Tenants() {
     }
     setResetErr("");
     try {
-      const res = await resetPassword({
-        id: resetTarget.userId,
-        sendEmail: sendResetEmail,
-      }).unwrap();
+      const res = await resetPassword({ id: resetTarget.userId, sendEmail: sendResetEmail }).unwrap();
       setResetResult({ tempPassword: res?.tempPassword || "" });
     } catch (e) {
       setResetErr(e?.data?.message || "Failed to reset password.");
@@ -472,557 +355,416 @@ export default function Tenants() {
   const saving = patching || updating;
 
   return (
-    <div className="space-y-6 select-none">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Tenant Management</h1>
-          <p className="text-sm text-gray-500">Manage tenant accounts, roles, and permissions.</p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <span className="mr-2 inline-flex -ml-1 h-5 w-5 items-center justify-center rounded bg-white/20">
-            <Plus className="h-4 w-4" />
-          </span>
+    <Stack spacing={4}>
+      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", sm: "center" }} spacing={2}>
+        <Box>
+          <Typography variant="h4" fontWeight={600}>
+            Tenant Management
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Manage tenant accounts, roles, and permissions.
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddRoundedIcon />}
+          onClick={() => setShowCreate(true)}
+          sx={{ borderRadius: 2, px: 3, py: 1.25, boxShadow: "0px 16px 32px rgba(27,77,140,0.24)" }}
+        >
           Add New Tenant
         </Button>
-      </div>
+      </Stack>
 
       {(msg || err) && (
-        <div
-          className={
-            "text-sm px-3 py-2 rounded-lg " +
-            (err
-              ? "bg-red-50 text-red-700 border border-red-200"
-              : "bg-emerald-50 text-emerald-800 border-emerald-200")
-          }
-        >
+        <Alert severity={err ? "error" : "success"} icon={err ? <ErrorOutlineRoundedIcon /> : <CheckCircleRoundedIcon />}>
           {err || msg}
-        </div>
+        </Alert>
       )}
 
-      {/* Search card */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="p-4">
-          <div className="relative max-w-xs">
-            <span className="absolute left-3 top-2.5 text-gray-400">
-              <Search className="h-4 w-4" />
-            </span>
-            <Input
-              className="pl-9 rounded-sm"
-              placeholder="Search tenants by code, name or email"
+      <Card sx={{ borderRadius: 3 }}>
+        <CardHeader
+          title={
+            <TextField
               value={q}
-              onChange={(e) => { setPage(0); setQ(e.target.value); }}
+              onChange={(e) => {
+                setPage(0);
+                setQ(e.target.value);
+              }}
+              placeholder="Search tenants by code, name or email"
+              variant="outlined"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchRoundedIcon color="action" />
+                  </InputAdornment>
+                ),
+              }}
+              fullWidth
             />
-          </div>
-        </div>
-
-        {/* Table */}
+          }
+          sx={{
+            px: 3,
+            py: 2,
+            '& .MuiCardHeader-title': { width: '100%' },
+          }}
+        />
+        <Divider />
         {isLoading ? (
-          <div className="p-4">Loading tenants…</div>
+          <Box sx={{ p: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <CircularProgress size={24} />
+            <Typography variant="body2" color="text.secondary">
+              Loading tenants…
+            </Typography>
+          </Box>
         ) : isError ? (
-          <div className="p-4 text-red-600">
-            Error loading tenants {error?.status ? `(${error.status})` : ""}
-          </div>
+          <Box sx={{ p: 4 }}>
+            <Alert severity="error" icon={<ErrorOutlineRoundedIcon />}>
+              {error?.data?.message || error?.error || 'Failed to fetch tenants.'}
+            </Alert>
+          </Box>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium">TENANT INFORMATION</th>
-                    <th className="px-4 py-3 text-left font-medium">CODE</th>
-                    <th className="px-4 py-3 text-left font-medium">STATUS</th>
-                    <th className="px-4 py-3 text-left font-medium">VIEW MEMBERS</th>
-                    <th className="px-4 py-3 text-left font-medium">DISABLE/ENABLE</th>
-                    <th className="px-4 py-3 text-left font-medium">ACTIONS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {items.map((t) => (
-                    <tr
-                      key={t.id}
-                      className="bg-white hover:bg-gray-50"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-600">
-                            {(t.name || t.code || "?").slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="text-gray-900 font-medium">{t.name || t.code}</div>
-                            <div className="text-gray-500 text-xs">
-                              {t.backOfficeEmail || t.primaryEmail || t.email || "—"}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-md border border-gray-300 px-2 py-0.5 text-xs font-medium text-gray-700">
-                          {t.code}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3"><StatusDot active={t.active} /></td>
-
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                          onClick={() => navigate(`/admin/tenants/${t.id}`)}
-                        >
-                          <Users className="h-4 w-4" />
-                          View Members
-                        </button>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        {t.active ? (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); if (!updating) toggleActive(t); }}
-                            className="text-amber-600 hover:text-amber-700 font-medium"
-                            disabled={updating}
-                          >
-                            Disable
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); if (!updating) toggleActive(t); }}
-                            className="text-emerald-600 hover:text-emerald-700 font-medium"
-                            disabled={updating}
-                          >
-                            Enable
-                          </button>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3 text-sm">
-                          <button
-                            type="button"
-                            onClick={(e) => openEdit(t, e)}
-                            className="text-blue-600 hover:text-blue-700 font-medium"
-                          >
-                            Edit
-                          </button>
-                          <span className="text-gray-300">|</span>
-                          {(t.backOfficeUserId || findUserIdByEmail(t.backOfficeEmail || t.primaryEmail || t.email)) ? (
-                            <button
-                              type="button"
-                              onClick={(e) => openReset(t, e)}
-                              className="text-blue-600 hover:text-blue-700 font-medium"
-                            >
-                              Reset Password
-                            </button>
-                          ) : (
-                            <span className="text-gray-400">Reset Password</span>
-                          )}
-
-                          <span className="text-gray-300">|</span>
-                          <button
-                            type="button"
-                            onClick={(e) => onDeleteTenant(t, e)}
-                            className="text-red-600 hover:text-red-700 font-medium"
-                            disabled={deleting}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {items.length === 0 && (
-                    <tr>
-                      <td className="px-4 py-8 text-center text-gray-500" colSpan={6}>
-                        No tenants found.
-                      </td>
-                    </tr>
+            <TableContainer sx={{ maxHeight: 520 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Code</TableCell>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Back Office</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {items.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          No tenants found.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    items.map((t) => (
+                      <TableRow key={t.id} hover>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={600}>
+                            {t.code || '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>{t.name || '—'}</TableCell>
+                        <TableCell>{t.backOfficeDisplayName || t.primaryContactName || '—'}</TableCell>
+                        <TableCell>{t.backOfficeEmail || t.primaryEmail || t.email || '—'}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={t.active ? 'Active' : 'Inactive'}
+                            color={t.active ? 'success' : 'default'}
+                            variant={t.active ? 'filled' : 'outlined'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            <Tooltip title={t.active ? 'Deactivate tenant' : 'Activate tenant'}>
+                              <Switch
+                                size="small"
+                                checked={Boolean(t.active)}
+                                onChange={() => toggleActive(t)}
+                                disabled={updating}
+                                inputProps={{ 'aria-label': 'Toggle active status' }}
+                              />
+                            </Tooltip>
+                            <Tooltip title="Reset password">
+                              <IconButton color="secondary" onClick={(e) => openReset(t, e)}>
+                                <LockResetRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Edit tenant">
+                              <IconButton color="primary" onClick={(e) => openEdit(t, e)}>
+                                <EditRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete tenant">
+                              <IconButton color="error" onClick={(e) => onDeleteTenant(t, e)}>
+                                <DeleteOutlineRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))
                   )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Footer */}
-            <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-gray-600">
-              <div className="flex items-center gap-2">
-                <span>Items per page:</span>
-                <select
-                  className="border border-gray-300 rounded-md px-2 py-1 bg-white"
-                  value={size}
-                  onChange={(e) => { setPage(0); setSize(Number(e.target.value)); }}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Divider />
+            <Box sx={{ px: 3, py: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                Showing {start} – {end} of {total} tenants
+              </Typography>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <IconButton size="small" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
+                  <ChevronLeftRoundedIcon fontSize="small" />
+                </IconButton>
+                {pagesToShow.map((p, idx) => {
+                  const showEllipsis = idx > 0 && p - pagesToShow[idx - 1] > 1;
+                  return (
+                    <React.Fragment key={p}>
+                      {showEllipsis && <Typography variant="body2" color="text.disabled">…</Typography>}
+                      <Button
+                        size="small"
+                        variant={p === page ? 'contained' : 'outlined'}
+                        onClick={() => setPage(p)}
+                        sx={{ minWidth: 40, borderRadius: 1.5 }}
+                      >
+                        {p + 1}
+                      </Button>
+                    </React.Fragment>
+                  );
+                })}
+                <IconButton
+                  size="small"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={page + 1 >= totalPages}
                 >
-                  <option>5</option>
-                  <option>10</option>
-                  <option>20</option>
-                  <option>50</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-4">
-                <span>{total ? `${start}–${end} of ${total} tenants` : "0 of 0"}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="p-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40"
-                    aria-label="Prev"
-                    disabled={page <= 0}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  {pagesToShow.map((p, idx) => {
-                    const showEllipsis = idx > 0 && p - pagesToShow[idx - 1] > 1;
-                    return (
-                      <React.Fragment key={p}>
-                        {showEllipsis && <span className="px-1 text-gray-400">…</span>}
-                        <button
-                          type="button"
-                          onClick={() => setPage(p)}
-                          className={
-                            "min-w-[36px] h-9 px-2 rounded-md border " +
-                            (p === page ? "border-blue-600 text-blue-700 bg-blue-50" : "border-gray-300 hover:bg-gray-50")
-                          }
-                        >
-                          {p + 1}
-                        </button>
-                      </React.Fragment>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className="p-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40"
-                    aria-label="Next"
-                    disabled={page + 1 >= totalPages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
+                  <ChevronRightRoundedIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+            </Box>
           </>
         )}
-      </div>
+      </Card>
 
-      {/* ========================== CREATE TENANT (inputs + progress) ========================== */}
-      {showCreate && (
-        <ModalShell onClose={() => setShowCreate(false)}>
-          <DialogCard
-            title="Create a New Tenant"
-            subtitle="Fill in the details below to create a new tenant."
-            variant="info"
-          >
+      <Dialog open={showCreate} onClose={() => setShowCreate(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Create a New Tenant</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
             {err && (
-              <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              <Alert severity="error" icon={<ErrorOutlineRoundedIcon />}>
                 {err}
-              </div>
+              </Alert>
             )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label>Code</Label>
-                <Input
-                  placeholder="e.g., t-123"
+            <Grid container spacing={2.5}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Code"
                   value={code}
-                  onChange={(e) => { setErr(""); setCode(e.target.value); }}
+                  onChange={(e) => {
+                    setErr("");
+                    setCode(e.target.value);
+                  }}
+                  placeholder="e.g., t-123"
                 />
-              </div>
+              </Grid>
               {!codeExists && (
-                <div>
-                  <Label>Name</Label>
-                  <Input
-                    placeholder="e.g., Acme Corp"
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Name"
                     value={tenantName}
-                    onChange={(e) => { setErr(""); setTenantName(e.target.value); }}
+                    onChange={(e) => {
+                      setErr("");
+                      setTenantName(e.target.value);
+                    }}
+                    placeholder="e.g., Acme Corp"
                   />
-                </div>
+                </Grid>
               )}
-              <div className="sm:col-span-2">
-                <Label>Primary Back Office – Display Name</Label>
-                <Input
-                  placeholder="e.g., John Doe"
+              <Grid item xs={12}>
+                <TextField
+                  label="Primary Back Office – Display Name"
                   value={displayName}
-                  onChange={(e) => { setErr(""); setDisplayName(e.target.value); }}
+                  onChange={(e) => {
+                    setErr("");
+                    setDisplayName(e.target.value);
+                  }}
+                  placeholder="e.g., John Doe"
                 />
-              </div>
-              <div className="sm:col-span-2">
-                <Label>Primary Back Office – Email</Label>
-                <Input
-                  placeholder="e.g., john.doe@acme.com"
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Primary Back Office – Email"
                   value={email}
-                  onChange={(e) => { setErr(""); setEmail(e.target.value); }}
+                  onChange={(e) => {
+                    setErr("");
+                    setEmail(e.target.value);
+                  }}
+                  placeholder="e.g., john.doe@acme.com"
+                  type="email"
                 />
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                className="h-10 px-4 rounded-lg text-sm border border-gray-300 hover:bg-gray-50"
-                onClick={() => setShowCreate(false)}
-                disabled={creating}
-              >
-                Cancel
-              </button>
-              <Button onClick={onCreateTenant} disabled={creating} className="min-w-[120px]">
-                {creating ? (
-                  <span className="inline-flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-white" />
-                    Creating…
-                  </span>
-                ) : (
-                  "Create Tenant"
-                )}
-              </Button>
-            </div>
-
+              </Grid>
+            </Grid>
             {creating && (
-              <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-600">
-                <span className="inline-flex h-4 w-4 animate-pulse rounded-full bg-blue-500/20" />
+              <Alert severity="info" icon={<InfoOutlinedIcon />}>
                 Creating tenant… This may take a few moments. Please don’t close this window.
-              </div>
+              </Alert>
             )}
-
             {!codeExists && code && (
-              <p className="text-xs text-amber-700 mt-3">
-                Code <b>{code}</b> doesn’t exist. We’ll create a new tenant with this name.
-              </p>
+              <Typography variant="caption" color="warning.main">
+                Code <strong>{code}</strong> doesn’t exist. We’ll create a new tenant with this name.
+              </Typography>
             )}
-            <p className="text-[11px] text-gray-500 mt-1">
+            <Typography variant="caption" color="text.secondary">
               A temporary password is auto-generated & emailed to the Back Office user.
-            </p>
-          </DialogCard>
-        </ModalShell>
-      )}
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCreate(false)} disabled={creating}>
+            Cancel
+          </Button>
+          <Button onClick={onCreateTenant} variant="contained" disabled={creating}>
+            {creating ? <CircularProgress size={20} color="inherit" /> : 'Create Tenant'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* ========================== EDIT TENANT ========================== */}
-      {editing && (
-        <ModalShell onClose={() => { if (!saving) closeEdit(); }}>
-          <DialogCard title="Edit Tenant" variant="info">
-            <div className="space-y-3">
-              <div>
-                <Label>Tenant Code</Label>
-                <Input value={eCode} onChange={(e) => setECode(e.target.value)} placeholder="e.g., POSANA-ACME" />
-              </div>
-              <div>
-                <Label>Tenant Name</Label>
-                <Input value={eName} onChange={(e) => setEName(e.target.value)} placeholder="Legal name" />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label>Back Office — Display Name</Label>
-                  <Input value={eDisplay} onChange={(e) => setEDisplay(e.target.value)} placeholder="e.g., Harish Kumar" />
-                </div>
-                <div>
-                  <Label>Back Office — Email</Label>
-                  <Input value={eEmail} onChange={(e) => setEEmail(e.target.value)} placeholder="harish.kumar@acme.com" />
-                </div>
-              </div>
+      <Dialog open={Boolean(editing)} onClose={closeEdit} fullWidth maxWidth="sm">
+        <DialogTitle>Edit tenant</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <Grid container spacing={2.5}>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Code" value={eCode} onChange={(e) => setECode(e.target.value)} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Name" value={eName} onChange={(e) => setEName(e.target.value)} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Primary Back Office – Display Name"
+                  value={eDisplay}
+                  onChange={(e) => setEDisplay(e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Primary Back Office – Email"
+                  value={eEmail}
+                  onChange={(e) => setEEmail(e.target.value)}
+                  type="email"
+                />
+              </Grid>
+            </Grid>
+            {saving && (
+              <Alert severity="info" icon={<InfoOutlinedIcon />}>
+                Saving changes…
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEdit} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={saveEdit} variant="contained" disabled={saving}>
+            {saving ? <CircularProgress size={20} color="inherit" /> : 'Save changes'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-              {!(
-                editing?.backOfficeUserId ||
-                resolvedBoUserId ||
-                allUsers.some(u => eqIC(u?.email, eEmail) || eqIC(u?.email, (editing?.backOfficeEmail || editing?.primaryEmail || editing?.email)))
-              ) && (
-                <p className="text-[11px] text-amber-700">
-                  Note: No linked Back Office user found. We can update code/name, but user fields require a linked user.
-                </p>
-              )}
-
-              <div className="pt-1 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  className="h-10 px-4 rounded-lg text-sm border border-gray-300 hover:bg-gray-50"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeEdit(); }}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <Button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); saveEdit(); }}
-                  disabled={saving}
-                >
-                  {saving ? "Saving…" : "Save changes"}
-                </Button>
-              </div>
-            </div>
-          </DialogCard>
-        </ModalShell>
-      )}
-
-      {/* ========================== RESET PASSWORD ========================== */}
-      {resetTarget && (
-        <ModalShell onClose={() => { if (!resetting) closeReset(); }}>
-          <DialogCard title="Reset Password" variant="info" compact>
-            <div className="space-y-4">
-              <p className="text-sm text-gray-700">
-                Are you sure you want to reset the password for{" "}
-                <b>{resetTarget.displayName || resetTarget.email || "this user"}</b>?
-              </p>
-
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+      <Dialog open={Boolean(resetTarget)} onClose={closeReset} fullWidth maxWidth="sm">
+        <DialogTitle>Reset password</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Reset the password for {resetTarget?.displayName || resetTarget?.email || 'this user'}.
+            </Typography>
+            <FormControlLabel
+              control={
+                <Switch
                   checked={sendResetEmail}
                   onChange={(e) => setSendResetEmail(e.target.checked)}
                 />
-                Send email with the temporary password
-              </label>
+              }
+              label="Email the new password to the Back Office user"
+            />
+            {resetErr && (
+              <Alert severity="error" icon={<ErrorOutlineRoundedIcon />}>
+                {resetErr}
+              </Alert>
+            )}
+            {resetResult?.tempPassword && (
+              <Alert severity="success" icon={<CheckCircleRoundedIcon />}>
+                Temporary password: <strong>{resetResult.tempPassword}</strong>
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeReset}>
+            Close
+          </Button>
+          <Button onClick={doReset} variant="contained" disabled={resetting}>
+            {resetting ? <CircularProgress size={20} color="inherit" /> : 'Reset password'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-              {resetErr && (
-                <div className="text-sm px-3 py-2 rounded-lg bg-red-50 text-red-700 border border-red-200">
-                  {resetErr}
-                </div>
-              )}
-
-              {resetResult?.tempPassword && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                  <div className="text-sm text-emerald-800 font-medium">Temporary password</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <code className="px-2 py-1 bg-white border border-emerald-200 rounded">
-                      {resetResult.tempPassword}
-                    </code>
-                    <button
-                      type="button"
-                      className="text-xs px-2 py-1 rounded border border-emerald-300 hover:bg-emerald-100"
-                      onClick={() => navigator.clipboard?.writeText(resetResult.tempPassword)}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    {sendResetEmail
-                      ? "An email has been sent to the user with this password."
-                      : "Email was not sent; please share this password with the user manually."}
-                  </p>
-                </div>
-              )}
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  className="h-10 px-4 rounded-lg text-sm border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
-                  onClick={closeReset}
-                  disabled={resetting}
-                >
-                  Cancel
-                </button>
-                <Button
-                  type="button"
-                  onClick={doReset}
-                  disabled={resetting || !!resetResult}
-                >
-                  {resetting ? "Resetting…" : (resetResult ? "Done" : "Yes, reset")}
-                </Button>
-              </div>
-            </div>
-          </DialogCard>
-        </ModalShell>
-      )}
-
-      {/* ========================== SUCCESS OVERLAY (green) ========================== */}
-      {showCreateSuccess && (
-        <ModalShell onClose={() => setShowCreateSuccess(false)}>
-          <DialogCard
-            title="Tenant Created Successfully!"
-            subtitle="The tenant has been created and is ready for configuration."
-            variant="success"
+      <Dialog open={Boolean(confirmDlg)} onClose={() => setConfirmDlg(null)}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {confirmDlg?.danger ? <HighlightOffRoundedIcon color="error" /> : <InfoOutlinedIcon color="primary" />}
+          {confirmDlg?.title}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            {confirmDlg?.text}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDlg(null)}>Cancel</Button>
+          <Button
+            onClick={() => confirmDlg?.onConfirm?.()}
+            color={confirmDlg?.danger ? 'error' : 'primary'}
+            variant="contained"
+            disabled={deleting}
           >
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-left">
-              <div className="text-xs font-semibold text-slate-700 mb-1">Next Steps</div>
-              <p className="text-xs text-slate-600">
-                A temporary password has been generated and sent to the primary back-office email address (<b>{email || "provided email"}</b>).
-                The user will be prompted to change this password upon their first login.
-              </p>
-            </div>
-          </DialogCard>
-          <div className="mt-3 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              className="h-10 px-4 rounded-lg text-sm border border-gray-300 hover:bg-gray-50"
-              onClick={() => setShowCreateSuccess(false)}
-            >
-              Close
-            </button>
-            <Button
-              type="button"
-              className="min-w-[170px]"
-              onClick={() => { setShowCreateSuccess(false); setShowCreate(true); }}
-            >
-              Create Another Tenant
-            </Button>
-          </div>
-        </ModalShell>
-      )}
+            {deleting ? <CircularProgress size={20} color="inherit" /> : 'Confirm'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* ========================== ERROR OVERLAY (red) ========================== */}
-      {showErrorDialog && err && (
-        <ModalShell onClose={() => setShowErrorDialog(false)}>
-          <DialogCard
-            title={lastAction === "create" ? "Tenant Creation Failed" : "Action Failed"}
-            subtitle="We were unable to complete the request. Please review the details below."
-            variant="danger"
+      <Dialog open={showCreateSuccess} onClose={() => setShowCreateSuccess(false)}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CheckCircleRoundedIcon color="success" />
+          Tenant created
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            The tenant and primary Back Office user were created successfully. An email with temporary credentials has been sent.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCreateSuccess(false)}>Close</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setShowCreateSuccess(false);
+              if (items?.length) {
+                const newest = items[0];
+                if (newest?.id) navigate(`/admin/tenants/${newest.id}`);
+              }
+            }}
           >
-            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              <div className="font-semibold mb-1">Error Details &amp; Suggestions</div>
-              <p>{err}</p>
-            </div>
-          </DialogCard>
-          <div className="mt-3 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              className="h-10 px-4 rounded-lg text-sm border border-gray-300 hover:bg-gray-50"
-              onClick={() => setShowErrorDialog(false)}
-            >
-              Contact Support
-            </button>
-            <Button
-              type="button"
-              className="min-w-[100px]"
-              onClick={() => {
-                setShowErrorDialog(false);
-                if (lastAction === "create") setShowCreate(true);
-              }}
-            >
-              Try Again
-            </Button>
-          </div>
-        </ModalShell>
-      )}
+            View tenant details
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* ========================== CONFIRMATION OVERLAY ========================== */}
-      {confirmDlg && (
-        <ModalShell onClose={() => setConfirmDlg(null)}>
-          <DialogCard
-            title={
-              confirmDlg.danger
-                ? "You are about to delete"
-                : "Are you sure?"
-            }
-            subtitle={confirmDlg.text}
-            variant={confirmDlg.danger ? "danger" : "info"}
-          />
-          <div className="mt-3 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              className="h-10 px-4 rounded-lg text-sm border border-gray-300 hover:bg-gray-50"
-              onClick={() => setConfirmDlg(null)}
-            >
-              Cancel
-            </button>
-            <Button
-              type="button"
-              className={confirmDlg.danger ? "bg-rose-600 hover:bg-rose-700" : ""}
-              onClick={() => confirmDlg?.onConfirm?.()}
-            >
-              {confirmDlg.danger ? "Delete" : "Confirm"}
-            </Button>
-          </div>
-        </ModalShell>
-      )}
-    </div>
+      <Dialog open={showErrorDialog} onClose={() => setShowErrorDialog(false)}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ErrorOutlineRoundedIcon color="error" />
+          {lastAction === 'delete' ? 'Unable to delete tenant' : 'Something went wrong'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            {err || 'An unexpected error occurred. Please try again.'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowErrorDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
   );
 }
