@@ -2,6 +2,7 @@
 import { baseApi } from '../../api/baseApi'
 import { requireFields } from '../../api/error'
 import { downloadBlob, extractFilename } from '../../utils/file'
+import { normaliseArray, normalisePage } from '../../utils/apiShape'
 
 
 const normalizeFilename = (name, mime = 'application/pdf') => {
@@ -23,7 +24,7 @@ export const officeApi = baseApi.injectEndpoints({
     // GET /office/field-engineers?status=AVAILABLE
     getFieldEngineers: b.query({
       query: (params) => ({ url: '/office/field-engineers', method: 'GET', params }),
-      transformResponse: (r) => Array.isArray(r?.content) ? r.content : (Array.isArray(r) ? r : []),
+      transformResponse: (res) => normaliseArray(res),
       providesTags: (res) =>
         res?.length
           ? [...res.map((fe) => ({ type: 'FieldEngineers', id: fe.id })), { type: 'FieldEngineers', id: 'LIST' }]
@@ -148,8 +149,9 @@ export const officeApi = baseApi.injectEndpoints({
     // GET /office/proposals?status=&customerId=&page=&size=&sort=
     listProposals: b.query({
       query: (params) => ({ url: '/office/proposals', method: 'GET', params }),
-      providesTags: (res) => {
-        const rows = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : [])
+      transformResponse: (res) => normalisePage(res),
+      providesTags: (result) => {
+        const rows = result?.content ?? []
         return rows.length
           ? [...rows.map((p) => ({ type: 'Proposals', id: p.id })), { type: 'Proposals', id: 'LIST' }]
           : [{ type: 'Proposals', id: 'LIST' }]
@@ -224,18 +226,8 @@ export const officeApi = baseApi.injectEndpoints({
      */
     getServices: b.query({
       query: (params = {}) => ({ url: '/office/services', method: 'GET', params }),
-      transformResponse: (res) => {
-        // When using spring-data Page the response has content/number/size/totalPages/totalElements
-        const content = Array.isArray(res?.content) ? res.content : Array.isArray(res) ? res : []
-        const page = typeof res?.number === 'number' ? res.number : 0
-        const size = typeof res?.size === 'number' ? res.size : content.length
-        const totalPages = typeof res?.totalPages === 'number' ? res.totalPages : 1
-        const totalElements = typeof res?.totalElements === 'number' ? res.totalElements : content.length
-        return { content, page, size, totalPages, totalElements }
-      },
+      transformResponse: (res) => normalisePage(res),
       providesTags: (result) => {
-        // Provide a tag for each service item and a LIST tag. This allows fine‑grained
-        // cache invalidation when services are created or updated in the future.
         const rows = result?.content || []
         return rows.length
           ? [...rows.map((s) => ({ type: 'ServiceRequests', id: s.id })), { type: 'ServiceRequests', id: 'LIST' }]
@@ -626,8 +618,9 @@ export const officeApi = baseApi.injectEndpoints({
     // GET /office/wo?status=&feId=&srId=&page=&size=&sort=
     listWOs: b.query({
       query: (params) => ({ url: '/office/wo', method: 'GET', params }),
-      providesTags: (res) => {
-        const rows = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : [])
+      transformResponse: (res) => normalisePage(res),
+      providesTags: (result) => {
+        const rows = result?.content ?? []
         return rows.length
           ? [...rows.map((wo) => ({ type:'WorkOrders', id: wo.id })), { type:'WorkOrders', id:'LIST' }]
           : [{ type:'WorkOrders', id:'LIST' }]
@@ -736,6 +729,7 @@ export const officeApi = baseApi.injectEndpoints({
     }),
     listProposalDocuments: b.query({
       query: (id) => ({ url: `/office/proposals/${id}/documents`, method: 'GET' }),
+      transformResponse: (res) => normaliseArray(res),
       providesTags: (_r,_e,id) => [{ type:'Proposals', id }]
     }),
 
