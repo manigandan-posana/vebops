@@ -173,7 +173,7 @@ public class BackOfficeController {
 
     // ----- Proposals -----
     @GetMapping("/proposals")
-    public ResponseEntity<List<Proposal>> listProposals(
+    public ResponseEntity<Page<Proposal>> listProposals(
             @RequestParam(required = false) ProposalStatus status,
             @RequestParam(required = false) Long customerId,
             @RequestParam(defaultValue = "0") int page,
@@ -219,7 +219,7 @@ public class BackOfficeController {
 
     // ----- Work Orders -----
     @GetMapping("/wo")
-    public ResponseEntity<List<WorkOrder>> listWOs(
+    public ResponseEntity<Page<WorkOrder>> listWOs(
             @RequestParam(required = false) WOStatus status,
             @RequestParam(required = false) Long feId,
             @RequestParam(required = false) Long srId,
