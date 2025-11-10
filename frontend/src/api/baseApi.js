@@ -39,7 +39,8 @@ export const baseApi = createApi({
   baseQuery: baseQueryWithAuth,
   tagTypes: [
     'Tenants','Users','Items','Kits','Stores','Stocks','Ledger',
-    'Proposals','WorkOrders','Invoices','Dashboard','FieldEngineers'
+    'Proposals','WorkOrders','Invoices','Dashboard','FieldEngineers',
+    'ServiceRequests','Customers','Services'
   ],
   endpoints: () => ({})
 })

@@ -1,6 +1,7 @@
 // features/fe/feApi.js
 import { baseApi } from '../../api/baseApi'
 import { requireFields } from '../../api/error'
+import { normaliseArray } from '../../utils/apiShape'
 
 export const feApi = baseApi.injectEndpoints({
   endpoints: (b) => ({
@@ -11,9 +12,7 @@ export const feApi = baseApi.injectEndpoints({
         method: 'GET',
         params: feId ? { feId } : undefined
       }),
-      // Backend returns bare List<WorkOrder>; normalize to array
-      transformResponse: (res) =>
-        Array.isArray(res) ? res : (res?.items || []),
+      transformResponse: (res) => normaliseArray(res),
       providesTags: (result) =>
         result
           ? [

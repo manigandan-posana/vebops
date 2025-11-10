@@ -1,5 +1,6 @@
 import { baseApi } from '../../api/baseApi'
 import { downloadBlob, extractFilename } from '../../utils/file'
+import { normaliseArray, normalisePage } from '../../utils/apiShape'
 
 const normalizeFilename = (name, mime = 'application/pdf') => {
   if (!name) return null
@@ -19,6 +20,7 @@ export const customerApi = baseApi.injectEndpoints({
         method: 'GET',
         params,
       }),
+      transformResponse: (res) => normalisePage(res),
       providesTags: ['Proposals'],
     }),
 
@@ -54,6 +56,7 @@ export const customerApi = baseApi.injectEndpoints({
         method: 'GET',
         params
       }),
+      transformResponse: (res) => normalisePage(res),
       providesTags: ['Invoices']
     }),
 
@@ -67,6 +70,7 @@ export const customerApi = baseApi.injectEndpoints({
           params: customerId ? { customerId } : undefined,
         }
       },
+      transformResponse: (res) => normaliseArray(res),
       providesTags: ['Proposals'],
     }),
 
