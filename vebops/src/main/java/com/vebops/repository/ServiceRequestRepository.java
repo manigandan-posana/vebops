@@ -1,10 +1,14 @@
 package com.vebops.repository;
 
+import java.util.*;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.stereotype.Repository;
-import java.util.*;
-import com.vebops.domain.enums.*;
+
 import com.vebops.domain.ServiceRequest;
+import com.vebops.domain.enums.*;
 
 @Repository
 public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, Long> {
@@ -18,6 +22,7 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
      * @return a list of service requests belonging to the tenant
      */
     List<ServiceRequest> findByTenantId(Long tenantId);
+    Page<ServiceRequest> findByTenantId(Long tenantId, Pageable pageable);
 
     /**
      * Returns all service requests for a tenant filtered by status.  This
@@ -30,6 +35,7 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
      * @return list of service requests matching the tenant and status
      */
     List<ServiceRequest> findByTenantIdAndStatus(Long tenantId, SRStatus status);
+    Page<ServiceRequest> findByTenantIdAndStatus(Long tenantId, SRStatus status, Pageable pageable);
 
     /**
      * Returns all service requests for a tenant filtered by customer id.  This
@@ -43,6 +49,7 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
      * @return list of service requests for the customer within the tenant
      */
     List<ServiceRequest> findByTenantIdAndCustomer_Id(Long tenantId, Long customerId);
+    Page<ServiceRequest> findByTenantIdAndCustomer_Id(Long tenantId, Long customerId, Pageable pageable);
 
     /**
      * Returns the most recent service request created from the given proposal if

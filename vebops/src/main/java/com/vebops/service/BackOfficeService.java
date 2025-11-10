@@ -389,37 +389,19 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
     }
 
     // ----- Service Requests -----
-    public ResponseEntity<List<ServiceRequest>> listServiceRequests(SRStatus status, Long customerId, int page, int size, String sort) {
+    public ResponseEntity<Page<ServiceRequest>> listServiceRequests(SRStatus status, Long customerId, int page, int size, String sort) {
         final Long tid = tenant();
-        List<ServiceRequest> base = new ArrayList<>();
+        Pageable pageable = buildPageRequest(page, size, sort, "createdAt");
+        Page<ServiceRequest> result;
         if (status != null) {
-            base.addAll(srRepo.findByTenantIdAndStatus(tid, status));
+            result = srRepo.findByTenantIdAndStatus(tid, status, pageable);
         } else if (customerId != null) {
-            base.addAll(srRepo.findByTenantIdAndCustomer_Id(tid, customerId));
+            result = srRepo.findByTenantIdAndCustomer_Id(tid, customerId, pageable);
         } else {
-            base.addAll(srRepo.findByTenantId(tid));
+            result = srRepo.findByTenantId(tid, pageable);
         }
-        Comparator<ServiceRequest> cmp = Comparator.comparing(ServiceRequest::getId).reversed();
-        if (sort != null && !sort.isBlank()) {
-            String[] parts = sort.split(",");
-            String field = parts[0];
-            boolean desc = parts.length > 1 && "desc".equalsIgnoreCase(parts[1]);
-            if ("createdAt".equals(field)) cmp = Comparator.comparing(BaseTenantEntity::getCreatedAt);
-            else if ("updatedAt".equals(field)) cmp = Comparator.comparing(BaseTenantEntity::getUpdatedAt);
-            else cmp = Comparator.comparing(ServiceRequest::getId);
-            if (desc) cmp = cmp.reversed();
-        }
-        List<ServiceRequest> list = base.stream().sorted(cmp)
-            .skip((long) page * size)
-            .limit(size)
-            .collect(Collectors.toList());
-        list.forEach(sr -> {
-            if (sr.getCustomer() != null) sr.getCustomer().getName();
-            if (sr.getProposal() != null) {
-                sr.getProposal().getId();
-            }
-        });
-        return ResponseEntity.ok(list);
+        result.getContent().forEach(this::hydrateServiceRequest);
+        return ResponseEntity.ok(result);
     }
 
     public ResponseEntity<ServiceRequest> getServiceRequest(Long id) {
@@ -671,6 +653,19 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         }
         if (p.getApprovedBy() != null) {
             p.getApprovedBy().getDisplayName();
+        }
+    }
+
+    private void hydrateServiceRequest(ServiceRequest sr) {
+        if (sr == null) return;
+        if (sr.getCustomer() != null) {
+            sr.getCustomer().getName();
+        }
+        if (sr.getProposal() != null) {
+            sr.getProposal().getId();
+            if (sr.getProposal().getCustomer() != null) {
+                sr.getProposal().getCustomer().getName();
+            }
         }
     }
 

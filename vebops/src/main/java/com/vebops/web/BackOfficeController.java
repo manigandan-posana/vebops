@@ -152,12 +152,12 @@ public class BackOfficeController {
 
     // ----- Service Requests -----
     @GetMapping({"/requests","/service-requests"})
-    public ResponseEntity<List<ServiceRequest>> listServiceRequests(
+    public ResponseEntity<Page<ServiceRequest>> listServiceRequests(
             @RequestParam(required = false) SRStatus status,
             @RequestParam(name = "customerId", required = false) Long customerId,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size,
-            @RequestParam(required = false) String sort) {
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
         return bo.listServiceRequests(status, customerId, page, size, sort);
     }
 
