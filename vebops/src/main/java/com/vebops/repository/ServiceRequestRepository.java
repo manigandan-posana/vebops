@@ -52,4 +52,8 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
      * is approved multiple times (for example, due to retries from the UI).
      */
     Optional<ServiceRequest> findFirstByTenantIdAndProposal_Id(Long tenantId, Long proposalId);
+
+    long countByStatus(SRStatus status);
+
+    long countByTenantIdAndStatus(Long tenantId, SRStatus status);
 }
