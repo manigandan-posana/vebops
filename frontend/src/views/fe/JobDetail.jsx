@@ -1,11 +1,35 @@
-// views/fe/JobDetail.jsx
 import React, { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Toaster, toast } from 'react-hot-toast'
 import {
+  Card,
+  CardContent,
+  CardHeader,
+  CircularProgress,
+  Divider,
+  Grid,
+  Stack,
+  Typography,
+  Alert,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Button,
+  Box,
+  MenuItem
+} from '@mui/material'
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
+import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded'
+import MapPinRoundedIcon from '@mui/icons-material/MapPinRounded'
+import AssignmentRoundedIcon from '@mui/icons-material/AssignmentRounded'
+import {
   usePostProgressMutation,
   useLazyGetCompletionReportPdfQuery,
-  useGetWorkOrderDetailQuery,
+  useGetWorkOrderDetailQuery
 } from '../../features/fe/feApi'
 import { downloadBlob } from '../../utils/file'
 import { focusNextOnEnter } from '../../utils/formNavigation'
@@ -14,16 +38,18 @@ const STEPS = [
   { label: 'Started', value: 'STARTED' },
   { label: 'Material Received', value: 'MATERIAL_RECEIVED' },
   { label: 'Installation Started', value: 'INSTALLATION_STARTED' },
-  { label: 'Completed', value: 'COMPLETED' },
+  { label: 'Completed', value: 'COMPLETED' }
 ]
 
 export default function JobDetail () {
   const { id } = useParams()
 
-  const { data: detail, isFetching: detailLoading, error: detailError, refetch: refetchDetail } = useGetWorkOrderDetailQuery(
-    id,
-    { skip: !id }
-  )
+  const {
+    data: detail,
+    isFetching: detailLoading,
+    error: detailError,
+    refetch: refetchDetail
+  } = useGetWorkOrderDetailQuery(id, { skip: !id })
 
   const workOrder = detail?.workOrder || {}
   const instruction = detail?.instruction || ''
@@ -31,7 +57,12 @@ export default function JobDetail () {
   const sr = workOrder?.serviceRequest || {}
   const customer = sr?.customer || {}
   const po = workOrder?.customerPO || {}
-  const srSiteAddress = [sr?.siteAddress, sr?.serviceLocation, sr?.siteLocation, workOrder?.siteAddress]
+  const srSiteAddress = [
+    sr?.siteAddress,
+    sr?.serviceLocation,
+    sr?.siteLocation,
+    workOrder?.siteAddress
+  ]
     .map((val) => (typeof val === 'string' ? val.trim() : ''))
     .find((val) => val) || ''
   const srDescription = typeof sr?.description === 'string' ? sr.description.trim() : ''
@@ -43,7 +74,8 @@ export default function JobDetail () {
   const [postProgress, { isLoading }] = usePostProgressMutation()
   const [fetchPdf, { isFetching: isPdfLoading }] = useLazyGetCompletionReportPdfQuery()
 
-  async function handlePostProgress () {
+  async function handlePostProgress (event) {
+    event?.preventDefault()
     if (!id) return
     try {
       await postProgress({ woId: id, status, remarks, photoUrl }).unwrap()
@@ -66,132 +98,238 @@ export default function JobDetail () {
   }
 
   return (
-    <div className='space-y-6'>
-      <Toaster />
-      <h1 className='text-2xl font-semibold'>Job #{id}</h1>
+    <Stack spacing={3}>
+      <Toaster position='top-right' />
 
-      <div className='card p-4 space-y-4'>
-        <div className='flex flex-wrap items-start justify-between gap-3'>
-          <div>
-            <h2 className='text-xl font-semibold text-slate-900'>Work Order {workOrder?.wan || workOrder?.id || id}</h2>
-            <p className='text-sm text-slate-600'>Service: {sr?.serviceType || '—'}</p>
-            {detailLoading && <p className='text-sm text-slate-500'>Loading job details…</p>}
-            {detailError && (
-              <p className='text-sm text-rose-600'>
-                {String(detailError?.data?.message || detailError?.error || 'Unable to load job detail')}
-              </p>
+      <Stack direction='row' spacing={1} alignItems='center'>
+        <AssignmentRoundedIcon color='primary' />
+        <Typography variant='h4' fontWeight={600}>
+          Job #{id}
+        </Typography>
+      </Stack>
+
+      <Card elevation={0}>
+        <CardHeader
+          title={
+            <Stack spacing={0.5}>
+              <Typography variant='h6' fontWeight={600}>
+                Work Order {workOrder?.wan || workOrder?.id || id}
+              </Typography>
+              <Typography variant='body2' color='text.secondary'>
+                Service: {sr?.serviceType || '—'}
+              </Typography>
+            </Stack>
+          }
+          action={
+            <Stack spacing={0.5} alignItems='flex-end'>
+              <Typography variant='body2' fontWeight={600}>
+                {customer?.name || customer?.displayName || '—'}
+              </Typography>
+              <Typography variant='caption' color='text.secondary'>
+                {customer?.email || sr?.customerEmail || '—'}
+              </Typography>
+              <Typography variant='caption' color='text.secondary'>
+                {customer?.mobile || sr?.customerMobile || '—'}
+              </Typography>
+            </Stack>
+          }
+        />
+        <Divider />
+        <CardContent>
+          {detailLoading ? (
+            <Stack direction='row' spacing={1} alignItems='center' sx={{ mb: 2 }}>
+              <CircularProgress size={20} />
+              <Typography variant='body2' color='text.secondary'>
+                Loading job details…
+              </Typography>
+            </Stack>
+          ) : null}
+
+          {detailError ? (
+            <Alert severity='error' sx={{ mb: 2 }}>
+              {String(detailError?.data?.message || detailError?.error || 'Unable to load job detail')}
+            </Alert>
+          ) : null}
+
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6} md={4}>
+              <Info label='Work Order Status' value={workOrder?.status || '—'} />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <Info
+                label='Scheduled Date'
+                value={
+                  workOrder?.scheduledAt
+                    ? new Date(workOrder.scheduledAt).toLocaleString('en-IN')
+                    : '—'
+                }
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <Info label='Customer PO' value={po?.poNumber || '—'} />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <Info label='Service Request' value={sr?.srn || '—'} />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <Info label='Service Type' value={sr?.serviceType || '—'} />
+            </Grid>
+            <Grid item xs={12} md={8}>
+              <Info icon={<MapPinRoundedIcon fontSize='small' color='primary' />} label='Site Address' value={srSiteAddress} multiline />
+            </Grid>
+            {srDescription ? (
+              <Grid item xs={12}>
+                <Info label='Job Description' value={srDescription} multiline />
+              </Grid>
+            ) : null}
+          </Grid>
+
+          {instruction ? (
+            <Alert
+              icon={<TaskAltRoundedIcon fontSize='small' />}
+              severity='info'
+              sx={{ mt: 3 }}
+            >
+              <Typography variant='subtitle2' sx={{ mb: 0.5 }}>
+                Instruction from back office
+              </Typography>
+              <Typography variant='body2' color='text.secondary' sx={{ whiteSpace: 'pre-line' }}>
+                {instruction}
+              </Typography>
+            </Alert>
+          ) : null}
+
+          <Stack spacing={1.5} sx={{ mt: 3 }}>
+            <Typography variant='subtitle2' color='text.secondary'>
+              Items / Kits
+            </Typography>
+            {items.length === 0 ? (
+              <Typography variant='body2' color='text.secondary'>
+                No items assigned.
+              </Typography>
+            ) : (
+              <TableContainer>
+                <Table size='small'>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Item</TableCell>
+                      <TableCell>Code</TableCell>
+                      <TableCell align='right'>Qty</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {items.map((item) => (
+                      <TableRow key={item.id || `${item.item?.id}-${item.workOrderId}`}>
+                        <TableCell>{item.item?.name || item.description || '—'}</TableCell>
+                        <TableCell>{item.item?.code || item.code || '—'}</TableCell>
+                        <TableCell align='right'>{item.qty ?? item.quantity ?? '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
-          </div>
-          <div className='text-sm text-slate-600'>
-            <div>
-              <span className='font-semibold text-slate-800'>Customer:</span> {customer?.name || customer?.displayName || '—'}
-            </div>
-            <div>{customer?.email || sr?.customerEmail || '—'}</div>
-            <div>{customer?.mobile || sr?.customerMobile || '—'}</div>
-          </div>
-        </div>
+          </Stack>
+        </CardContent>
+      </Card>
 
-        <div className='grid gap-3 sm:grid-cols-2'>
-          <Info label='Work Order Status' value={workOrder?.status || '—'} />
-          <Info
-            label='Scheduled Date'
-            value={workOrder?.scheduledAt ? new Date(workOrder.scheduledAt).toLocaleString('en-IN') : '—'}
-          />
-          <Info label='Customer PO' value={po?.poNumber || '—'} />
-          <Info label='Service Request' value={sr?.srn || '—'} />
-          <Info label='Service Type' value={sr?.serviceType || '—'} />
-          <div className='sm:col-span-2'>
-            <Info label='Site Address' value={srSiteAddress} multiline />
-          </div>
-          {srDescription && (
-            <div className='sm:col-span-2'>
-              <Info label='Job Description' value={srDescription} multiline />
-            </div>
-          )}
-        </div>
-
-        {instruction && (
-          <div className='rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700'>
-            <div className='text-xs font-semibold uppercase tracking-wide text-slate-500'>Instruction from back office</div>
-            <p className='mt-1 whitespace-pre-line'>{instruction}</p>
-          </div>
-        )}
-
-        <div>
-          <h3 className='text-sm font-semibold uppercase tracking-wide text-slate-500'>Items / Kits</h3>
-          {items.length === 0 ? (
-            <p className='mt-2 text-sm text-slate-600'>No items assigned.</p>
-          ) : (
-            <div className='mt-2 overflow-x-auto'>
-              <table className='min-w-full divide-y divide-slate-200 text-sm'>
-                <thead className='bg-slate-50 text-xs uppercase tracking-wide text-slate-500'>
-                  <tr>
-                    <th className='px-3 py-2 text-left'>Item</th>
-                    <th className='px-3 py-2 text-left'>Code</th>
-                    <th className='px-3 py-2 text-right'>Qty</th>
-                  </tr>
-                </thead>
-                <tbody className='divide-y divide-slate-100'>
-                  {items.map((item) => (
-                    <tr key={item.id || `${item.item?.id}-${item.workOrderId}`}>
-                      <td className='px-3 py-2 text-slate-800'>{item.item?.name || item.description || '—'}</td>
-                      <td className='px-3 py-2 text-slate-600'>{item.item?.code || item.code || '—'}</td>
-                      <td className='px-3 py-2 text-right text-slate-800'>{item.qty ?? item.quantity ?? '—'}</td>
-                    </tr>
+      <Card elevation={0}>
+        <CardHeader title='Update progress' subheader='Share quick updates to keep the back office informed.' />
+        <Divider />
+        <CardContent>
+          <Box component='form' onSubmit={handlePostProgress} noValidate>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  select
+                  fullWidth
+                  size='small'
+                  label='Status'
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                  onKeyDown={focusNextOnEnter}
+                >
+                  {STEPS.map((step) => (
+                    <MenuItem key={step.value} value={step.value}>
+                      {step.label}
+                    </MenuItem>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size='small'
+                  label='Photo URL (optional)'
+                  value={photoUrl}
+                  onChange={(event) => setPhotoUrl(event.target.value)}
+                  onKeyDown={focusNextOnEnter}
+                  autoComplete='on'
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size='small'
+                  label='Remarks (optional)'
+                  value={remarks}
+                  onChange={(event) => setRemarks(event.target.value)}
+                  onKeyDown={focusNextOnEnter}
+                  autoComplete='on'
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Stack direction='row' justifyContent='flex-end'>
+                  <Button
+                    type='submit'
+                    variant='contained'
+                    disabled={isLoading}
+                    startIcon={<TaskAltRoundedIcon fontSize='small' />}
+                  >
+                    {isLoading ? 'Posting…' : 'Post Progress'}
+                  </Button>
+                </Stack>
+              </Grid>
+            </Grid>
+          </Box>
+        </CardContent>
+      </Card>
 
-      <div className='card p-4 grid md:grid-cols-2 gap-3'>
-        <select className='input' value={status} onChange={(e) => setStatus(e.target.value)} onKeyDown={focusNextOnEnter}>
-          {STEPS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-
-        <input
-          className='input'
-          placeholder='Photo URL (optional)'
-          value={photoUrl}
-          onChange={(e) => setPhotoUrl(e.target.value)}
-          onKeyDown={focusNextOnEnter}
-          autoComplete='on'
-        />
-
-        <input
-          className='input md:col-span-2'
-          placeholder='Remarks (optional)'
-          value={remarks}
-          onChange={(e) => setRemarks(e.target.value)}
-          onKeyDown={focusNextOnEnter}
-          autoComplete='on'
-        />
-
-        <button className='btn-primary md:col-span-2' disabled={isLoading} onClick={handlePostProgress}>
-          {isLoading ? 'Posting…' : 'Post Progress'}
-        </button>
-      </div>
-
-      <div className='card p-4'>
-        <button className='btn-secondary' disabled={isPdfLoading} onClick={handleDownload}>
-          {isPdfLoading ? 'Preparing…' : 'Download Completion Report'}
-        </button>
-      </div>
-    </div>
+      <Card elevation={0}>
+        <CardContent>
+          <Stack direction='row' justifyContent='space-between' alignItems='center'>
+            <Typography variant='subtitle1'>Completion report</Typography>
+            <Button
+              variant='outlined'
+              startIcon={<DownloadRoundedIcon />}
+              disabled={isPdfLoading}
+              onClick={handleDownload}
+            >
+              {isPdfLoading ? 'Preparing…' : 'Download PDF'}
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+    </Stack>
   )
 }
 
-function Info ({ label, value, multiline = false }) {
+function Info ({ label, value, multiline = false, icon = null }) {
   return (
-    <div>
-      <div className='text-xs font-semibold uppercase tracking-wide text-slate-500'>{label}</div>
-      <div className={`text-sm text-slate-900${multiline ? ' whitespace-pre-line' : ''}`}>{value || '—'}</div>
-    </div>
+    <Stack spacing={0.5}>
+      <Stack direction='row' spacing={1} alignItems='center'>
+        {icon}
+        <Typography variant='caption' color='text.secondary' sx={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>
+          {label}
+        </Typography>
+      </Stack>
+      <Typography
+        variant='body2'
+        color='text.primary'
+        sx={multiline ? { whiteSpace: 'pre-line' } : undefined}
+      >
+        {value || '—'}
+      </Typography>
+    </Stack>
   )
 }

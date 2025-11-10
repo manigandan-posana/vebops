@@ -163,9 +163,9 @@ export default function WorkOrders () {
     setAssignNote('')
   }
   const closeAssignModal = () => {
-    setAssignModal({ open: false, wo: null });
-    setAssignNote('');
-  };
+    setAssignModal({ open: false, wo: null })
+    setAssignNote('')
+  }
 
   const openTimelineModal = (wo) => setTimelineModal({ open: true, wo })
   const closeTimelineModal = () => setTimelineModal({ open: false, wo: null })
@@ -497,14 +497,7 @@ function AssignDialog ({ open, onClose, workOrder, engineers, note, onNoteChange
     if (open) {
       setSelectedFe('');
     }
-  }, [open, workOrder?.id]);
-
-  const handleAssign = () => {
-    if (!selectedFe) return;
-    const numeric = Number(selectedFe);
-    const value = Number.isFinite(numeric) && numeric > 0 ? numeric : selectedFe;
-    onAssign(value);
-  };
+  }, [open, workOrder?.id])
 
   const handleAssign = () => {
     if (!selectedFe) return
@@ -644,9 +637,9 @@ function TimelineDialog ({ open, onClose, workOrder }) {
     try {
       return new Date(value).toLocaleString('en-IN');
     } catch (e) {
-      return String(value);
+      return String(value)
     }
-  };
+  }
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth='md' fullWidth>
