@@ -74,7 +74,7 @@ public class PdfUtil {
    * accepts the raw service and accompanying payload structures. The
    * resulting PDF contains a minimal header with tenant/company details
    * (when supplied), buyer/consignee information and a tabular breakdown
-   * of each item with quantity, rate, discount and amount. Totals are
+   * of each item with quantity, rate, and amount. Totals are
    * computed from the provided structures. If company is null the seller
    * section will be omitted. Caller must ensure the input maps are non‑null
    * but empty maps/lists are allowed.
@@ -147,9 +147,8 @@ public class PdfUtil {
 
       // -------------------------------------------------------------------------
       // Compute totals and prepare derived values. Subtotal is the sum of
-      // discounted line amounts; discountSavings captures total discount saved.
+      // discounted line amounts.
       java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
-      java.math.BigDecimal discountSavings = java.math.BigDecimal.ZERO;
       // Table rows for items will be added later. We'll compute the totals
       // here while iterating through the items list.
       if (items != null) {
@@ -169,7 +168,6 @@ public class PdfUtil {
           java.math.BigDecimal lineBase = rate.multiply(qty);
           java.math.BigDecimal discounted = lineBase.multiply(java.math.BigDecimal.ONE.subtract(disc.divide(new java.math.BigDecimal("100"))));
           subtotal = subtotal.add(discounted);
-          discountSavings = discountSavings.add(lineBase.subtract(discounted));
         }
       }
       if (discountSavings.compareTo(java.math.BigDecimal.ZERO) < 0) {
@@ -404,16 +402,16 @@ public class PdfUtil {
 
       // -------------------------------------------------------------------------
       // Items table: Header row and data rows
-      com.lowagie.text.pdf.PdfPTable itemsTable = new com.lowagie.text.pdf.PdfPTable(6);
+      com.lowagie.text.pdf.PdfPTable itemsTable = new com.lowagie.text.pdf.PdfPTable(5);
       itemsTable.setWidthPercentage(100);
-      itemsTable.setWidths(new float[]{2.8f, 1.2f, 0.8f, 1.2f, 1.0f, 1.2f});
+      itemsTable.setWidths(new float[]{3.2f, 1.2f, 0.9f, 1.2f, 1.3f});
       itemsTable.setHeaderRows(1);
       itemsTable.setSplitLate(false);
       itemsTable.setSplitRows(true);
       itemsTable.setSpacingBefore(4f);
       itemsTable.setSpacingAfter(8f);
       // Header cells with light background
-      String[] headers = { "Item Description", "HSN/SAC", "Qty", "Base Rate", "Discount %", "Amount" };
+      String[] headers = { "Item Description", "HSN/SAC", "Qty", "Rate", "Amount" };
       for (String h : headers) {
         com.lowagie.text.pdf.PdfPCell hc = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(h, boldFont));
         hc.setBackgroundColor(new java.awt.Color(240, 243, 255));
@@ -459,11 +457,6 @@ public class PdfUtil {
           rcell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
           rcell.setPadding(5f);
           itemsTable.addCell(rcell);
-          // Discount %
-          com.lowagie.text.pdf.PdfPCell discCell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(disc.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString(), regularFont));
-          discCell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
-          discCell.setPadding(5f);
-          itemsTable.addCell(discCell);
           // Amount (discounted)
           com.lowagie.text.pdf.PdfPCell amCell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(formatInr(discounted), regularFont));
           amCell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
@@ -478,6 +471,8 @@ public class PdfUtil {
       com.lowagie.text.pdf.PdfPTable itemsCard = new com.lowagie.text.pdf.PdfPTable(1);
       itemsCard.setWidthPercentage(100);
       itemsCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      itemsCard.setSplitLate(false);
+      itemsCard.setKeepTogether(false);
       itemsCard.addCell(itemsWrapper);
       doc.add(itemsCard);
       doc.add(new com.lowagie.text.Paragraph(" "));
@@ -502,8 +497,9 @@ public class PdfUtil {
         totalsTable.addCell(v);
       };
       addTotalRow.accept("Subtotal:", formatInr(subtotal));
-      addTotalRow.accept("Discount savings:", formatInr(discountSavings));
-      addTotalRow.accept("Transport:", formatInr(transport));
+      if (transport.compareTo(java.math.BigDecimal.ZERO) > 0) {
+        addTotalRow.accept("Transport:", formatInr(transport));
+      }
       if (cgst.compareTo(java.math.BigDecimal.ZERO) > 0) {
         addTotalRow.accept("CGST:", formatInr(cgst));
       }
@@ -533,6 +529,8 @@ public class PdfUtil {
       totalsCard.setWidthPercentage(45);
       totalsCard.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
       totalsCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      totalsCard.setSplitLate(false);
+      totalsCard.setKeepTogether(true);
       totalsCard.addCell(totalsWrapper);
       doc.add(totalsCard);
       doc.add(new com.lowagie.text.Paragraph(" "));
@@ -1134,7 +1132,6 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
 
             // Build item rows and compute totals
             java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
-            java.math.BigDecimal discountSavings = java.math.BigDecimal.ZERO;
             StringBuilder itemsRows = new StringBuilder();
             if (items != null) {
                 for (java.util.Map<String, Object> it : items) {
@@ -1154,7 +1151,6 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
                     java.math.BigDecimal line = rate.multiply(qty);
                     java.math.BigDecimal discounted = line.multiply(java.math.BigDecimal.ONE.subtract(disc.divide(new java.math.BigDecimal("100"), java.math.MathContext.DECIMAL128)));
                     subtotal = subtotal.add(discounted);
-                    discountSavings = discountSavings.add(line.subtract(discounted));
                     itemsRows.append("<tr>");
                     // Description column: include the item name and a secondary description based on service type
                     String rowDesc = "";
@@ -1212,7 +1208,6 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
                 try { grand = new java.math.BigDecimal(totals.get("grand").toString()); } catch (Exception ignored) {}
             }
             String subtotalStr = money(subtotal);
-            String discountSavingsStr = money(discountSavings);
             String transportStr = money(transport);
             String cgstStr = money(cgst);
             String sgstStr = money(sgst);
@@ -1395,8 +1390,9 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
             html.append("<div class='section'>");
             html.append("<div class='totals-wrap'><div class='totals-card'><table>");
             html.append("<tr><td class='label'>Subtotal</td><td class='value'>" + subtotalStr + "</td></tr>");
-            html.append("<tr><td class='label'>Discount savings</td><td class='value'>" + discountSavingsStr + "</td></tr>");
-            html.append("<tr><td class='label'>Transport</td><td class='value'>" + transportStr + "</td></tr>");
+            if (transport.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                html.append("<tr><td class='label'>Transport</td><td class='value'>" + transportStr + "</td></tr>");
+            }
             if (cgst.compareTo(java.math.BigDecimal.ZERO) > 0) {
                 String rate = totals != null && totals.get("cgstRate") != null ? totals.get("cgstRate").toString() : "";
                 html.append("<tr><td class='label'>CGST " + rate + "%</td><td class='value'>" + cgstStr + "</td></tr>");
