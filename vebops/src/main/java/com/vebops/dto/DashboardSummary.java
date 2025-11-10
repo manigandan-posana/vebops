@@ -8,6 +8,11 @@ import java.math.BigDecimal;
  * usage. This object is returned as JSON.
  */
 public class DashboardSummary {
+    public long newServiceRequests;
+    public long inProgressServiceRequests;
+    public long completedServiceRequests;
+    public long closedServiceRequests;
+
     public long draftProposals;
     public long sentProposals;
     public long approvedProposals;
@@ -21,6 +26,8 @@ public class DashboardSummary {
     public long draftInvoices;
     public long sentInvoices;
     public long paidInvoices;
+    public long overdueInvoices;
 
     public BigDecimal totalRevenue;
+    public BigDecimal outstandingReceivables;
 }
