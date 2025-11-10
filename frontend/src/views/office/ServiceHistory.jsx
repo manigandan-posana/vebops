@@ -27,12 +27,32 @@ const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
     .format(Number.isFinite(+n) ? +n : 0)
 
+const FILTER_STORAGE_KEY = 'vebops.serviceHistory.filters'
+
 export default function ServiceHistory () {
   // Search keyword. This is sent to the backend via the `q` parameter.
   const [q, setQ] = useState('')
   // Pagination state: page is zero-based. Changing size or search resets to page 0.
   const [page, setPage] = useState(0)
   const [size, setSize] = useState(20)
+
+  // Restore the last used filters on mount to give back-office users continuity
+  // when they revisit the history screen multiple times per day.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(FILTER_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.q === 'string') setQ(parsed.q)
+        const storedSize = Number(parsed.size)
+        if (Number.isFinite(storedSize) && storedSize > 0) setSize(storedSize)
+      }
+    } catch {
+      // ignore malformed entries and continue with defaults
+    }
+  }, [])
 
   // Fetch services from backend. The query object merges the current
   // state. When q is empty it's omitted to allow the backend to return
@@ -117,6 +137,16 @@ export default function ServiceHistory () {
   // prevents requesting pages beyond the new result set.
   useEffect(() => {
     setPage(0)
+  }, [q, size])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const payload = { q, size }
+    try {
+      window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(payload))
+    } catch {
+      // ignore storage quota or private browsing issues
+    }
   }, [q, size])
 
   // Extract fields from the response. Even when undefined we default

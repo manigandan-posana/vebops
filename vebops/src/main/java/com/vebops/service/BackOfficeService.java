@@ -284,50 +284,100 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
 
     // ----- Field Engineers -----
     @Transactional
-public ResponseEntity<Long> createFE(CreateFERequest req) {
-    final Long tid = tenant();
-    final String email = req.email == null ? null : req.email.trim().toLowerCase();
+    public ResponseEntity<Long> createFE(CreateFERequest req) {
+        final Long tid = tenant();
+        final String email = req.email == null ? null : req.email.trim().toLowerCase();
 
-    if (email == null || email.isBlank()) {
-        throw new BusinessException("Email is required");
+        if (email == null || email.isBlank()) {
+            throw new BusinessException("Email is required");
+        }
+
+        // 1) find or create user (dedupe by global unique email)
+        User u = users.findByEmail(email).orElse(null);
+        boolean createdUser = false;
+        String rawPwd = null;
+        if (u == null) {
+            createdUser = true;
+            rawPwd = com.vebops.util.Passwords.generate(12);
+            u = new User();
+            String display = (req.displayName != null && !req.displayName.isBlank())
+                    ? req.displayName.trim()
+                    : email;
+            u.setDisplayName(display);
+            u.setEmail(email);
+            u.setPasswordHash(encoder.encode(rawPwd));
+            u.setActive(true);
+            u = users.save(u);
+        } else {
+            boolean dirty = false;
+            if (req.displayName != null && !req.displayName.isBlank()) {
+                String display = req.displayName.trim();
+                if (u.getDisplayName() == null || !u.getDisplayName().equals(display)) {
+                    u.setDisplayName(display);
+                    dirty = true;
+                }
+            }
+            if (dirty) {
+                u = users.save(u);
+            }
+        }
+
+        // 2) if FE already exists for this tenant+user, return it
+        var existingFe = feRepo.findFirstByTenantIdAndUser_Id(tid, u.getId());
+        if (existingFe.isPresent()) {
+            // If an FE already exists we still ensure they have the FE role.
+            if (!userRoleRepo.existsByUser_IdAndTenantIdAndRoleCode(u.getId(), tid, RoleCode.FE)) {
+                UserRole ur = new UserRole();
+                ur.setUser(u);
+                ur.setTenantId(tid);
+                ur.setRoleCode(RoleCode.FE);
+                ur.setPrimaryRole(false);
+                userRoleRepo.save(ur);
+            }
+            if (createdUser && rawPwd != null) {
+                emailService.sendUserCredentials(
+                        tid,
+                        u.getId(),
+                        u.getEmail(),
+                        u.getDisplayName(),
+                        "Field Engineer",
+                        u.getEmail(),
+                        rawPwd);
+            }
+            return ResponseEntity.ok(existingFe.get().getId());
+        }
+
+        // 3) else create FE link (unique by uk_fe_tenant_user -> race safe)
+        FieldEngineer fe = new FieldEngineer();
+        fe.setTenantId(tid);
+        fe.setUser(u);
+        fe.setStatus(FEStatus.AVAILABLE);
+        feRepo.save(fe);
+
+        // 4) ensure FE role in this tenant
+        if (!userRoleRepo.existsByUser_IdAndTenantIdAndRoleCode(u.getId(), tid, RoleCode.FE)) {
+            UserRole ur = new UserRole();
+            ur.setUser(u);
+            ur.setTenantId(tid);
+            ur.setRoleCode(RoleCode.FE);
+            ur.setPrimaryRole(false);
+            userRoleRepo.save(ur);
+        }
+
+        // 5) Email credentials for newly created users so the FE can log in immediately.
+        if (createdUser && rawPwd != null) {
+            emailService.sendUserCredentials(
+                    tid,
+                    u.getId(),
+                    u.getEmail(),
+                    u.getDisplayName(),
+                    "Field Engineer",
+                    u.getEmail(),
+                    rawPwd);
+        }
+
+        return ResponseEntity.ok(fe.getId());
     }
-
-    // 1) find or create user (dedupe by global unique email)
-    User u = users.findByEmail(email).orElseGet(() -> {
-        String rawPwd = com.vebops.util.Passwords.generate(12);
-        User nu = new User();
-        nu.setDisplayName(req.displayName);
-        nu.setEmail(email);
-        nu.setPasswordHash(encoder.encode(rawPwd));
-        nu.setActive(true);
-        return users.save(nu);
-    });
-
-    // 2) if FE already exists for this tenant+user, return it
-    var existingFe = feRepo.findFirstByTenantIdAndUser_Id(tid, u.getId());
-    if (existingFe.isPresent()) {
-        return ResponseEntity.ok(existingFe.get().getId());
-    }
-
-    // 3) else create FE link (unique by uk_fe_tenant_user -> race safe)
-    FieldEngineer fe = new FieldEngineer();
-    fe.setTenantId(tid);
-    fe.setUser(u);
-    fe.setStatus(FEStatus.AVAILABLE);
-    feRepo.save(fe);
-
-    // 4) ensure FE role in this tenant
-    if (!userRoleRepo.existsByUser_IdAndTenantIdAndRoleCode(u.getId(), tid, RoleCode.FE)) {
-        UserRole ur = new UserRole();
-        ur.setUser(u);
-        ur.setTenantId(tid);
-        ur.setRoleCode(RoleCode.FE);
-        ur.setPrimaryRole(false);
-        userRoleRepo.save(ur);
-    }
-
-    return ResponseEntity.ok(fe.getId());
-}
 
 
     public ResponseEntity<Page<FieldEngineerDto>> listFieldEngineers(FEStatus status, Pageable pageable) {

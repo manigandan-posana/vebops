@@ -12,6 +12,7 @@ import {
   useListProposalsQuery,
   useProposalApproveMutation,
   useProposalRejectMutation,
+  useWoTimelineQuery,
 } from '../../features/office/officeApi'
 import { focusNextOnEnter } from '../../utils/formNavigation'
 
@@ -22,6 +23,15 @@ const STATUS_FILTERS = [
   { value: 'IN_PROGRESS', label: 'In Progress' },
   { value: 'COMPLETED', label: 'Completed' },
 ]
+
+const STATUS_LABELS = {
+  STARTED: 'Started',
+  MATERIAL_RECEIVED: 'Material received',
+  INSTALLATION_STARTED: 'Installation started',
+  COMPLETED: 'Completed',
+  ON_HOLD: 'On hold',
+  RESUMED: 'Resumed',
+}
 
 const srParams = { status: 'NEW', size: 15 }
 const proposalParams = { status: 'SENT', size: 20 }
@@ -35,6 +45,7 @@ export default function WorkOrders () {
   const [poModal, setPoModal] = useState({ open: false, proposal: null })
   const [poNumber, setPoNumber] = useState('')
   const [poUrl, setPoUrl] = useState('')
+  const [timelineModal, setTimelineModal] = useState({ open: false, wo: null })
 
   const woQueryParams = useMemo(() => (
     statusFilter === 'ALL'
@@ -93,6 +104,14 @@ export default function WorkOrders () {
   const closeAssignModal = () => {
     setAssignModal({ open: false, wo: null })
     setAssignNote('')
+  }
+
+  const openTimelineModal = (wo) => {
+    setTimelineModal({ open: true, wo })
+  }
+
+  const closeTimelineModal = () => {
+    setTimelineModal({ open: false, wo: null })
   }
 
   const openPoModal = (proposal) => {
@@ -259,6 +278,13 @@ export default function WorkOrders () {
                             </Link>
                             <button
                               type='button'
+                              className='btn-secondary'
+                              onClick={() => openTimelineModal(wo)}
+                            >
+                              Timeline
+                            </button>
+                            <button
+                              type='button'
                               onClick={() => openAssignModal(wo)}
                               className='btn-secondary'
                             >
@@ -422,6 +448,12 @@ export default function WorkOrders () {
         onSubmit={handleApproveProposal}
         submitting={approving}
       />
+
+      <TimelineModal
+        open={timelineModal.open}
+        workOrder={timelineModal.wo}
+        onClose={closeTimelineModal}
+      />
     </div>
   )
 }
@@ -485,6 +517,174 @@ function AssignModal ({ open, onClose, workOrder, engineers, note, onNoteChange,
           </button>
         </div>
       </form>
+    </Modal>
+  )
+}
+
+function TimelineModal ({ open, onClose, workOrder }) {
+  const woId = workOrder?.id
+  const skip = !open || !woId
+  const { data, isFetching, error, refetch } = useWoTimelineQuery(woId, { skip })
+
+  if (!open) return null
+
+  const timelineWo = data?.workOrder || workOrder || {}
+  const sr = timelineWo?.serviceRequest || workOrder?.serviceRequest || {}
+  const fe = timelineWo?.assignedFE || workOrder?.assignedFE || {}
+  const progress = Array.isArray(data?.progress) ? data.progress : []
+  const assignments = Array.isArray(data?.assignments) ? data.assignments : []
+
+  const statusLabel = (status) => {
+    if (!status) return 'Update'
+    const upper = String(status).toUpperCase()
+    if (STATUS_LABELS[upper]) return STATUS_LABELS[upper]
+    return upper
+      .split('_')
+      .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+      .join(' ')
+  }
+
+  const statusTone = (status) => {
+    switch (String(status || '').toUpperCase()) {
+      case 'COMPLETED':
+        return 'bg-emerald-100 text-emerald-700'
+      case 'MATERIAL_RECEIVED':
+        return 'bg-amber-100 text-amber-700'
+      case 'INSTALLATION_STARTED':
+        return 'bg-sky-100 text-sky-700'
+      case 'STARTED':
+        return 'bg-indigo-100 text-indigo-700'
+      default:
+        return 'bg-slate-100 text-slate-700'
+    }
+  }
+
+  const formatDate = (value) => {
+    if (!value) return '—'
+    try {
+      return new Date(value).toLocaleString('en-IN')
+    } catch (e) {
+      return String(value)
+    }
+  }
+
+  const footer = (
+    <>
+      <button
+        type='button'
+        className='btn-secondary'
+        onClick={() => refetch()}
+        disabled={isFetching || skip}
+      >
+        {isFetching ? 'Refreshing…' : 'Refresh'}
+      </button>
+      <button type='button' className='btn-primary' onClick={onClose}>
+        Close
+      </button>
+    </>
+  )
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={timelineWo?.wan ? `Timeline • ${timelineWo.wan}` : 'Work order timeline'}
+      footer={footer}
+    >
+      {isFetching && <p className='text-sm text-slate-500'>Loading timeline…</p>}
+      {error && (
+        <p className='text-sm text-rose-600'>
+          {String(error?.data?.message || error?.error || 'Unable to load timeline')}
+        </p>
+      )}
+      {!isFetching && !error && (
+        <div className='space-y-5'>
+          <div className='rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm'>
+            <div className='text-xs font-semibold uppercase tracking-wide text-slate-500'>Current status</div>
+            <div className='mt-1 text-lg font-semibold text-slate-900'>
+              {statusLabel(timelineWo?.status || workOrder?.status)}
+            </div>
+            <div className='mt-2 text-sm text-slate-600'>
+              Assigned to {fe?.user?.displayName || fe?.name || '—'}
+            </div>
+            {sr?.srn && (
+              <div className='mt-1 text-sm text-slate-600'>Service Request {sr.srn}</div>
+            )}
+          </div>
+
+          <div className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm'>
+            <div className='text-sm font-semibold text-slate-900'>Progress updates</div>
+            {progress.length === 0 ? (
+              <p className='mt-2 text-sm text-slate-600'>No updates posted yet.</p>
+            ) : (
+              <ol className='mt-3 space-y-3'>
+                {progress.map((entry, index) => {
+                  const badgeClass = ['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', statusTone(entry.status)].join(' ')
+                  const key = entry.id || `${entry.status || 'status'}-${entry.createdAt || index}`
+                  return (
+                    <li
+                      key={key}
+                      className='rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-sm'
+                    >
+                      <div className='flex flex-wrap items-center justify-between gap-3'>
+                        <span className={badgeClass}>{statusLabel(entry.status)}</span>
+                        <span className='text-xs text-slate-500'>{formatDate(entry.createdAt)}</span>
+                      </div>
+                      {entry.remarks && (
+                        <p className='mt-2 whitespace-pre-line text-sm text-slate-700'>{entry.remarks}</p>
+                      )}
+                      <div className='mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500'>
+                        {entry.byFE?.user?.displayName && (
+                          <span>By {entry.byFE.user.displayName}</span>
+                        )}
+                        {entry.photoUrl && (
+                          <a
+                            className='text-indigo-600 hover:underline'
+                            href={entry.photoUrl}
+                            target='_blank'
+                            rel='noreferrer'
+                          >
+                            View photo evidence
+                          </a>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+          </div>
+
+          <div className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm'>
+            <div className='text-sm font-semibold text-slate-900'>Assignments & notes</div>
+            {assignments.length === 0 ? (
+              <p className='mt-2 text-sm text-slate-600'>No assignment history recorded.</p>
+            ) : (
+              <ul className='mt-3 space-y-3'>
+                {assignments.map((assignment, index) => {
+                  const key = assignment.id || `${assignment.assignedAt || index}-${assignment.fieldEngineer?.id || assignment.team?.id || 'assignee'}`
+                  return (
+                    <li
+                      key={key}
+                      className='rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-sm'
+                    >
+                      <div className='flex flex-wrap items-center justify-between gap-3'>
+                        <div className='text-sm font-medium text-slate-900'>
+                          {assignment.fieldEngineer?.user?.displayName || assignment.fieldEngineer?.name || assignment.team?.name || 'Unassigned'}
+                        </div>
+                        <span className='text-xs text-slate-500'>{formatDate(assignment.assignedAt)}</span>
+                      </div>
+                      {assignment.note && (
+                        <p className='mt-2 whitespace-pre-line text-sm text-slate-700'>{assignment.note}</p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }

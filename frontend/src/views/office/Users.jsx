@@ -1,5 +1,5 @@
 // src/pages/office/Users.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   // Office-scoped data & upserts (from your snippet)
   useGetFieldEngineersQuery,
@@ -27,6 +27,8 @@ import {
   KeyRound,
 } from "lucide-react";
 
+import { focusNextOnEnter } from "../../utils/formNavigation";
+
 /* ------------------------ tiny base UI (same vibe as Tenants) ------------------------ */
 const Button = ({ children, className = "", type = "button", ...rest }) => (
   <button
@@ -41,12 +43,20 @@ const Button = ({ children, className = "", type = "button", ...rest }) => (
   </button>
 );
 
-const Input = (props) => (
+const Input = ({ onKeyDown, className = "", ...rest }) => (
   <input
-    {...props}
+    {...rest}
+    onKeyDown={(event) => {
+      if (typeof onKeyDown === "function") {
+        onKeyDown(event);
+      }
+      if (!event.defaultPrevented) {
+        focusNextOnEnter(event);
+      }
+    }}
     className={
       "w-full h-10 rounded-sm border border-gray-300 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 " +
-      (props.className || "")
+      className
     }
   />
 );
@@ -262,19 +272,20 @@ export default function Users() {
   // FE delete confirm
   const [confirmDlg, setConfirmDlg] = useState(null);
   function confirmDeleteFE(row) {
+    if (!row) return;
+    const name = row?.user?.displayName || row?.userName || "this field engineer";
+    setErr("");
+    setMsg("");
     setConfirmDlg({
       danger: true,
-      text: `Delete Field Engineer “${row?.user?.displayName || row?.userName || "Unknown"}”? This cannot be undone.`,
+      title: "Delete Field Engineer",
+      message: `Deleting ${name} will remove their login and detach related assignments. This action cannot be undone.`,
+      confirmLabel: "Delete",
+      loading: false,
       onConfirm: async () => {
-        try {
-          await deleteFE({ id: row.id, deleteUserIfOrphan: true }).unwrap();
-          setMsg("Field Engineer deleted.");
-          refetchFE();
-        } catch (e) {
-          setErr(e?.data?.message || "Failed to delete Field Engineer.");
-        } finally {
-          setConfirmDlg(null);
-        }
+        await deleteFE({ id: row.id, deleteUserIfOrphan: true }).unwrap();
+        setMsg("Field Engineer deleted.");
+        refetchFE();
       },
     });
   }
@@ -430,22 +441,40 @@ export default function Users() {
 
   // Customer delete confirm
   function confirmDeleteCustomer(row) {
+    if (!row) return;
+    const name = row?.name || row?.email || "this customer";
+    setErr("");
+    setMsg("");
     setConfirmDlg({
       danger: true,
-      text: `Delete Customer “${row?.name || row?.email || "Unknown"}”? This cannot be undone.`,
+      title: "Delete Customer",
+      message: `Deleting ${name} removes their portal access and related records. This cannot be undone.`,
+      confirmLabel: "Delete",
+      loading: false,
       onConfirm: async () => {
-        try {
-          await deleteCustomer({ id: row.id, deletePortalUserIfOrphan: true }).unwrap();
-          setMsg("Customer deleted.");
-          refetchCustomers();
-        } catch (e) {
-          setErr(e?.data?.message || "Failed to delete Customer.");
-        } finally {
-          setConfirmDlg(null);
-        }
+        await deleteCustomer({ id: row.id, deletePortalUserIfOrphan: true }).unwrap();
+        setMsg("Customer deleted.");
+        refetchCustomers();
       },
     });
   }
+
+  const runConfirm = useCallback(async () => {
+    if (!confirmDlg?.onConfirm) return;
+    try {
+      setConfirmDlg((prev) => (prev ? { ...prev, loading: true } : prev));
+      await confirmDlg.onConfirm();
+    } catch (error) {
+      const message =
+        error?.data?.message ||
+        error?.error ||
+        error?.message ||
+        "Failed to complete the action.";
+      setErr(message);
+    } finally {
+      setConfirmDlg(null);
+    }
+  }, [confirmDlg]);
 
   // Customer reset password (for linked portal user)
   function openResetForCustomer(row) {
@@ -636,6 +665,7 @@ export default function Users() {
             value={cHasPortal}
             onChange={(e) => { setCHasPortal(e.target.value); setCPage(0); }}
             title="Portal status filter"
+            onKeyDown={focusNextOnEnter}
           >
             <option value="ALL">All</option>
             <option value="YES">Portal linked</option>
@@ -741,6 +771,7 @@ export default function Users() {
             className="border border-gray-300 rounded-md px-2 py-1 bg-white"
             value={cSize}
             onChange={(e) => { setCPage(0); setCSize(Number(e.target.value)); }}
+            onKeyDown={focusNextOnEnter}
           >
             <option>5</option>
             <option>10</option>
@@ -915,6 +946,7 @@ export default function Users() {
                   className="h-10 rounded-sm border border-gray-300 px-2 text-sm w-full"
                   value={efeStatus}
                   onChange={(e) => setEfeStatus(e.target.value)}
+                  onKeyDown={focusNextOnEnter}
                 >
                   {FE_STATUSES.map((s) => (
                     <option key={s} value={s}>{s}</option>
@@ -986,6 +1018,7 @@ export default function Users() {
                   type="checkbox"
                   checked={custCreatePortal}
                   onChange={(e) => setCustCreatePortal(e.target.checked)}
+                  onKeyDown={focusNextOnEnter}
                 />
                 Create Portal (password auto-generated & emailed)
               </label>
@@ -1035,6 +1068,7 @@ export default function Users() {
                   checked={ecEnablePortal}
                   onChange={(e) => setEcEnablePortal(e.target.checked)}
                   disabled={!!(editingCust?.portalUserId)}
+                  onKeyDown={focusNextOnEnter}
                 />
                 Enable Customer Portal (send credentials)
                 {editingCust?.portalUserId ? " — already enabled" : ""}
@@ -1073,6 +1107,7 @@ export default function Users() {
                   type="checkbox"
                   checked={sendResetEmail}
                   onChange={(e) => setSendResetEmail(e.target.checked)}
+                  onKeyDown={focusNextOnEnter}
                 />
                 Send email with the temporary password
               </label>
@@ -1130,28 +1165,39 @@ export default function Users() {
 
       {/* ========================== CONFIRMATION DIALOG (delete) ========================== */}
       {confirmDlg && (
-        <ModalShell onClose={() => setConfirmDlg(null)}>
+        <ModalShell onClose={() => { if (!confirmDlg.loading) setConfirmDlg(null); }}>
           <DialogCard
-            title={confirmDlg.danger ? "You are about to delete" : "Are you sure?"}
-            subtitle={confirmDlg.text}
+            title={confirmDlg.title || (confirmDlg.danger ? "Confirm deletion" : "Are you sure?")}
+            subtitle={confirmDlg.subtitle}
             variant={confirmDlg.danger ? "danger" : "info"}
-          />
-          <div className="mt-3 flex items-center justify-center gap-3">
-            <button
-              type="button"
-              className="h-10 px-4 rounded-lg text-sm border border-gray-300 hover:bg-gray-50"
-              onClick={() => setConfirmDlg(null)}
-            >
-              Cancel
-            </button>
-            <Button
-              type="button"
-              className={confirmDlg.danger ? "bg-rose-600 hover:bg-rose-700" : ""}
-              onClick={() => confirmDlg?.onConfirm?.()}
-            >
-              {confirmDlg.danger ? "Delete" : "Confirm"}
-            </Button>
-          </div>
+            compact
+            footer={(
+              <>
+                <button
+                  type="button"
+                  className="h-10 px-4 rounded-lg text-sm border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                  onClick={() => setConfirmDlg(null)}
+                  disabled={confirmDlg.loading}
+                >
+                  {confirmDlg.cancelLabel || "Cancel"}
+                </button>
+                <Button
+                  type="button"
+                  className={(confirmDlg.danger ? "bg-rose-600 hover:bg-rose-700 " : "") + (confirmDlg.loading ? "pointer-events-none" : "")}
+                  onClick={runConfirm}
+                  disabled={confirmDlg.loading}
+                >
+                  {confirmDlg.loading
+                    ? "Processing…"
+                    : confirmDlg.confirmLabel || (confirmDlg.danger ? "Delete" : "Confirm")}
+                </Button>
+              </>
+            )}
+          >
+            {confirmDlg.message ? (
+              <p className="text-sm text-slate-700 whitespace-pre-line">{confirmDlg.message}</p>
+            ) : null}
+          </DialogCard>
         </ModalShell>
       )}
     </div>
