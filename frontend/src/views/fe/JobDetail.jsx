@@ -31,6 +31,10 @@ export default function JobDetail () {
   const sr = workOrder?.serviceRequest || {}
   const customer = sr?.customer || {}
   const po = workOrder?.customerPO || {}
+  const srSiteAddress = [sr?.siteAddress, sr?.serviceLocation, sr?.siteLocation, workOrder?.siteAddress]
+    .map((val) => (typeof val === 'string' ? val.trim() : ''))
+    .find((val) => val) || ''
+  const srDescription = typeof sr?.description === 'string' ? sr.description.trim() : ''
 
   const [status, setStatus] = useState(STEPS[0].value)
   const [remarks, setRemarks] = useState('')
@@ -94,7 +98,16 @@ export default function JobDetail () {
             value={workOrder?.scheduledAt ? new Date(workOrder.scheduledAt).toLocaleString('en-IN') : '—'}
           />
           <Info label='Customer PO' value={po?.poNumber || '—'} />
-          <Info label='Location' value={sr?.serviceLocation || workOrder?.siteAddress || '—'} />
+          <Info label='Service Request' value={sr?.srn || '—'} />
+          <Info label='Service Type' value={sr?.serviceType || '—'} />
+          <div className='sm:col-span-2'>
+            <Info label='Site Address' value={srSiteAddress} multiline />
+          </div>
+          {srDescription && (
+            <div className='sm:col-span-2'>
+              <Info label='Job Description' value={srDescription} multiline />
+            </div>
+          )}
         </div>
 
         {instruction && (
@@ -174,11 +187,11 @@ export default function JobDetail () {
   )
 }
 
-function Info ({ label, value }) {
+function Info ({ label, value, multiline = false }) {
   return (
     <div>
       <div className='text-xs font-semibold uppercase tracking-wide text-slate-500'>{label}</div>
-      <div className='text-sm text-slate-900'>{value || '—'}</div>
+      <div className={`text-sm text-slate-900${multiline ? ' whitespace-pre-line' : ''}`}>{value || '—'}</div>
     </div>
   )
 }

@@ -13,11 +13,13 @@ import com.vebops.domain.Invoice;
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     Optional<Invoice> findByTenantIdAndInvoiceNo(Long tenantId, String invoiceNo);
-        List<Invoice> findByTenantIdAndStatus(Long tenantId, InvoiceStatus status);
-        List<Invoice> findByTenantIdAndCustomer_Id(Long tenantId, Long customerId);
+    List<Invoice> findByTenantIdAndStatus(Long tenantId, InvoiceStatus status);
+    List<Invoice> findByTenantIdAndCustomer_Id(Long tenantId, Long customerId);
 
     long countByStatus(InvoiceStatus status);
     long countByTenantIdAndStatus(Long tenantId, InvoiceStatus status);
+    long countByStatusAndInvoiceDateBefore(InvoiceStatus status, java.time.LocalDate cutoff);
+    long countByTenantIdAndStatusAndInvoiceDateBefore(Long tenantId, InvoiceStatus status, java.time.LocalDate cutoff);
 
     @Query("select coalesce(sum(i.total),0) from Invoice i where i.status = :status")
     java.math.BigDecimal sumTotalByStatus(@Param("status") InvoiceStatus status);

@@ -72,10 +72,18 @@ public interface TenantRepository extends JpaRepository<Tenant, Long> {
       )
     /* ---- dynamic, SAFE ordering (field whitelist + direction) ---- */
     ORDER BY
-      CASE WHEN :sortField = 'name'  THEN t.name END  /* asc/desc applied below */,
-      CASE WHEN :sortField = 'code'  THEN t.code END,
-      CASE WHEN :sortField = 'id'    THEN t.id   END,
-      t.id
+      /*
+       * Handle dynamic ordering without string concatenation to avoid SQL injection.
+       * Each CASE covers both the field and the direction so MySQL always receives a
+       * concrete expression with the desired ASC/DESC modifier.
+       */
+      CASE WHEN :sortField = 'name' AND :sortDir = 'asc'  THEN t.name END ASC,
+      CASE WHEN :sortField = 'name' AND :sortDir = 'desc' THEN t.name END DESC,
+      CASE WHEN :sortField = 'code' AND :sortDir = 'asc'  THEN t.code END ASC,
+      CASE WHEN :sortField = 'code' AND :sortDir = 'desc' THEN t.code END DESC,
+      CASE WHEN :sortField = 'id'   AND :sortDir = 'asc'  THEN t.id   END ASC,
+      CASE WHEN :sortField = 'id'   AND :sortDir = 'desc' THEN t.id   END DESC,
+      t.id ASC
     """,
     countQuery = """
     SELECT COUNT(*)

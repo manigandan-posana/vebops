@@ -160,6 +160,9 @@ public class FeService {
         if (wo.getServiceRequest() != null) {
             var sr = wo.getServiceRequest();
             sr.getServiceType();
+            sr.getSrn();
+            sr.getDescription();
+            sr.getSiteAddress();
             if (sr.getCustomer() != null) {
                 sr.getCustomer().getName();
                 sr.getCustomer().getEmail();
