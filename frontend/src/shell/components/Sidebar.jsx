@@ -1,31 +1,63 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import useLogout from "./hooks/useLogout";
 import {
-  LayoutDashboard,
-  Building2,
-  Users as UsersIcon,
-  Receipt,
-  Settings as SettingsIcon,
-  Activity,
-  FileText,
-  ClipboardList,
-  Package,
-  BookOpen,
-  Inbox,
-  Briefcase,
-  LogOut,
-  Dot,
-  X,
-  Layers2,
-  Ticket,
-  TicketPlus,
-  CreditCard,
-  Users,
-} from "lucide-react";
+  Drawer,
+  Box,
+  Stack,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Button,
+  Divider,
+  useTheme,
+  useMediaQuery,
+} from "@mui/material";
+import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
+import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
+import PeopleOutlineRoundedIcon from "@mui/icons-material/PeopleOutlineRounded";
+import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
+import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
+import InsightsRoundedIcon from "@mui/icons-material/InsightsRounded";
+import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import AssignmentTurnedInRoundedIcon from "@mui/icons-material/AssignmentTurnedInRounded";
+import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
+import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
+import WorkOutlineRoundedIcon from "@mui/icons-material/WorkOutlineRounded";
+import LayersRoundedIcon from "@mui/icons-material/LayersRounded";
+import ConfirmationNumberRoundedIcon from "@mui/icons-material/ConfirmationNumberRounded";
+import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
+import FiberManualRecordRoundedIcon from "@mui/icons-material/FiberManualRecordRounded";
+import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import useLogout from "./hooks/useLogout";
+
+const drawerWidth = 280;
+
+const iconFor = (label = "") => {
+  const key = label.toLowerCase();
+  if (key.includes("dashboard")) return DashboardRoundedIcon;
+  if (key.includes("tenant")) return GroupRoundedIcon;
+  if (key.includes("user")) return PeopleOutlineRoundedIcon;
+  if (key.includes("billing") || key.includes("invoice")) return ReceiptLongRoundedIcon;
+  if (key.includes("setting")) return SettingsRoundedIcon;
+  if (key.includes("health") || key.includes("activity")) return InsightsRoundedIcon;
+  if (key.includes("proposal")) return DescriptionRoundedIcon;
+  if (key.includes("assigned") || key.includes("work order")) return AssignmentTurnedInRoundedIcon;
+  if (key.includes("inventory")) return Inventory2RoundedIcon;
+  if (key.includes("catalog")) return MenuBookRoundedIcon;
+  if (key.includes("service")) return ConfirmationNumberRoundedIcon;
+  if (key.includes("job")) return WorkOutlineRoundedIcon;
+  if (key.includes("operations")) return LayersRoundedIcon;
+  if (key.includes("subscription")) return CreditCardRoundedIcon;
+  return FiberManualRecordRoundedIcon;
+};
 
 export default function Sidebar({ items = [], open = false, onClose }) {
   const doLogout = useLogout();
+  const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
 
   const logoSrc =
     (typeof import.meta !== "undefined" &&
@@ -33,98 +65,108 @@ export default function Sidebar({ items = [], open = false, onClose }) {
       import.meta.env.VITE_LOGO_URL) ||
     "/VebOps.png";
 
-  const iconFor = (label = "") => {
-    const key = label.toLowerCase();
-    if (key.includes("dashboard")) return LayoutDashboard;
-    if (key.includes("tenant")) return Users;
-    if (key.includes("user")) return UsersIcon;
-    if (key.includes("billing") || key.includes("invoice")) return Receipt;
-    if (key.includes("setting")) return SettingsIcon;
-    if (key.includes("health") || key.includes("activity")) return Activity;
-    if (key.includes("proposal")) return FileText;
-    if (key.includes("assigned")) return ClipboardList;
-    if (key.includes("inventory")) return Package;
-    if (key.includes("catalog")) return BookOpen;
-    if (key.includes("service")) return TicketPlus;
-    if (key.includes("job")) return Briefcase;
-    if (key.includes("work order")) return ClipboardList;
-    if (key.includes("operations")) return Layers2;
-    if (key.includes("subscription")) return CreditCard;
-    return Dot;
-  };
-
-  return (
-    <>
-      {/* Mobile backdrop */}
-      <div
-        onClick={onClose}
-        className={`fixed inset-0 z-40 bg-slate-900/40 lg:hidden ${open ? 'block' : 'hidden'}`}
-      />
-
-      {/* Sidebar panel (drawer on mobile, fixed on desktop) */}
-      <aside
-        className={[
-          // position & size
-          'fixed inset-y-0 left-0 z-50 w-72 lg:w-64 border-r border-slate-200 bg-brand-light flex flex-col',
-          // animation (mobile)
-          'transform transition-transform duration-300 ease-in-out',
-          open ? 'translate-x-0' : '-translate-x-full',
-          // desktop: always visible, no translate
-          'lg:translate-x-0',
-        ].join(' ')}
+  const drawerContent = (
+    <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={2}
+        sx={{ px: 3, py: 2.5, minHeight: 88 }}
       >
-        {/* Header */}
-        <div className="h-16 flex items-center gap-3 px-4 border-b border-slate-200 bg-brand text-white">
-          <img src={logoSrc} alt="Logo" className="w-24" />
-          {/* Close on mobile */}
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto lg:hidden rounded-md p-2 hover:bg-brand-dark focus:outline-none"
-            aria-label="Close sidebar"
-            title="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Nav (scrollable) */}
-        <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
-          {items.map((it) => {
-            const Icon = iconFor(it.label);
+        <Box component="img" src={logoSrc} alt="VebOps" sx={{ width: 148, objectFit: "contain" }} />
+        {!isDesktop && (
+          <IconButton onClick={onClose} sx={{ ml: "auto", color: "#F0F4FF" }}>
+            <CloseRoundedIcon />
+          </IconButton>
+        )}
+      </Stack>
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
+      <Box sx={{ flex: 1, overflowY: "auto", px: 2, py: 2 }}>
+        <List sx={{ display: "grid", gap: 0.5 }}>
+          {items.map((item) => {
+            const Icon = iconFor(item.label);
             return (
-              <NavLink
-                key={it.to}
-                to={it.to}
-                className={({ isActive }) =>
-                  [
-                    'flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-colors',
-                    isActive
-                      ? 'bg-brand text-white'
-                      : 'text-slate-700 hover:bg-brand-light hover:text-brand-dark',
-                  ].join(' ')
-                }
-                end={it.end}
-                onClick={onClose /* close drawer after navigation on mobile */}
+              <ListItemButton
+                key={item.to}
+                component={NavLink}
+                to={item.to}
+                end={item.end}
+                onClick={!isDesktop ? onClose : undefined}
+                sx={{
+                  borderRadius: 2,
+                  color: "rgba(240,244,255,0.82)",
+                  fontWeight: 500,
+                  "& .MuiListItemIcon-root": {
+                    minWidth: 40,
+                    color: "rgba(240,244,255,0.6)",
+                  },
+                  "&:hover": {
+                    bgcolor: "rgba(255,255,255,0.12)",
+                  },
+                  "&.active": {
+                    bgcolor: "rgba(15, 124, 125, 0.35)",
+                    color: "#FFFFFF",
+                    "& .MuiListItemIcon-root": {
+                      color: "#FFFFFF",
+                    },
+                  },
+                }}
               >
-                <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
-                <span>{it.label}</span>
-              </NavLink>
+                <ListItemIcon>
+                  <Icon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText
+                  primaryTypographyProps={{ variant: "body2", fontWeight: 600 }}
+                  primary={item.label}
+                />
+              </ListItemButton>
             );
           })}
-        </nav>
+        </List>
+      </Box>
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
+      <Box sx={{ p: 3 }}>
+        <Button
+          fullWidth
+          variant="contained"
+          color="secondary"
+          onClick={doLogout}
+          startIcon={<LogoutRoundedIcon />}
+          sx={{ borderRadius: 12, boxShadow: "none", py: 1.25, fontWeight: 600 }}
+        >
+          Logout
+        </Button>
+      </Box>
+    </Box>
+  );
 
-        {/* Footer (Logout) */}
-        <div className="p-3 border-t border-slate-200">
-          <button
-            onClick={doLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm text-slate-700 hover:bg-red-100 hover:text-red-700"
-          >
-            <LogOut className="h-4 w-4" />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-    </>
+  return (
+    <Drawer
+      variant={isDesktop ? "permanent" : "temporary"}
+      open={isDesktop ? true : open}
+      onClose={onClose}
+      ModalProps={{ keepMounted: true }}
+      sx={{
+        "& .MuiDrawer-paper": {
+          width: drawerWidth,
+          boxSizing: "border-box",
+          backgroundColor: "transparent",
+          backgroundImage: "none",
+          p: 0,
+        },
+      }}
+    >
+      <Box
+        sx={{
+          height: "100%",
+          backgroundImage: "linear-gradient(180deg, #102A43 0%, #1B4D8C 85%, #0F7C7D 100%)",
+          color: "#F0F4FF",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {drawerContent}
+      </Box>
+    </Drawer>
   );
 }

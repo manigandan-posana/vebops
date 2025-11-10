@@ -2,21 +2,26 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
+import { ThemeProvider, CssBaseline } from '@mui/material'
 import { store } from './app/store'
 import App from './shell/App'
 import './index.css'
 import { Toaster } from 'react-hot-toast'
 import { installGlobalEnterNavigation } from './utils/formNavigation'
+import theme from './theme'
 
 installGlobalEnterNavigation();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <Provider store={store}>
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <App/>
-        <Toaster />
-      </BrowserRouter>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <App/>
+          <Toaster />
+        </BrowserRouter>
+      </ThemeProvider>
     </Provider>
   </React.StrictMode>
 )

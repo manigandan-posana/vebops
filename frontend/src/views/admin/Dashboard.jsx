@@ -1,54 +1,46 @@
 import React from "react";
+import { useGetAdminSummaryQuery, useGetTenantSignupsQuery } from "../../features/admin/adminApi";
 import {
-  useGetAdminSummaryQuery,
-  useGetTenantSignupsQuery,
-} from "../../features/admin/adminApi";
-import { IndianRupeeIcon } from "lucide-react";
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  Stack,
+} from "@mui/material";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
+import LoginRoundedIcon from "@mui/icons-material/LoginRounded";
+import CurrencyRupeeRoundedIcon from "@mui/icons-material/CurrencyRupeeRounded";
 
-/* ------------------------------ UI atoms only ------------------------------ */
-const Card = ({ className = "", children }) => (
-  <div className={`bg-white border border-slate-200 rounded-xl shadow-sm ${className}`}>{children}</div>
-);
-
-const IconTile = ({ className = "", children }) => (
-  <div className={`h-10 w-10 rounded-xl grid place-items-center ring-1 ring-black/[0.04] ${className}`}>
-    {children}
-  </div>
-);
-
-/* Compact icons */
-const GroupIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-  </svg>
-);
-const UserIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-    <circle cx="12" cy="7" r="4" />
-  </svg>
-);
-const LoginIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-    <path d="M10 17l5-5l-5-5" />
-    <path d="M15 12H3" />
-  </svg>
-);
-
-/* Stat card */
-const Stat = ({ label, value, icon, tintBg, tintFg }) => (
-  <Card className="p-4">
-    <div className="flex items-center gap-3">
-      <IconTile className={`${tintBg} ${tintFg}`}>{icon}</IconTile>
-      <div className="min-w-0">
-        <div className="text-[11px] text-slate-500">{label}</div>
-        <div className="text-xl font-semibold tracking-tight">{value}</div>
-      </div>
-    </div>
+const StatCard = ({ icon, label, value, gradient }) => (
+  <Card sx={{ borderRadius: 3, boxShadow: "0px 16px 40px rgba(16, 42, 67, 0.12)" }}>
+    <CardContent>
+      <Stack direction="row" spacing={2} alignItems="center">
+        <Box
+          sx={{
+            width: 48,
+            height: 48,
+            borderRadius: 2,
+            display: "grid",
+            placeItems: "center",
+            color: "primary.contrastText",
+            backgroundImage: gradient,
+            boxShadow: "0 12px 24px rgba(16, 42, 67, 0.18)",
+          }}
+        >
+          {icon}
+        </Box>
+        <Box>
+          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 0.6 }}>
+            {label}
+          </Typography>
+          <Typography variant="h5" fontWeight={600} color="text.primary" sx={{ mt: 0.5 }}>
+            {value}
+          </Typography>
+        </Box>
+      </Stack>
+    </CardContent>
   </Card>
 );
 
@@ -57,46 +49,50 @@ export default function AdminDashboard() {
   const { data: signups30 } = useGetTenantSignupsQuery(30);
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-        <p className="mt-1 text-xs sm:text-sm text-slate-500">
+    <Stack spacing={4}>
+      <Box>
+        <Typography variant="h4" fontWeight={600}>
+          Admin Dashboard
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           Welcome back, here&apos;s a summary of your application.
-        </p>
-      </div>
+        </Typography>
+      </Box>
 
-      {/* Top stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat
-          label="Total Tenants"
-          value={sumLoading ? "—" : (sum?.totalTenants ?? 0)}
-          icon={<GroupIcon />}
-          tintBg="bg-indigo-50"
-          tintFg="text-indigo-600"
-        />
-        <Stat
-          label="Active Users"
-          value={sumLoading ? "—" : (sum?.activeUsers ?? 0)}
-          icon={<UserIcon />}
-          tintBg="bg-emerald-50"
-          tintFg="text-emerald-600"
-        />
-        <Stat
-          label="Signups (30d)"
-          value={sumLoading ? "—" : (sum?.signups30d ?? signups30 ?? 0)}
-          icon={<LoginIcon />}
-          tintBg="bg-indigo-50/70"
-          tintFg="text-indigo-600"
-        />
-        <Stat
-          label="Revenue (MTD)"
-          value={sumLoading ? "—" : `${sum?.revenueMTD ?? 0}`}
-          icon={<IndianRupeeIcon className="h-4 w-4" />}
-          tintBg="bg-rose-50"
-          tintFg="text-rose-600"
-        />
-      </div>
-    </div>
+      <Grid container spacing={3}>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            label="Total Tenants"
+            value={sumLoading ? "—" : sum?.totalTenants ?? 0}
+            icon={<GroupsRoundedIcon fontSize="small" />}
+            gradient="linear-gradient(135deg, #3A6FB8 0%, #1B4D8C 100%)"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            label="Active Users"
+            value={sumLoading ? "—" : sum?.activeUsers ?? 0}
+            icon={<PeopleAltRoundedIcon fontSize="small" />}
+            gradient="linear-gradient(135deg, #4BAEAE 0%, #0F7C7D 100%)"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            label="Signups (30d)"
+            value={sumLoading ? "—" : sum?.signups30d ?? signups30 ?? 0}
+            icon={<LoginRoundedIcon fontSize="small" />}
+            gradient="linear-gradient(135deg, #8A8CF7 0%, #5458D6 100%)"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            label="Revenue (MTD)"
+            value={sumLoading ? "—" : `${sum?.revenueMTD ?? 0}`}
+            icon={<CurrencyRupeeRoundedIcon fontSize="small" />}
+            gradient="linear-gradient(135deg, #F88282 0%, #D64562 100%)"
+          />
+        </Grid>
+      </Grid>
+    </Stack>
   );
 }
