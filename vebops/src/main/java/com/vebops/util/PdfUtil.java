@@ -170,6 +170,9 @@ public class PdfUtil {
           subtotal = subtotal.add(discounted);
         }
       }
+      if (discountSavings.compareTo(java.math.BigDecimal.ZERO) < 0) {
+        discountSavings = java.math.BigDecimal.ZERO;
+      }
       // Extract transport and taxes from totals map. Default to zero when missing.
       java.math.BigDecimal transport = java.math.BigDecimal.ZERO;
       java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
