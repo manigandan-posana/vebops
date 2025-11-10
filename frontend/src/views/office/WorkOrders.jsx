@@ -134,32 +134,32 @@ export default function WorkOrders () {
   const [rejectProposal, { isLoading: rejecting }] = useProposalRejectMutation()
 
   const workOrders = useMemo(() => {
-    if (Array.isArray(woData?.content)) return woData.content
-    if (Array.isArray(woData?.items)) return woData.items
-    if (Array.isArray(woData)) return woData
-    return emptyArray
-  }, [woData])
+    if (Array.isArray(woData?.content)) return woData.content;
+    if (Array.isArray(woData?.items)) return woData.items;
+    if (Array.isArray(woData)) return woData;
+    return emptyArray;
+  }, [woData]);
 
   const fieldEngineers = useMemo(() => {
-    if (Array.isArray(feData?.content)) return feData.content
-    if (Array.isArray(feData?.items)) return feData.items
-    if (Array.isArray(feData)) return feData
-    return emptyArray
-  }, [feData])
+    if (Array.isArray(feData?.content)) return feData.content;
+    if (Array.isArray(feData?.items)) return feData.items;
+    if (Array.isArray(feData)) return feData;
+    return emptyArray;
+  }, [feData]);
 
   const serviceRequests = useMemo(() => {
-    if (Array.isArray(srData?.content)) return srData.content
-    if (Array.isArray(srData?.items)) return srData.items
-    if (Array.isArray(srData)) return srData
-    return emptyArray
-  }, [srData])
+    if (Array.isArray(srData?.content)) return srData.content;
+    if (Array.isArray(srData?.items)) return srData.items;
+    if (Array.isArray(srData)) return srData;
+    return emptyArray;
+  }, [srData]);
 
   const proposals = useMemo(() => {
-    if (Array.isArray(proposalData?.content)) return proposalData.content
-    if (Array.isArray(proposalData?.items)) return proposalData.items
-    if (Array.isArray(proposalData)) return proposalData
-    return emptyArray
-  }, [proposalData])
+    if (Array.isArray(proposalData?.content)) return proposalData.content;
+    if (Array.isArray(proposalData?.items)) return proposalData.items;
+    if (Array.isArray(proposalData)) return proposalData;
+    return emptyArray;
+  }, [proposalData]);
 
   const pendingProposals = proposals.filter((p) => p.status === 'SENT')
   const availableFEs = fieldEngineers.filter((fe) => (fe.status ? fe.status === 'AVAILABLE' : true))
@@ -182,36 +182,36 @@ export default function WorkOrders () {
     setPoUrl('')
   }
   const closePoModal = () => {
-    setPoModal({ open: false, proposal: null })
-    setPoNumber('')
-    setPoUrl('')
-  }
+    setPoModal({ open: false, proposal: null });
+    setPoNumber('');
+    setPoUrl('');
+  };
 
-  async function handleAssign (feId) {
-    if (!assignModal.wo?.id || !feId) return
+  async function handleAssign(feId) {
+    if (!assignModal.wo?.id || !feId) return;
     try {
-      await assignWo({ id: assignModal.wo.id, feId, note: assignNote || undefined }).unwrap()
-      toast.success('Work order assigned')
-      closeAssignModal()
-      refetchWos()
+      await assignWo({ id: assignModal.wo.id, feId, note: assignNote || undefined }).unwrap();
+      toast.success('Work order assigned');
+      closeAssignModal();
+      refetchWos();
     } catch (err) {
-      toast.error(String(err?.data?.message || err?.error || 'Unable to assign work order'))
+      toast.error(String(err?.data?.message || err?.error || 'Unable to assign work order'));
     }
   }
 
-  async function handleComplete (woId) {
-    if (!woId) return
+  async function handleComplete(woId) {
+    if (!woId) return;
     try {
-      await completeWo({ woId }).unwrap()
-      toast.success('Marked as completed')
-      refetchWos()
+      await completeWo({ woId }).unwrap();
+      toast.success('Marked as completed');
+      refetchWos();
     } catch (err) {
-      toast.error(String(err?.data?.message || err?.error || 'Unable to complete work order'))
+      toast.error(String(err?.data?.message || err?.error || 'Unable to complete work order'));
     }
   }
 
-  async function handleCreateFromRequest (srId) {
-    if (!srId) return
+  async function handleCreateFromRequest(srId) {
+    if (!srId) return;
     try {
       const res = await createWoFromRequest({ id: srId }).unwrap()
       const wan = typeof res === 'object' ? res?.wan || res?.code || (res?.id ? `#${res.id}` : null) : null
@@ -220,38 +220,38 @@ export default function WorkOrders () {
       refetchWos()
       refetchSrs()
     } catch (err) {
-      const message = String(err?.data?.message || err?.error || 'Unable to create work order')
+      const message = String(err?.data?.message || err?.error || 'Unable to create work order');
       if (message.toLowerCase().includes('exist')) {
-        toast.success('Work order already exists for this request')
-        refetchWos()
+        toast.success('Work order already exists for this request');
+        refetchWos();
       } else {
-        toast.error(message)
+        toast.error(message);
       }
     }
   }
 
-  async function handleApproveProposal () {
-    if (!poModal.proposal?.id) return
+  async function handleApproveProposal() {
+    if (!poModal.proposal?.id) return;
     try {
-      await approveProposal({ id: poModal.proposal.id, poNumber, poUrl: poUrl || undefined }).unwrap()
-      toast.success('Proposal approved. Work order created automatically.')
-      closePoModal()
-      refetchProposals()
-      refetchSrs()
-      refetchWos()
+      await approveProposal({ id: poModal.proposal.id, poNumber, poUrl: poUrl || undefined }).unwrap();
+      toast.success('Proposal approved. Work order created automatically.');
+      closePoModal();
+      refetchProposals();
+      refetchSrs();
+      refetchWos();
     } catch (err) {
-      toast.error(String(err?.data?.message || err?.error || 'Unable to approve proposal'))
+      toast.error(String(err?.data?.message || err?.error || 'Unable to approve proposal'));
     }
   }
 
-  async function handleRejectProposal (proposalId) {
-    if (!proposalId) return
+  async function handleRejectProposal(proposalId) {
+    if (!proposalId) return;
     try {
-      await rejectProposal({ id: proposalId }).unwrap()
-      toast.success('Proposal rejected')
-      refetchProposals()
+      await rejectProposal({ id: proposalId }).unwrap();
+      toast.success('Proposal rejected');
+      refetchProposals();
     } catch (err) {
-      toast.error(String(err?.data?.message || err?.error || 'Unable to reject proposal'))
+      toast.error(String(err?.data?.message || err?.error || 'Unable to reject proposal'));
     }
   }
 
@@ -501,7 +501,7 @@ function AssignDialog ({ open, onClose, workOrder, engineers, note, onNoteChange
 
   useEffect(() => {
     if (open) {
-      setSelectedFe('')
+      setSelectedFe('');
     }
   }, [open, workOrder?.id])
 
@@ -636,12 +636,12 @@ function TimelineDialog ({ open, onClose, workOrder }) {
       default:
         return 'default'
     }
-  }
+  };
 
   const formatDate = (value) => {
-    if (!value) return '—'
+    if (!value) return '—';
     try {
-      return new Date(value).toLocaleString('en-IN')
+      return new Date(value).toLocaleString('en-IN');
     } catch (e) {
       return String(value)
     }

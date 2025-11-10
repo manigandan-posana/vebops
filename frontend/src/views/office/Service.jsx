@@ -93,6 +93,9 @@ const handleEnterNavigation = (event) => {
     } else {
       form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     }
+  } else if (idx === focusables.length - 1) {
+    const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
+    if (submitBtn) submitBtn.click()
   }
 }
 
