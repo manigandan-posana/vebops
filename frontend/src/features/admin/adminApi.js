@@ -201,6 +201,26 @@ export const adminApi = baseApi.injectEndpoints({
 
     getOfficeSummary: builder.query({
       query: () => '/admin/office',
+      transformResponse: (r) => ({
+        newServiceRequests: r?.newServiceRequests ?? 0,
+        inProgressServiceRequests: r?.inProgressServiceRequests ?? 0,
+        completedServiceRequests: r?.completedServiceRequests ?? 0,
+        closedServiceRequests: r?.closedServiceRequests ?? 0,
+        draftProposals: r?.draftProposals ?? 0,
+        sentProposals: r?.sentProposals ?? 0,
+        approvedProposals: r?.approvedProposals ?? 0,
+        rejectedProposals: r?.rejectedProposals ?? 0,
+        newWorkOrders: r?.newWorkOrders ?? 0,
+        assignedWorkOrders: r?.assignedWorkOrders ?? 0,
+        inProgressWorkOrders: r?.inProgressWorkOrders ?? 0,
+        completedWorkOrders: r?.completedWorkOrders ?? 0,
+        draftInvoices: r?.draftInvoices ?? 0,
+        sentInvoices: r?.sentInvoices ?? 0,
+        paidInvoices: r?.paidInvoices ?? 0,
+        overdueInvoices: r?.overdueInvoices ?? 0,
+        totalRevenue: Number(r?.totalRevenue ?? 0),
+        outstandingReceivables: Number(r?.outstandingReceivables ?? 0),
+      }),
       providesTags: ['Office'],
     }),
 
