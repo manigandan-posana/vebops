@@ -7,32 +7,34 @@ import {
   Card,
   CardContent,
   Stack,
+  Divider,
+  Chip,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
 import LoginRoundedIcon from "@mui/icons-material/LoginRounded";
 import CurrencyRupeeRoundedIcon from "@mui/icons-material/CurrencyRupeeRounded";
 
-const StatCard = ({ icon, label, value, gradient }) => (
-  <Card sx={{ borderRadius: 3, boxShadow: "0px 16px 40px rgba(16, 42, 67, 0.12)" }}>
+const StatCard = ({ icon, label, value, color = "primary" }) => (
+  <Card sx={{ height: "100%" }}>
     <CardContent>
       <Stack direction="row" spacing={2} alignItems="center">
         <Box
-          sx={{
+          sx={(theme) => ({
             width: 48,
             height: 48,
             borderRadius: 2,
             display: "grid",
             placeItems: "center",
-            color: "primary.contrastText",
-            backgroundImage: gradient,
-            boxShadow: "0 12px 24px rgba(16, 42, 67, 0.18)",
-          }}
+            color: theme.palette[color].main,
+            backgroundColor: alpha(theme.palette[color].main, 0.12),
+          })}
         >
           {icon}
         </Box>
         <Box>
-          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 0.6 }}>
+          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 0.5 }}>
             {label}
           </Typography>
           <Typography variant="h5" fontWeight={600} color="text.primary" sx={{ mt: 0.5 }}>
@@ -49,15 +51,15 @@ export default function AdminDashboard() {
   const { data: signups30 } = useGetTenantSignupsQuery(30);
 
   return (
-    <Stack spacing={4}>
-      <Box>
+    <Stack spacing={5}>
+      <Stack spacing={1.5}>
         <Typography variant="h4" fontWeight={600}>
-          Admin Dashboard
+          Admin overview
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Welcome back, here&apos;s a summary of your application.
+        <Typography variant="body2" color="text.secondary">
+          A quick snapshot of tenant health, user activity and revenue performance.
         </Typography>
-      </Box>
+      </Stack>
 
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>
@@ -65,7 +67,7 @@ export default function AdminDashboard() {
             label="Total Tenants"
             value={sumLoading ? "—" : sum?.totalTenants ?? 0}
             icon={<GroupsRoundedIcon fontSize="small" />}
-            gradient="linear-gradient(135deg, #3A6FB8 0%, #1B4D8C 100%)"
+            color="primary"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -73,7 +75,7 @@ export default function AdminDashboard() {
             label="Active Users"
             value={sumLoading ? "—" : sum?.activeUsers ?? 0}
             icon={<PeopleAltRoundedIcon fontSize="small" />}
-            gradient="linear-gradient(135deg, #4BAEAE 0%, #0F7C7D 100%)"
+            color="secondary"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -81,7 +83,7 @@ export default function AdminDashboard() {
             label="Signups (30d)"
             value={sumLoading ? "—" : sum?.signups30d ?? signups30 ?? 0}
             icon={<LoginRoundedIcon fontSize="small" />}
-            gradient="linear-gradient(135deg, #8A8CF7 0%, #5458D6 100%)"
+            color="success"
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
@@ -89,10 +91,32 @@ export default function AdminDashboard() {
             label="Revenue (MTD)"
             value={sumLoading ? "—" : `${sum?.revenueMTD ?? 0}`}
             icon={<CurrencyRupeeRoundedIcon fontSize="small" />}
-            gradient="linear-gradient(135deg, #F88282 0%, #D64562 100%)"
+            color="warning"
           />
         </Grid>
       </Grid>
+
+      <Card variant="outlined" sx={{ borderStyle: "dashed", borderColor: (theme) => alpha(theme.palette.primary.main, 0.2) }}>
+        <CardContent>
+          <Stack direction={{ xs: "column", md: "row" }} alignItems={{ xs: "flex-start", md: "center" }} justifyContent="space-between" spacing={3}>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={600}>
+                Need deeper analytics?
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Connect Looker Studio or download the latest tenant onboarding report for further analysis.
+              </Typography>
+            </Box>
+            <Chip label="Insights coming soon" color="default" variant="outlined" />
+          </Stack>
+        </CardContent>
+        <Divider />
+        <CardContent>
+          <Typography variant="caption" color="text.secondary">
+            Export detailed reports from the Tenants tab to share with business stakeholders.
+          </Typography>
+        </CardContent>
+      </Card>
     </Stack>
   );
 }

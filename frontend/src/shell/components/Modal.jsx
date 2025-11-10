@@ -6,10 +6,10 @@ import {
   DialogActions,
   IconButton,
   Typography,
-  useTheme,
   Slide,
   Stack,
   Box,
+  Divider,
 } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 
@@ -18,8 +18,6 @@ const Transition = React.forwardRef(function Transition(props, ref) {
 });
 
 export default function Modal({ open, onClose, title, children, footer }) {
-  const theme = useTheme();
-
   return (
     <Dialog
       open={open}
@@ -36,25 +34,20 @@ export default function Modal({ open, onClose, title, children, footer }) {
         },
       }}
     >
-      <Box sx={{
-        backgroundImage: 'linear-gradient(135deg, #1B4D8C 0%, #0F7C7D 100%)',
-        color: theme.palette.common.white,
-        px: 3,
-        py: 2,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <DialogTitle sx={{ m: 0, p: 0 }}>
-          <Typography variant="h6" component="span" sx={{ fontWeight: 600 }}>
-            {title}
-          </Typography>
-        </DialogTitle>
-        <IconButton onClick={onClose} sx={{ color: 'inherit' }}>
-          <CloseRoundedIcon />
-        </IconButton>
+      <Box sx={{ px: { xs: 3, sm: 4 }, pt: 3 }}>
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
+          <DialogTitle sx={{ m: 0, p: 0 }}>
+            <Typography variant="h6" component="span" sx={{ fontWeight: 600 }}>
+              {title}
+            </Typography>
+          </DialogTitle>
+          <IconButton onClick={onClose} sx={{ mt: -0.5 }}>
+            <CloseRoundedIcon />
+          </IconButton>
+        </Stack>
+        <Divider sx={{ mt: 2 }} />
       </Box>
-      <DialogContent dividers sx={{ px: { xs: 3, sm: 4 }, py: 3 }}>
+      <DialogContent sx={{ px: { xs: 3, sm: 4 }, py: 3 }}>
         <Stack spacing={2.5}>{children}</Stack>
       </DialogContent>
       {footer && (

@@ -26,6 +26,7 @@ import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import ChecklistRoundedIcon from '@mui/icons-material/ChecklistRounded';
 import { useGetOfficeSummaryQuery } from '../../features/admin/adminApi';
 import { useGetActivityQuery } from '../../features/office/officeApi';
+import { alpha } from '@mui/material/styles';
 
 const numberFormatter = new Intl.NumberFormat('en-IN');
 const currencyFormatter = new Intl.NumberFormat('en-IN', {
@@ -45,16 +46,15 @@ const MetricCard = ({ icon, label, hint, value, tone = 'text.primary', loading =
     <CardContent>
       <Stack direction="row" spacing={2} alignItems="center">
         <Box
-          sx={{
+          sx={(theme) => ({
             width: 48,
             height: 48,
             borderRadius: 2,
             display: 'grid',
             placeItems: 'center',
-            bgcolor: 'primary.light',
-            color: 'primary.contrastText',
-            boxShadow: '0 12px 24px rgba(27,77,140,0.18)',
-          }}
+            bgcolor: alpha(theme.palette.primary.main, 0.12),
+            color: theme.palette.primary.main,
+          })}
         >
           {icon}
         </Box>

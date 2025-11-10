@@ -13,7 +13,9 @@ import {
   Divider,
   useTheme,
   useMediaQuery,
+  Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import PeopleOutlineRoundedIcon from "@mui/icons-material/PeopleOutlineRounded";
@@ -71,17 +73,22 @@ export default function Sidebar({ items = [], open = false, onClose }) {
         direction="row"
         alignItems="center"
         spacing={2}
-        sx={{ px: 3, py: 2.5, minHeight: 88 }}
+        sx={{ px: 3, py: 2.5, minHeight: 80 }}
       >
-        <Box component="img" src={logoSrc} alt="VebOps" sx={{ width: 148, objectFit: "contain" }} />
+        <Box
+          component="img"
+          src={logoSrc}
+          alt="VebOps"
+          sx={{ width: 140, objectFit: "contain" }}
+        />
         {!isDesktop && (
-          <IconButton onClick={onClose} sx={{ ml: "auto", color: "#F0F4FF" }}>
+          <IconButton onClick={onClose} sx={{ ml: "auto", color: theme.palette.text.secondary }}>
             <CloseRoundedIcon />
           </IconButton>
         )}
       </Stack>
-      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
-      <Box sx={{ flex: 1, overflowY: "auto", px: 2, py: 2 }}>
+      <Divider />
+      <Box sx={{ flex: 1, overflowY: "auto", px: 2, py: 3 }}>
         <List sx={{ display: "grid", gap: 0.5 }}>
           {items.map((item) => {
             const Icon = iconFor(item.label);
@@ -94,20 +101,25 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                 onClick={!isDesktop ? onClose : undefined}
                 sx={{
                   borderRadius: 2,
-                  color: "rgba(240,244,255,0.82)",
-                  fontWeight: 500,
-                  "& .MuiListItemIcon-root": {
+                  color: theme.palette.text.secondary,
+                  fontWeight: 600,
+                  minHeight: 48,
+                  '& .MuiListItemIcon-root': {
                     minWidth: 40,
-                    color: "rgba(240,244,255,0.6)",
+                    color: theme.palette.text.secondary,
                   },
-                  "&:hover": {
-                    bgcolor: "rgba(255,255,255,0.12)",
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    color: theme.palette.primary.main,
+                    '& .MuiListItemIcon-root': {
+                      color: theme.palette.primary.main,
+                    },
                   },
-                  "&.active": {
-                    bgcolor: "rgba(15, 124, 125, 0.35)",
-                    color: "#FFFFFF",
-                    "& .MuiListItemIcon-root": {
-                      color: "#FFFFFF",
+                  '&.active': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.12),
+                    color: theme.palette.primary.main,
+                    '& .MuiListItemIcon-root': {
+                      color: theme.palette.primary.main,
                     },
                   },
                 }}
@@ -124,18 +136,25 @@ export default function Sidebar({ items = [], open = false, onClose }) {
           })}
         </List>
       </Box>
-      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
+      <Divider />
       <Box sx={{ p: 3 }}>
         <Button
           fullWidth
-          variant="contained"
-          color="secondary"
+          variant="outlined"
           onClick={doLogout}
           startIcon={<LogoutRoundedIcon />}
-          sx={{ borderRadius: 12, boxShadow: "none", py: 1.25, fontWeight: 600 }}
+          sx={{
+            borderRadius: 2,
+            justifyContent: "flex-start",
+            gap: 1,
+            fontWeight: 600,
+          }}
         >
           Logout
         </Button>
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: "block" }}>
+          Securely sign out of VebOps
+        </Typography>
       </Box>
     </Box>
   );
@@ -147,26 +166,14 @@ export default function Sidebar({ items = [], open = false, onClose }) {
       onClose={onClose}
       ModalProps={{ keepMounted: true }}
       sx={{
-        "& .MuiDrawer-paper": {
+        '& .MuiDrawer-paper': {
           width: drawerWidth,
           boxSizing: "border-box",
-          backgroundColor: "transparent",
-          backgroundImage: "none",
           p: 0,
         },
       }}
     >
-      <Box
-        sx={{
-          height: "100%",
-          backgroundImage: "linear-gradient(180deg, #102A43 0%, #1B4D8C 85%, #0F7C7D 100%)",
-          color: "#F0F4FF",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {drawerContent}
-      </Box>
+      {drawerContent}
     </Drawer>
   );
 }

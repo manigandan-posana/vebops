@@ -12,7 +12,9 @@ import {
   useTheme,
   useMediaQuery,
   Box,
+  Divider,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneRounded";
 
@@ -23,55 +25,68 @@ export default function Topbar({ onMenuClick }) {
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
 
   return (
-    <AppBar
-      position="sticky"
-      sx={{
-        zIndex: (th) => th.zIndex.drawer + 1,
-        boxShadow: "0 8px 24px rgba(16, 42, 67, 0.18)",
-        backdropFilter: "blur(16px)",
-      }}
-    >
-      <Toolbar sx={{ minHeight: 72, px: { xs: 2, sm: 3, lg: 6 } }}>
+    <AppBar position="sticky" sx={{ zIndex: (th) => th.zIndex.drawer + 1 }}>
+      <Toolbar sx={{ px: { xs: 2, sm: 3, lg: 4 } }}>
         {!isDesktop ? (
           <IconButton
-            color="inherit"
+            color="primary"
             edge="start"
             onClick={onMenuClick}
-            sx={{ mr: 2, bgcolor: "rgba(255,255,255,0.08)", "&:hover": { bgcolor: "rgba(255,255,255,0.18)" } }}
+            sx={{
+              mr: 2,
+              borderRadius: 2,
+              border: `1px solid ${theme.palette.divider}`,
+              bgcolor: theme.palette.background.paper,
+            }}
           >
             <MenuRoundedIcon />
           </IconButton>
         ) : (
-          <Box sx={{ width: 40 }} />
+          <Box sx={{ width: 8 }} />
         )}
 
         <Box sx={{ flexGrow: 1 }} />
 
-        <Stack direction="row" spacing={1.5} alignItems="center">
+        <Stack direction="row" spacing={2} alignItems="center">
           <Tooltip title="Notifications">
-            <IconButton sx={{ color: "common.white" }}>
+            <IconButton
+              sx={{
+                color: theme.palette.text.secondary,
+                borderRadius: 2,
+                border: `1px solid ${theme.palette.divider}`,
+                bgcolor: theme.palette.background.paper,
+                '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.04) },
+              }}
+            >
               <Badge color="secondary" variant="dot" overlap="circular">
                 <NotificationsNoneRoundedIcon />
               </Badge>
             </IconButton>
           </Tooltip>
-          <Tooltip title={user?.name || user?.email || "User"}>
-            <Avatar
-              sx={{
-                bgcolor: "rgba(255,255,255,0.2)",
-                color: "common.white",
-                border: "2px solid rgba(255,255,255,0.35)",
-                fontWeight: 600,
-              }}
-            >
-              {initial}
-            </Avatar>
-          </Tooltip>
-          {isDesktop && (
-            <Typography variant="subtitle2" sx={{ color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>
-              {user?.name || user?.email || "Welcome"}
-            </Typography>
-          )}
+          <Divider orientation="vertical" flexItem sx={{ height: 32 }} />
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Tooltip title={user?.name || user?.email || "User"}>
+              <Avatar
+                sx={{
+                  bgcolor: alpha(theme.palette.primary.main, 0.12),
+                  color: theme.palette.primary.main,
+                  fontWeight: 600,
+                }}
+              >
+                {initial}
+              </Avatar>
+            </Tooltip>
+            {isDesktop && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  {user?.name || user?.email || "Welcome"}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {user?.role || "User"}
+                </Typography>
+              </Box>
+            )}
+          </Stack>
         </Stack>
       </Toolbar>
     </AppBar>
