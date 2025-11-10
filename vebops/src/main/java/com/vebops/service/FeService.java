@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import com.vebops.context.TenantContext;
+import com.vebops.domain.FieldEngineer;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderProgress;
 import com.vebops.dto.ProgressRequest;
@@ -88,7 +89,15 @@ public class FeService {
      * Adds a progress entry for the given work order.
      */
     public ResponseEntity<Void> progress(Long woId, ProgressRequest req) {
-        workOrders.addProgress(tenant(), woId, req.status, req.byFeId, req.remarks, req.photoUrl);
+        Long tid = tenant();
+        Long feId = req.byFeId;
+        if (feId == null) {
+            Long uid = TenantContext.getUserId();
+            feId = feRepo.findFirstByTenantIdAndUser_Id(tid, uid)
+                .map(FieldEngineer::getId)
+                .orElseThrow(() -> new NotFoundException("Field engineer profile not found for user"));
+        }
+        workOrders.addProgress(tid, woId, req.status, feId, req.remarks, req.photoUrl);
         return ResponseEntity.noContent().build();
     }
 

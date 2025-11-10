@@ -40,6 +40,10 @@ public class ServiceRequestServiceImpl implements ServiceRequestService {
         if (p.getStatus() != ProposalStatus.APPROVED) {
             throw new BusinessException("Proposal must be APPROVED");
         }
+        var existing = srRepo.findFirstByTenantIdAndProposal_Id(tenantId, proposalId);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
         ServiceRequest sr = new ServiceRequest();
         sr.setTenantId(tenantId);
         sr.setProposal(p);

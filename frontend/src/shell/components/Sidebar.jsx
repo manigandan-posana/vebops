@@ -47,6 +47,7 @@ export default function Sidebar({ items = [], open = false, onClose }) {
     if (key.includes("catalog")) return BookOpen;
     if (key.includes("service")) return TicketPlus;
     if (key.includes("job")) return Briefcase;
+    if (key.includes("work order")) return ClipboardList;
     if (key.includes("operations")) return Layers2;
     if (key.includes("subscription")) return CreditCard;
     return Dot;

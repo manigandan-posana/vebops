@@ -12,7 +12,6 @@ public class ProgressRequest {
      */
     public String status;
 
-    @NotNull
     public Long byFeId;
 
     /**

@@ -668,7 +668,7 @@ export const officeApi = baseApi.injectEndpoints({
     woProgress: b.mutation({
       async queryFn ({ id, ...body }, _api, _extra, baseQuery) {
         if (!id) return { error: { status: 0, data: { message: 'id is required' } } }
-        try { requireFields(body, ['status','byFeId']) } catch (e) {
+        try { requireFields(body, ['status']) } catch (e) {
           return { error: { status: 0, data: { message: e.message } } }
         }
         const res = await baseQuery({ url: `/office/wo/${id}/progress`, method: 'POST', body })

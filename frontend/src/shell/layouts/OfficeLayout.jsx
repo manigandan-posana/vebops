@@ -11,7 +11,7 @@ import ProposalHistory from "../../views/office/ProposalHistory";
 import Kits from "../../views/office/Kits";
 import Preview from "../../views/office/Preview";
 import Users from "../../views/office/Users";
-import Operations from "../../views/office/Operations";
+import WorkOrders from "../../views/office/WorkOrders";
 import Company from "../../views/office/Company";
 
 // Define the sidebar navigation items. Inventory and the old Intake page have been
@@ -24,7 +24,7 @@ const items = [
   { to: "/office/proposal-history", label: "Proposal History" },
   { to: "/office/kits", label: "Kits" },
   { to: "/office/company", label: "Company" },
-  { to: "/office/operations", label: "Operations" },
+  { to: "/office/work-orders", label: "Work Orders" },
   { to: "/office/users", label: "Users" },
 ];
 
@@ -55,7 +55,8 @@ export default function OfficeLayout() {
           <Route path="preview" element={<Preview />} />
           <Route path="preview-proforma" element={<Preview />} />
           <Route path="users" element={<Users />} />
-          <Route path="operations" element={<Operations />} />
+          <Route path="work-orders" element={<WorkOrders />} />
+          <Route path="operations" element={<Navigate to="../office/work-orders" replace />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Routes>
       </main>

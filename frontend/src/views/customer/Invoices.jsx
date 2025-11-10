@@ -83,7 +83,7 @@ export default function Invoices(){
                   <td className="py-2 pr-3">{status}</td>
                   <td className="py-2 pr-3">{wan}</td>
                   <td className="py-2 pr-3">
-                    <button className="btn" onClick={()=>onDownload(inv)}>
+                    <button className="btn-secondary" onClick={()=>onDownload(inv)}>
                       Download PDF
                     </button>
                   </td>
