@@ -98,7 +98,13 @@ const handleEnterNavigation = (event) => {
     if (typeof next.select === 'function') next.select()
   } else {
     const submit = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submit) submit.click()
+    if (submit) {
+      submit.click()
+    } else if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit()
+    } else {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    }
   }
 }
 

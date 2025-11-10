@@ -84,6 +84,15 @@ const handleEnterNavigation = (event) => {
     if (focusables[idx + 1].select) {
       focusables[idx + 1].select()
     }
+  } else {
+    const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
+    if (submitBtn) {
+      submitBtn.click()
+    } else if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit()
+    } else {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    }
   } else if (idx === focusables.length - 1) {
     const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
     if (submitBtn) submitBtn.click()
