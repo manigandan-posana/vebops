@@ -175,8 +175,9 @@ export const officeApi = baseApi.injectEndpoints({
     // GET /office/requests?status=&customerId=&page=&size=&sort=
     getServiceRequests: b.query({
       query: (params = {}) => ({ url: '/office/requests', method: 'GET', params }),
-      providesTags: (res) => {
-        const rows = Array.isArray(res?.content) ? res.content : (Array.isArray(res) ? res : [])
+      transformResponse: (res) => normalisePage(res),
+      providesTags: (result) => {
+        const rows = result?.content ?? []
         return rows.length
           ? [...rows.map((sr) => ({ type:'ServiceRequests', id: sr.id })), { type:'ServiceRequests', id:'LIST' }]
           : [{ type:'ServiceRequests', id:'LIST' }]
@@ -214,6 +215,7 @@ export const officeApi = baseApi.injectEndpoints({
     // meta, items and totals objects. Returns the created service entity.
     createService: b.mutation({
       query: (body) => ({ url: '/office/services', method: 'POST', body }),
+      invalidatesTags: [{ type: 'Services', id: 'LIST' }]
     }),
 
     /* -------------------------------- Services (History & Autocomplete) ------------------------------- */
@@ -228,10 +230,10 @@ export const officeApi = baseApi.injectEndpoints({
       query: (params = {}) => ({ url: '/office/services', method: 'GET', params }),
       transformResponse: (res) => normalisePage(res),
       providesTags: (result) => {
-        const rows = result?.content || []
+        const rows = result?.content ?? []
         return rows.length
-          ? [...rows.map((s) => ({ type: 'ServiceRequests', id: s.id })), { type: 'ServiceRequests', id: 'LIST' }]
-          : [{ type: 'ServiceRequests', id: 'LIST' }]
+          ? [...rows.map((s) => ({ type: 'Services', id: s.id })), { type: 'Services', id: 'LIST' }]
+          : [{ type: 'Services', id: 'LIST' }]
       }
     }),
 
@@ -322,7 +324,7 @@ export const officeApi = baseApi.injectEndpoints({
         });
         return res.error ? { error: res.error } : { data: res.data };
       },
-      invalidatesTags: ['Proposals', { type: 'ServiceRequests', id: 'LIST' }]
+      invalidatesTags: ['Proposals', { type: 'Services', id: 'LIST' }]
     }),
 
     /**
@@ -333,7 +335,7 @@ export const officeApi = baseApi.injectEndpoints({
      */
     getService: b.query({
       query: (id) => ({ url: `/office/services/${id}`, method: 'GET' }),
-      providesTags: (_r,_e,id) => [{ type:'ServiceRequests', id }]
+      providesTags: (_r,_e,id) => [{ type:'Services', id }]
     }),
 
     /**
