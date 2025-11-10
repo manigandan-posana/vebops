@@ -362,7 +362,7 @@ public class ServiceController {
             // successfully generated, persist the PDF on disk and record a
             // Document entity with a reference to the stored file instead of
             // embedding the base64 content in the database.
-            byte[] pdfBytes = com.vebops.util.PdfUtil.buildServiceInvoicePdfHtml(saved, metaMap, itemsList, totalsMap, company);
+            byte[] pdfBytes = com.vebops.util.PdfUtil.buildServiceInvoicePdf(saved, metaMap, itemsList, totalsMap, company);
             if (pdfBytes != null && pdfBytes.length > 0) {
                 // Create a new Document entry and persist it to obtain an ID.
                 com.vebops.domain.Document doc = new com.vebops.domain.Document();
@@ -777,7 +777,7 @@ public class ServiceController {
         meta.put("docType", proforma ? "PROFORMA" : "INVOICE");
 
         // Generate PDF from your HTML-based builder (already present in PdfUtil)
-        byte[] pdf = com.vebops.util.PdfUtil.buildServiceInvoicePdfHtml(svc, meta, items, totals, company);
+        byte[] pdf = com.vebops.util.PdfUtil.buildServiceInvoicePdf(svc, meta, items, totals, company);
         if (pdf == null || pdf.length == 0) return null;
 
         if (doc == null) {

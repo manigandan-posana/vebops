@@ -299,12 +299,22 @@ public class PdfUtil {
       detailsPara.add(new com.lowagie.text.Chunk(docDateValue, regularFont));
       rightCell.addElement(detailsPara);
       headerTable.addCell(rightCell);
-      doc.add(headerTable);
-      // Add a subtle horizontal line separator
-      com.lowagie.text.pdf.draw.LineSeparator ls = new com.lowagie.text.pdf.draw.LineSeparator();
-      ls.setLineColor(new java.awt.Color(220,220,220));
-      doc.add(new com.lowagie.text.Chunk(ls));
-      doc.add(new com.lowagie.text.Paragraph("\n"));
+      headerTable.setSpacingAfter(0f);
+      com.lowagie.text.pdf.PdfPCell headerWrapper = new com.lowagie.text.pdf.PdfPCell(headerTable);
+      headerWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      headerWrapper.setPadding(18f);
+      headerWrapper.setBackgroundColor(new java.awt.Color(248, 250, 252));
+      com.lowagie.text.pdf.PdfPTable headerCard = new com.lowagie.text.pdf.PdfPTable(1);
+      headerCard.setWidthPercentage(100);
+      headerCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      headerCard.addCell(headerWrapper);
+      doc.add(headerCard);
+      doc.add(new com.lowagie.text.Paragraph(" "));
+      com.lowagie.text.pdf.draw.LineSeparator accentDivider = new com.lowagie.text.pdf.draw.LineSeparator();
+      accentDivider.setLineColor(new java.awt.Color(226, 232, 240));
+      accentDivider.setLineWidth(1.2f);
+      doc.add(new com.lowagie.text.Chunk(accentDivider));
+      doc.add(new com.lowagie.text.Paragraph(" "));
 
       // -------------------------------------------------------------------------
       // Bill To / Ship To sections
@@ -340,8 +350,16 @@ public class PdfUtil {
       if (svc.getConsigneeGst() != null && !svc.getConsigneeGst().isBlank()) shipPara.add(new com.lowagie.text.Chunk("GSTIN: " + svc.getConsigneeGst() + "\n", regularFont));
       shipCell.addElement(shipPara);
       bcTable.addCell(shipCell);
-      doc.add(bcTable);
-      doc.add(new com.lowagie.text.Paragraph("\n"));
+      com.lowagie.text.pdf.PdfPCell bcWrapper = new com.lowagie.text.pdf.PdfPCell(bcTable);
+      bcWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      bcWrapper.setPadding(16f);
+      bcWrapper.setBackgroundColor(new java.awt.Color(255, 255, 255));
+      com.lowagie.text.pdf.PdfPTable bcCard = new com.lowagie.text.pdf.PdfPTable(1);
+      bcCard.setWidthPercentage(100);
+      bcCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      bcCard.addCell(bcWrapper);
+      doc.add(bcCard);
+      doc.add(new com.lowagie.text.Paragraph(" "));
 
       // -------------------------------------------------------------------------
       // Meta details: 3 columns × 2 rows
@@ -356,8 +374,16 @@ public class PdfUtil {
       metaTable.addCell(metaCell("PO / WO Date", orderDate, smallBold, small));
       metaTable.addCell(metaCell("Delivery Challan No.", dcNo, smallBold, small));
       metaTable.addCell(metaCell("Work Completion Cert No.", wcNo, smallBold, small));
-      doc.add(metaTable);
-      doc.add(new com.lowagie.text.Paragraph("\n"));
+      com.lowagie.text.pdf.PdfPCell metaWrapper = new com.lowagie.text.pdf.PdfPCell(metaTable);
+      metaWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      metaWrapper.setPadding(14f);
+      metaWrapper.setBackgroundColor(new java.awt.Color(248, 250, 252));
+      com.lowagie.text.pdf.PdfPTable metaCard = new com.lowagie.text.pdf.PdfPTable(1);
+      metaCard.setWidthPercentage(100);
+      metaCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      metaCard.addCell(metaWrapper);
+      doc.add(metaCard);
+      doc.add(new com.lowagie.text.Paragraph(" "));
 
       // -------------------------------------------------------------------------
       // Items table: Header row and data rows
@@ -423,27 +449,34 @@ public class PdfUtil {
           itemsTable.addCell(amCell);
         }
       }
-      doc.add(itemsTable);
-      doc.add(new com.lowagie.text.Paragraph("\n"));
+      com.lowagie.text.pdf.PdfPCell itemsWrapper = new com.lowagie.text.pdf.PdfPCell(itemsTable);
+      itemsWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      itemsWrapper.setPadding(12f);
+      itemsWrapper.setBackgroundColor(new java.awt.Color(255, 255, 255));
+      com.lowagie.text.pdf.PdfPTable itemsCard = new com.lowagie.text.pdf.PdfPTable(1);
+      itemsCard.setWidthPercentage(100);
+      itemsCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      itemsCard.addCell(itemsWrapper);
+      doc.add(itemsCard);
+      doc.add(new com.lowagie.text.Paragraph(" "));
 
       // -------------------------------------------------------------------------
       // Totals section: align to the right. We'll build a small table with two
       // columns (label and value). Only display taxes if greater than zero.
       com.lowagie.text.pdf.PdfPTable totalsTable = new com.lowagie.text.pdf.PdfPTable(2);
-      totalsTable.setWidthPercentage(40);
-      totalsTable.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
+      totalsTable.setWidthPercentage(100);
       totalsTable.setWidths(new float[]{2f, 1f});
       // Helper to add a row
       java.util.function.BiConsumer<String,String> addTotalRow = (label, value) -> {
         com.lowagie.text.pdf.PdfPCell l = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(label, boldFont));
         l.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
         l.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
-        l.setPadding(4f);
+        l.setPadding(6f);
         totalsTable.addCell(l);
         com.lowagie.text.pdf.PdfPCell v = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(value, boldFont));
         v.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
         v.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
-        v.setPadding(4f);
+        v.setPadding(6f);
         totalsTable.addCell(v);
       };
       addTotalRow.accept("Subtotal:", invoicemoney(subtotal));
@@ -463,15 +496,24 @@ public class PdfUtil {
       com.lowagie.text.pdf.PdfPCell wordsLabel = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("Amount in words:", boldFont));
       wordsLabel.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
       wordsLabel.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
-      wordsLabel.setPadding(4f);
+      wordsLabel.setPadding(6f);
       totalsTable.addCell(wordsLabel);
       com.lowagie.text.pdf.PdfPCell wordsValue = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(totalInWords, boldFont));
       wordsValue.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
       wordsValue.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
-      wordsValue.setPadding(4f);
+      wordsValue.setPadding(6f);
       totalsTable.addCell(wordsValue);
-      doc.add(totalsTable);
-      doc.add(new com.lowagie.text.Paragraph("\n"));
+      com.lowagie.text.pdf.PdfPCell totalsWrapper = new com.lowagie.text.pdf.PdfPCell(totalsTable);
+      totalsWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      totalsWrapper.setPadding(12f);
+      totalsWrapper.setBackgroundColor(new java.awt.Color(241, 245, 249));
+      com.lowagie.text.pdf.PdfPTable totalsCard = new com.lowagie.text.pdf.PdfPTable(1);
+      totalsCard.setWidthPercentage(45);
+      totalsCard.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
+      totalsCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      totalsCard.addCell(totalsWrapper);
+      doc.add(totalsCard);
+      doc.add(new com.lowagie.text.Paragraph(" "));
 
       // -------------------------------------------------------------------------
       // Bank details, Terms & Conditions, Narration and Summary card
@@ -544,7 +586,15 @@ public class PdfUtil {
       rightFootCell.setBackgroundColor(new java.awt.Color(247,249,255));
       rightFootCell.setPadding(6f);
       footTable.addCell(rightFootCell);
-      doc.add(footTable);
+      com.lowagie.text.pdf.PdfPCell footWrapper = new com.lowagie.text.pdf.PdfPCell(footTable);
+      footWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      footWrapper.setPadding(16f);
+      footWrapper.setBackgroundColor(new java.awt.Color(255, 255, 255));
+      com.lowagie.text.pdf.PdfPTable footCard = new com.lowagie.text.pdf.PdfPTable(1);
+      footCard.setWidthPercentage(100);
+      footCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+      footCard.addCell(footWrapper);
+      doc.add(footCard);
 
       // -------------------------------------------------------------------------
       doc.close();
