@@ -1,32 +1,90 @@
 // src/views/office/Kits.jsx
 //
-// Kit management page backed by the REST API. This page allows back office
-// users to create, edit and delete kits. Kit items are not displayed or
-// managed here; those can be added via proposal flows. Preloaded catalogues
-// and localStorage are no longer used.
+// Material UI version of kit management. Business logic for CRUD operations
+// remains intact while the interface adopts a compact, professional layout with
+// responsive density and keyboard navigation enhancements.
 
 import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useSelector } from 'react-redux'
 import {
-  useGetKitsQuery,
-  useCreateKitMutation,
-  useUpdateKitMutation,
-  useDeleteKitMutation,
-  useBulkCreateKitsMutation
-} from '../../features/office/officeApi'
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  InputAdornment,
+  MenuItem,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography
+} from '@mui/material'
+import { UploadCloud, Search as SearchIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
+import {
+  useBulkCreateKitsMutation,
+  useCreateKitMutation,
+  useDeleteKitMutation,
+  useGetKitsQuery,
+  useUpdateKitMutation
+} from '../../features/office/officeApi'
+
+const shouldFocusOnEnter = (el) => {
+  if (typeof window === 'undefined') return false
+  if (!el) return false
+  const style = window.getComputedStyle(el)
+  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
+}
+
+const handleEnterNavigation = (event) => {
+  if (event.key !== 'Enter' || event.shiftKey) return
+  const target = event.currentTarget
+  const form = target?.form || target?.closest('form')
+  if (!form) return
+  event.preventDefault()
+  const focusables = Array.from(form.querySelectorAll('input, select, textarea, button')).filter((el) => shouldFocusOnEnter(el))
+  const idx = focusables.indexOf(target)
+  if (idx >= 0 && idx < focusables.length - 1) {
+    const next = focusables[idx + 1]
+    next.focus()
+    if (typeof next.select === 'function') next.select()
+  } else {
+    const submit = form.querySelector('button[type="submit"], input[type="submit"]')
+    if (submit) submit.click()
+  }
+}
+
+const fmtINR = (n) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
+    .format(Number.isFinite(+n) ? +n : 0)
+
+const SERVICE_TYPES = [
+  { value: 'SUPPLY', label: 'Supply Only' },
+  { value: 'SUPPLY_INSTALL', label: 'Supply & Install' },
+  { value: 'INSTALL_ONLY', label: 'Install Only' },
+  { value: 'ERECTION', label: 'Erection' }
+]
 
 export default function Kits () {
   const navigate = useNavigate()
-  const tenantId = useSelector((state) => state.auth?.user?.tenantId)
   const { data: kits = [], isLoading } = useGetKitsQuery(undefined)
   const [createKit] = useCreateKitMutation()
   const [updateKit] = useUpdateKitMutation()
   const [deleteKit] = useDeleteKitMutation()
   const [bulkCreateKits] = useBulkCreateKitsMutation()
 
-  const [editing, setEditing] = useState(null) // {id?, name, serviceType, price, description}
+  const [editing, setEditing] = useState(null)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
   const pageSize = 20
@@ -34,11 +92,8 @@ export default function Kits () {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return kits
-    return (kits || []).filter((k) => {
-      return [k.name, k.serviceType, k.price, k.code, k.hsnSac, k.brand].some((v) =>
-        String(v || '').toLowerCase().includes(q)
-      )
-    })
+    return (kits || []).filter((k) => [k.name, k.serviceType, k.price, k.code, k.hsnSac, k.brand]
+      .some((v) => String(v || '').toLowerCase().includes(q)))
   }, [kits, search])
 
   const paged = useMemo(() => {
@@ -50,43 +105,30 @@ export default function Kits () {
 
   const onSave = async () => {
     const form = editing
-    if (!form.name || !form.serviceType) {
+    if (!form?.name || !form?.serviceType) {
       toast.error('Name and service type are required')
       return
     }
     try {
+      const payload = {
+        name: form.name,
+        serviceType: form.serviceType,
+        price: Number(form.price || 0),
+        description: form.description,
+        code: form.code,
+        hsnSac: form.hsnSac,
+        brand: form.brand,
+        voltageKV: form.voltageKV,
+        cores: form.cores,
+        sizeSqmm: form.sizeSqmm ? Number(form.sizeSqmm) : null,
+        category: form.category,
+        material: form.material
+      }
       if (form.id) {
-        await updateKit({
-          id: form.id,
-          name: form.name,
-          serviceType: form.serviceType,
-          price: Number(form.price || 0),
-          description: form.description,
-          code: form.code,
-          hsnSac: form.hsnSac,
-          brand: form.brand,
-          voltageKV: form.voltageKV,
-          cores: form.cores,
-          sizeSqmm: form.sizeSqmm ? Number(form.sizeSqmm) : null,
-          category: form.category,
-          material: form.material
-        }).unwrap()
+        await updateKit({ id: form.id, ...payload }).unwrap()
         toast.success('Kit updated')
       } else {
-        await createKit({
-          name: form.name,
-          serviceType: form.serviceType,
-          price: Number(form.price || 0),
-          description: form.description,
-          code: form.code,
-          hsnSac: form.hsnSac,
-          brand: form.brand,
-          voltageKV: form.voltageKV,
-          cores: form.cores,
-          sizeSqmm: form.sizeSqmm ? Number(form.sizeSqmm) : null,
-          category: form.category,
-          material: form.material
-        }).unwrap()
+        await createKit(payload).unwrap()
         toast.success('Kit created')
       }
       setEditing(null)
@@ -105,213 +147,327 @@ export default function Kits () {
     }
   }
 
-  const fmtINR = (n) =>
-    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(
-      Number.isFinite(+n) ? +n : 0
-    )
+  const handleImport = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const list = JSON.parse(text)
+      if (!Array.isArray(list)) throw new Error('JSON must be an array of kits')
+      const normalised = list.map((item) => {
+        const price = item.price !== undefined && item.price !== null && item.price !== ''
+          ? item.price
+          : item.basePrice !== undefined && item.basePrice !== null && item.basePrice !== ''
+            ? item.basePrice
+            : 0
+        return { ...item, price }
+      })
+      await bulkCreateKits(normalised).unwrap()
+      toast.success('Kits imported')
+    } catch (err) {
+      console.error(err)
+      toast.error('Failed to import kits')
+    }
+    event.target.value = ''
+  }
 
   return (
-    <div className='mx-auto max-w-6xl p-6'>
-      <div className='mb-6 flex items-center justify-between'>
-        <div>
-          <div className='text-xs uppercase tracking-wide text-emerald-700'>VebOps</div>
-          <h1 className='text-2xl font-bold text-slate-800'>Kit Management</h1>
-          <p className='mt-1 text-sm text-slate-600'>Manage kits defined for your organisation.</p>
-        </div>
-        <div className='flex gap-2'>
-          <button onClick={() => navigate('/office/service')} className='rounded-lg border px-3 py-2 text-sm'>← Back</button>
-          <button onClick={() => setEditing({ name: '', serviceType: 'SUPPLY', price: 0, description: '', code: '', hsnSac: '854690', brand: '', voltageKV: '', cores: '', sizeSqmm: '', category: '', material: '' })} className='rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700'>Add Kit</button>
-          <label className='relative inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 cursor-pointer'>
-            Import JSON
-            <input
-              type='file'
-              accept='.json,application/json'
-              onChange={async (e) => {
-                const file = e.target.files?.[0]
-                if (!file) return
-                try {
-                  const text = await file.text()
-                  const list = JSON.parse(text)
-                  if (!Array.isArray(list)) throw new Error('JSON must be an array of kits')
-                  // Normalise imported records. Some catalogues use basePrice instead of price; map it.
-                  const normalised = list.map((it) => {
-                    // Convert basePrice to price if present and price is missing
-                    const price =
-                      it.price !== undefined && it.price !== null && it.price !== ''
-                        ? it.price
-                        : it.basePrice !== undefined && it.basePrice !== null && it.basePrice !== ''
-                          ? it.basePrice
-                          : 0
-                    return { ...it, price }
-                  })
-                  await bulkCreateKits(normalised).unwrap()
-                  toast.success('Kits imported')
-                } catch (err) {
-                  console.error(err)
-                  toast.error('Failed to import kits')
-                }
-                // reset input value so the same file can be selected again
-                e.target.value = ''
-              }}
-              className='absolute inset-0 opacity-0'
-            />
-          </label>
-        </div>
-      </div>
-      <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-        <div className='relative sm:max-w-md'>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder='Search kits…'
-            className='h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-3 pr-3 text-slate-900 placeholder-slate-400 outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100'
-          />
-        </div>
-        <div className='text-sm text-slate-600'>Total kits: <span className='font-medium text-slate-900'>{kits?.length || 0}</span></div>
-      </div>
-      <div className='overflow-x-auto rounded-xl border border-slate-200'>
-        <table className='min-w-full divide-y divide-slate-200'>
-          <thead className='bg-slate-50'>
-            <tr>
-              <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>Code</th>
-              <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>Name</th>
-              <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>HSN</th>
-              <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>Service Type</th>
-              <th className='px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500'>Price</th>
-              <th className='px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500'>Actions</th>
-            </tr>
-          </thead>
-          <tbody className='divide-y divide-slate-100 bg-white'>
-            {paged.map((k) => (
-              <tr key={k.id} className='hover:bg-slate-50'>
-                <td className='px-3 py-2 text-sm text-slate-700'>{k.code}</td>
-                <td className='px-3 py-2 text-sm text-slate-900'>{k.name}</td>
-                <td className='px-3 py-2 text-sm text-slate-700'>{k.hsnSac || '854690'}</td>
-                <td className='px-3 py-2 text-sm text-slate-700'>{k.serviceType}</td>
-                <td className='px-3 py-2 text-right text-sm font-semibold text-slate-900'>{fmtINR(k.price)}</td>
-                <td className='px-3 py-2 text-right'>
-                  <button
-                    type='button'
+    <Box sx={{ bgcolor: 'background.default', minHeight: '100%', py: 3 }}>
+      <Container maxWidth='lg'>
+        <Stack spacing={2.5}>
+          <Card variant='outlined' sx={{ borderRadius: 2 }}>
+            <CardHeader
+              title={<Typography variant='h5' fontWeight={600}>Kit Management</Typography>}
+              subheader={<Typography variant='body2' color='text.secondary'>Manage catalogue items available during service creation.</Typography>}
+              action={(
+                <Stack direction='row' spacing={1}>
+                  <Button variant='outlined' size='small' onClick={() => navigate('/office/service')}>
+                    Back to service
+                  </Button>
+                  <Button
+                    variant='contained'
+                    size='small'
                     onClick={() => setEditing({
-                      id: k.id,
-                      name: k.name,
-                      serviceType: k.serviceType,
-                      price: k.price,
-                      description: k.description,
-                      code: k.code,
-                      hsnSac: k.hsnSac || '854690',
-                      brand: k.brand || '',
-                      voltageKV: k.voltageKV || '',
-                      cores: k.cores || '',
-                      sizeSqmm: k.sizeSqmm || '',
-                      category: k.category || '',
-                      material: k.material || ''
+                      name: '',
+                      serviceType: 'SUPPLY',
+                      price: 0,
+                      description: '',
+                      code: '',
+                      hsnSac: '854690',
+                      brand: '',
+                      voltageKV: '',
+                      cores: '',
+                      sizeSqmm: '',
+                      category: '',
+                      material: ''
                     })}
-                    className='mr-2 rounded-lg border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50'
-                  >Edit</button>
-                  <button
-                    type='button'
-                    onClick={() => onDelete(k.id)}
-                    className='rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50'
-                  >Delete</button>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && !isLoading && (
-              <tr><td colSpan={6} className='px-3 py-6 text-center text-sm text-slate-500'>No kits found</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {/* Pagination */}
-      <div className='mt-4 flex items-center justify-between'>
-        <div className='text-sm text-slate-600'>Page {page + 1} of {totalPages}</div>
-        <div className='flex gap-2'>
-          <button
-            disabled={page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className={`rounded-lg border px-3 py-1 text-sm ${page === 0 ? 'text-slate-400 border-slate-200' : 'text-slate-700 border-slate-300 hover:bg-slate-50'}`}
-          >Previous</button>
-          <button
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            className={`rounded-lg border px-3 py-1 text-sm ${page >= totalPages - 1 ? 'text-slate-400 border-slate-200' : 'text-slate-700 border-slate-300 hover:bg-slate-50'}`}
-          >Next</button>
-        </div>
-      </div>
-      {/* Modal */}
-      {editing && (
-        <div className='fixed inset-0 z-40 bg-black/50 flex items-start justify-center p-4'>
-          <div className='w-full max-w-md rounded-xl bg-white shadow-lg border border-slate-200 overflow-hidden'>
-            <div className='px-4 py-3 border-b border-slate-200 flex items-center justify-between'>
-              <h2 className='text-lg font-semibold'>{editing.id ? 'Edit Kit' : 'Add Kit'}</h2>
-              <button onClick={() => setEditing(null)} className='text-slate-500 hover:text-slate-700'>&times;</button>
-            </div>
-            <div className='p-4 flex flex-col gap-4'>
-              <label className='flex flex-col gap-1'>
-                <span className='text-sm font-medium text-slate-700'>Code</span>
-                <input value={editing.code} onChange={(e) => setEditing((f) => ({ ...f, code: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-sm font-medium text-slate-700'>HSN/SAC</span>
-                <input value={editing.hsnSac} onChange={(e) => setEditing((f) => ({ ...f, hsnSac: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-sm font-medium text-slate-700'>Name</span>
-                <input value={editing.name} onChange={(e) => setEditing((f) => ({ ...f, name: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-sm font-medium text-slate-700'>Service Type</span>
-                <select value={editing.serviceType} onChange={(e) => setEditing((f) => ({ ...f, serviceType: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100'>
-                  <option value='SUPPLY'>Supply Only</option>
-                  <option value='SUPPLY_INSTALL'>Supply &amp; Install</option>
-                  <option value='INSTALL_ONLY'>Install Only</option>
-                  <option value='ERECTION'>Erection</option>
-                </select>
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-sm font-medium text-slate-700'>Price (INR)</span>
-                <input type='number' value={editing.price} onChange={(e) => setEditing((f) => ({ ...f, price: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-              </label>
-              <label className='flex flex-col gap-1'>
-                <span className='text-sm font-medium text-slate-700'>Description</span>
-                <textarea value={editing.description || ''} onChange={(e) => setEditing((f) => ({ ...f, description: e.target.value }))} className='rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' rows={3} />
-              </label>
+                  >
+                    Add kit
+                  </Button>
+                  <Button
+                    variant='outlined'
+                    size='small'
+                    startIcon={<UploadCloud size={16} />}
+                    component='label'
+                  >
+                    Import JSON
+                    <input type='file' accept='.json,application/json' hidden onChange={handleImport} />
+                  </Button>
+                </Stack>
+              )}
+            />
+            <CardContent>
+              <Grid container spacing={2} alignItems='center'>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    onKeyDown={handleEnterNavigation}
+                    placeholder='Search kits'
+                    size='small'
+                    fullWidth
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position='start'>
+                          <SearchIcon size={16} />
+                        </InputAdornment>
+                      )
+                    }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6} textAlign={{ xs: 'left', md: 'right' }}>
+                  <Typography variant='body2' color='text.secondary'>Total kits: {kits?.length || 0}</Typography>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
 
-              <div className='grid grid-cols-2 gap-4'>
-                <label className='flex flex-col gap-1'>
-                  <span className='text-sm font-medium text-slate-700'>Brand</span>
-                  <input value={editing.brand} onChange={(e) => setEditing((f) => ({ ...f, brand: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-                </label>
-                <label className='flex flex-col gap-1'>
-                  <span className='text-sm font-medium text-slate-700'>Voltage (kV)</span>
-                  <input value={editing.voltageKV} onChange={(e) => setEditing((f) => ({ ...f, voltageKV: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-                </label>
-                <label className='flex flex-col gap-1'>
-                  <span className='text-sm font-medium text-slate-700'>Cores</span>
-                  <input value={editing.cores} onChange={(e) => setEditing((f) => ({ ...f, cores: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-                </label>
-                <label className='flex flex-col gap-1'>
-                  <span className='text-sm font-medium text-slate-700'>Size (sqmm)</span>
-                  <input type='number' value={editing.sizeSqmm} onChange={(e) => setEditing((f) => ({ ...f, sizeSqmm: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-                </label>
-                <label className='flex flex-col gap-1'>
-                  <span className='text-sm font-medium text-slate-700'>Category</span>
-                  <input value={editing.category} onChange={(e) => setEditing((f) => ({ ...f, category: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-                </label>
-                <label className='flex flex-col gap-1'>
-                  <span className='text-sm font-medium text-slate-700'>Material</span>
-                  <input value={editing.material} onChange={(e) => setEditing((f) => ({ ...f, material: e.target.value }))} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100' />
-                </label>
-              </div>
-            </div>
-            <div className='px-4 py-3 border-t border-slate-200 flex justify-end gap-2'>
-              <button onClick={() => setEditing(null)} className='rounded-lg border px-4 py-2 text-slate-700 hover:bg-slate-50'>Cancel</button>
-              <button onClick={onSave} className='rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700'>Save</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+          <Card variant='outlined' sx={{ borderRadius: 2 }}>
+            <CardContent>
+              <TableContainer>
+                <Table size='small'>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell width='12%'>Code</TableCell>
+                      <TableCell>Name</TableCell>
+                      <TableCell width='12%'>HSN/SAC</TableCell>
+                      <TableCell width='14%'>Service type</TableCell>
+                      <TableCell align='right' width='14%'>Price</TableCell>
+                      <TableCell align='right' width='16%'>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {paged.map((kit) => (
+                      <TableRow hover key={kit.id}>
+                        <TableCell><Typography variant='body2'>{kit.code}</Typography></TableCell>
+                        <TableCell><Typography variant='body2' fontWeight={600}>{kit.name}</Typography></TableCell>
+                        <TableCell><Typography variant='body2'>{kit.hsnSac || '854690'}</Typography></TableCell>
+                        <TableCell><Typography variant='body2'>{kit.serviceType}</Typography></TableCell>
+                        <TableCell align='right'><Typography variant='body2' fontWeight={600}>{fmtINR(kit.price)}</Typography></TableCell>
+                        <TableCell align='right'>
+                          <Stack direction='row' spacing={1} justifyContent='flex-end'>
+                            <Button
+                              size='small'
+                              variant='outlined'
+                              onClick={() => setEditing({
+                                id: kit.id,
+                                name: kit.name,
+                                serviceType: kit.serviceType,
+                                price: kit.price,
+                                description: kit.description,
+                                code: kit.code,
+                                hsnSac: kit.hsnSac || '854690',
+                                brand: kit.brand || '',
+                                voltageKV: kit.voltageKV || '',
+                                cores: kit.cores || '',
+                                sizeSqmm: kit.sizeSqmm || '',
+                                category: kit.category || '',
+                                material: kit.material || ''
+                              })}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              size='small'
+                              variant='outlined'
+                              color='error'
+                              onClick={() => onDelete(kit.id)}
+                            >
+                              Delete
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {filtered.length === 0 && !isLoading && (
+                      <TableRow>
+                        <TableCell colSpan={6} align='center'>
+                          <Typography variant='body2' color='text.secondary'>No kits found.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent='space-between' alignItems={{ xs: 'flex-start', sm: 'center' }} mt={2}>
+                <Typography variant='body2' color='text.secondary'>Page {page + 1} of {totalPages}</Typography>
+                <Stack direction='row' spacing={1}>
+                  <Button size='small' variant='outlined' disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</Button>
+                  <Button size='small' variant='outlined' disabled={page >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}>Next</Button>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Stack>
+      </Container>
+
+      <Dialog open={Boolean(editing)} onClose={() => setEditing(null)} maxWidth='sm' fullWidth>
+        <DialogTitle>{editing?.id ? 'Edit kit' : 'Add kit'}</DialogTitle>
+        <DialogContent dividers>
+          {editing && (
+            <Stack spacing={2} component='form'>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='Code'
+                    value={editing.code}
+                    onChange={(event) => setEditing((f) => ({ ...f, code: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='HSN / SAC'
+                    value={editing.hsnSac}
+                    onChange={(event) => setEditing((f) => ({ ...f, hsnSac: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label='Name'
+                    value={editing.name}
+                    onChange={(event) => setEditing((f) => ({ ...f, name: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    select
+                    label='Service type'
+                    value={editing.serviceType}
+                    onChange={(event) => setEditing((f) => ({ ...f, serviceType: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  >
+                    {SERVICE_TYPES.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='Price (₹)'
+                    type='number'
+                    value={editing.price}
+                    onChange={(event) => setEditing((f) => ({ ...f, price: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                    InputProps={{ inputProps: { min: 0, step: 100 } }}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label='Description'
+                    value={editing.description || ''}
+                    onChange={(event) => setEditing((f) => ({ ...f, description: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                    multiline
+                    minRows={3}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='Brand'
+                    value={editing.brand}
+                    onChange={(event) => setEditing((f) => ({ ...f, brand: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='Voltage (kV)'
+                    value={editing.voltageKV}
+                    onChange={(event) => setEditing((f) => ({ ...f, voltageKV: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='Cores'
+                    value={editing.cores}
+                    onChange={(event) => setEditing((f) => ({ ...f, cores: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='Size (sqmm)'
+                    type='number'
+                    value={editing.sizeSqmm}
+                    onChange={(event) => setEditing((f) => ({ ...f, sizeSqmm: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                    InputProps={{ inputProps: { min: 0, step: 1 } }}
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='Category'
+                    value={editing.category}
+                    onChange={(event) => setEditing((f) => ({ ...f, category: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    label='Material'
+                    value={editing.material}
+                    onChange={(event) => setEditing((f) => ({ ...f, material: event.target.value }))}
+                    onKeyDown={handleEnterNavigation}
+                    size='small'
+                    fullWidth
+                  />
+                </Grid>
+              </Grid>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditing(null)} color='inherit'>Cancel</Button>
+          <Button onClick={onSave} variant='contained'>Save</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   )
 }

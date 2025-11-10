@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import { Box, Container, useMediaQuery, useTheme } from "@mui/material";
 import Topbar from "../components/Topbar";
 import Sidebar from "../components/Sidebar";
 import OfficeDashboard from "../../views/office/Dashboard";
-// Note: Intake and Inventory pages have been removed. Import the new Service and Kits pages instead.
 import Service from "../../views/office/Service";
 import ServiceHistory from "../../views/office/ServiceHistory";
 import ServiceDetail from "../../views/office/ServiceDetail";
@@ -14,9 +14,6 @@ import Users from "../../views/office/Users";
 import WorkOrders from "../../views/office/WorkOrders";
 import Company from "../../views/office/Company";
 
-// Define the sidebar navigation items. Inventory and the old Intake page have been
-// removed. A dedicated Service page and Kits management page have been added.
-// Navigation items for the office. Inventory/intake routes have been removed.
 const items = [
   { to: "/office/dashboard", label: "Activity" },
   { to: "/office/service", label: "New Service" },
@@ -28,38 +25,39 @@ const items = [
   { to: "/office/users", label: "Users" },
 ];
 
+const drawerWidth = 280;
+
 export default function OfficeLayout() {
   const [open, setOpen] = useState(false);
+  const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
 
   return (
-    <div className="min-h-screen bg-brand-light">
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
       <Sidebar items={items} open={open} onClose={() => setOpen(false)} />
-      <Topbar onMenuClick={() => setOpen(true)} />
-      <main className="lg:pl-[16rem] border-t lg:border-t-0 lg:border-l border-slate-200">
-        <Routes>
-          <Route path="/" element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<OfficeDashboard />} />
-          {/* Service creation page */}
-          <Route path="service" element={<Service />} />
-          {/* Service history listing */}
-          <Route path="service-history" element={<ServiceHistory />} />
-          {/* Service detail */}
-          <Route path="service-history/:id" element={<ServiceDetail />} />
-          {/* Proposal history */}
-          <Route path="proposal-history" element={<ProposalHistory />} />
-          {/* Kit management page */}
-          <Route path="kits" element={<Kits />} />
-          {/* Company profile page */}
-          <Route path="company" element={<Company />} />
-          {/* Invoice / Proforma preview */}
-          <Route path="preview" element={<Preview />} />
-          <Route path="preview-proforma" element={<Preview />} />
-          <Route path="users" element={<Users />} />
-          <Route path="work-orders" element={<WorkOrders />} />
-          <Route path="operations" element={<Navigate to="../office/work-orders" replace />} />
-          <Route path="*" element={<Navigate to="dashboard" replace />} />
-        </Routes>
-      </main>
-    </div>
+      <Box sx={{ ml: isDesktop ? `${drawerWidth}px` : 0, transition: theme.transitions.create("margin") }}>
+        <Topbar onMenuClick={() => setOpen(true)} />
+        <Box component="main" sx={{ py: 4, px: { xs: 2, sm: 3, lg: 6 } }}>
+          <Container maxWidth="xl" disableGutters>
+            <Routes>
+              <Route path="/" element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<OfficeDashboard />} />
+              <Route path="service" element={<Service />} />
+              <Route path="service-history" element={<ServiceHistory />} />
+              <Route path="service-history/:id" element={<ServiceDetail />} />
+              <Route path="proposal-history" element={<ProposalHistory />} />
+              <Route path="kits" element={<Kits />} />
+              <Route path="company" element={<Company />} />
+              <Route path="preview" element={<Preview />} />
+              <Route path="preview-proforma" element={<Preview />} />
+              <Route path="users" element={<Users />} />
+              <Route path="work-orders" element={<WorkOrders />} />
+              <Route path="operations" element={<Navigate to="../office/work-orders" replace />} />
+              <Route path="*" element={<Navigate to="dashboard" replace />} />
+            </Routes>
+          </Container>
+        </Box>
+      </Box>
+    </Box>
   );
 }
