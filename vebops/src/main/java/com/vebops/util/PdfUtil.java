@@ -149,6 +149,8 @@ public class PdfUtil {
       // Compute totals and prepare derived values. Subtotal is the sum of
       // discounted line amounts.
       java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
+      java.math.BigDecimal grossTotal = java.math.BigDecimal.ZERO;
+      java.math.BigDecimal discountSavings = java.math.BigDecimal.ZERO;
       // Table rows for items will be added later. We'll compute the totals
       // here while iterating through the items list.
       if (items != null) {
@@ -166,10 +168,12 @@ public class PdfUtil {
           if (qty.compareTo(java.math.BigDecimal.ZERO) < 0) qty = java.math.BigDecimal.ZERO;
           if (rate.compareTo(java.math.BigDecimal.ZERO) < 0) rate = java.math.BigDecimal.ZERO;
           java.math.BigDecimal lineBase = rate.multiply(qty);
+          grossTotal = grossTotal.add(lineBase);
           java.math.BigDecimal discounted = lineBase.multiply(java.math.BigDecimal.ONE.subtract(disc.divide(new java.math.BigDecimal("100"))));
           subtotal = subtotal.add(discounted);
         }
       }
+      discountSavings = grossTotal.subtract(subtotal);
       if (discountSavings.compareTo(java.math.BigDecimal.ZERO) < 0) {
         discountSavings = java.math.BigDecimal.ZERO;
       }
@@ -496,6 +500,10 @@ public class PdfUtil {
         v.setPadding(6f);
         totalsTable.addCell(v);
       };
+      if (discountSavings.compareTo(java.math.BigDecimal.ZERO) > 0) {
+        addTotalRow.accept("Items Total:", formatInr(grossTotal));
+        addTotalRow.accept("Discount Savings:", formatInr(discountSavings));
+      }
       addTotalRow.accept("Subtotal:", formatInr(subtotal));
       if (transport.compareTo(java.math.BigDecimal.ZERO) > 0) {
         addTotalRow.accept("Transport:", formatInr(transport));
