@@ -198,8 +198,12 @@ public class WorkOrderServiceImpl implements WorkOrderService {
         // will be thrown and propagated to the caller.
         WOProgressStatus progressStatus = WOProgressStatus.valueOf(status);
         p.setStatus(progressStatus);
-        if (byFeId != null) {
-            FieldEngineer fe = feRepo.findById(byFeId).orElse(null);
+        Long progressFeId = byFeId;
+        if (progressFeId == null && wo.getAssignedFE() != null) {
+            progressFeId = wo.getAssignedFE().getId();
+        }
+        if (progressFeId != null) {
+            FieldEngineer fe = feRepo.findById(progressFeId).orElse(null);
             p.setByFE(fe);
         }
         p.setPhotoUrl(photoUrl);

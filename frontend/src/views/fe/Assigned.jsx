@@ -1,30 +1,14 @@
 // views/fe/Assigned.jsx
 import React from 'react'
-import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { useGetAssignedQuery } from '../../features/fe/feApi'
 
-const LS_USER_KEY = 'vebops.user'
-const selectUser = (state) => state?.auth?.user || null
-const readUserFromLS = () => {
-  try { return JSON.parse(localStorage.getItem(LS_USER_KEY) || 'null') } catch { return null }
-}
-
 export default function Assigned(){
-  const reduxUser = useSelector(selectUser)
-  const lsUser = !reduxUser ? readUserFromLS() : null
-  const user = reduxUser || lsUser
-  const feId = user?.feId ?? user?.id
-
-  const { data = [], isFetching } = useGetAssignedQuery({ feId }, { skip: !feId })
+  const { data = [], isFetching } = useGetAssignedQuery()
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Assigned Work Orders</h1>
-
-      {!feId && (
-        <div className="alert">Couldn’t determine Field Engineer ID from your session.</div>
-      )}
 
       <div className="card overflow-x-auto">
         <table className="table">
@@ -61,7 +45,7 @@ export default function Assigned(){
                   <td className="td">{status}</td>
                   <td className="td">
                     {w.id ? (
-                      <Link className="btn" to={`/fe/job/${w.id}`}>Open</Link>
+                      <Link className="btn-primary" to={`/fe/job/${w.id}`}>Open</Link>
                     ) : (
                       <span className="text-gray-400">N/A</span>
                     )}

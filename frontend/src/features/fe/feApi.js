@@ -4,12 +4,12 @@ import { requireFields } from '../../api/error'
 
 export const feApi = baseApi.injectEndpoints({
   endpoints: (b) => ({
-    // expects { feId }
+    // accepts optional { feId }; when omitted the backend resolves from the session
     getAssigned: b.query({
-      query: ({ feId }) => ({
+      query: ({ feId } = {}) => ({
         url: '/fe/assigned',
         method: 'GET',
-        params: { feId }
+        params: feId ? { feId } : undefined
       }),
       // Backend returns bare List<WorkOrder>; normalize to array
       transformResponse: (res) =>
@@ -28,7 +28,7 @@ export const feApi = baseApi.injectEndpoints({
       async queryFn (payload, _api, _extra, baseQuery) {
         const { woId, status, byFeId, remarks, photoUrl } = payload || {}
         try {
-          requireFields({ woId, status, byFeId }, ['woId', 'status', 'byFeId'])
+          requireFields({ woId, status }, ['woId', 'status'])
         } catch (e) {
           return { error: { status: 0, data: { message: e.message } } }
         }
@@ -37,7 +37,7 @@ export const feApi = baseApi.injectEndpoints({
           method: 'POST',
           body: {
             status,
-            byFeId,
+            byFeId: byFeId || undefined,
             remarks: remarks || '',
             photoUrl: photoUrl || null
           }

@@ -1,6 +1,5 @@
 // views/fe/JobDetail.jsx
 import React, { useState } from 'react'
-import { useSelector } from 'react-redux'
 import { useParams } from 'react-router-dom'
 import { Toaster, toast } from 'react-hot-toast'
 import {
@@ -9,6 +8,7 @@ import {
   useGetWorkOrderDetailQuery,
 } from '../../features/fe/feApi'
 import { downloadBlob } from '../../utils/file'
+import { focusNextOnEnter } from '../../utils/formNavigation'
 
 const STEPS = [
   { label: 'Started', value: 'STARTED' },
@@ -17,26 +17,12 @@ const STEPS = [
   { label: 'Completed', value: 'COMPLETED' },
 ]
 
-const selectUser = (state) => state?.auth?.user || null
-const LS_USER_KEY = 'vebops.user'
-const readUserFromLS = () => {
-  try {
-    return JSON.parse(localStorage.getItem(LS_USER_KEY) || 'null')
-  } catch (e) {
-    console.warn('Failed to parse cached user', e)
-    return null
-  }
-}
-
 export default function JobDetail () {
   const { id } = useParams()
-  const reduxUser = useSelector(selectUser)
-  const user = reduxUser || readUserFromLS()
-  const feId = user?.feId ?? user?.id
 
   const { data: detail, isFetching: detailLoading, error: detailError, refetch: refetchDetail } = useGetWorkOrderDetailQuery(
     id,
-    { skip: !id || !feId }
+    { skip: !id }
   )
 
   const workOrder = detail?.workOrder || {}
@@ -54,9 +40,9 @@ export default function JobDetail () {
   const [fetchPdf, { isFetching: isPdfLoading }] = useLazyGetCompletionReportPdfQuery()
 
   async function handlePostProgress () {
-    if (!id || !feId) return
+    if (!id) return
     try {
-      await postProgress({ woId: id, status, byFeId: feId, remarks, photoUrl }).unwrap()
+      await postProgress({ woId: id, status, remarks, photoUrl }).unwrap()
       setRemarks('')
       toast.success('Progress updated')
       refetchDetail()
@@ -79,10 +65,6 @@ export default function JobDetail () {
     <div className='space-y-6'>
       <Toaster />
       <h1 className='text-2xl font-semibold'>Job #{id}</h1>
-
-      {!feId && (
-        <div className='alert'>Couldn’t determine Field Engineer ID from your session.</div>
-      )}
 
       <div className='card p-4 space-y-4'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
@@ -152,7 +134,7 @@ export default function JobDetail () {
       </div>
 
       <div className='card p-4 grid md:grid-cols-2 gap-3'>
-        <select className='input' value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select className='input' value={status} onChange={(e) => setStatus(e.target.value)} onKeyDown={focusNextOnEnter}>
           {STEPS.map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
@@ -165,6 +147,8 @@ export default function JobDetail () {
           placeholder='Photo URL (optional)'
           value={photoUrl}
           onChange={(e) => setPhotoUrl(e.target.value)}
+          onKeyDown={focusNextOnEnter}
+          autoComplete='on'
         />
 
         <input
@@ -172,15 +156,17 @@ export default function JobDetail () {
           placeholder='Remarks (optional)'
           value={remarks}
           onChange={(e) => setRemarks(e.target.value)}
+          onKeyDown={focusNextOnEnter}
+          autoComplete='on'
         />
 
-        <button className='btn md:col-span-2' disabled={isLoading || !feId} onClick={handlePostProgress}>
+        <button className='btn-primary md:col-span-2' disabled={isLoading} onClick={handlePostProgress}>
           {isLoading ? 'Posting…' : 'Post Progress'}
         </button>
       </div>
 
       <div className='card p-4'>
-        <button className='btn' disabled={isPdfLoading} onClick={handleDownload}>
+        <button className='btn-secondary' disabled={isPdfLoading} onClick={handleDownload}>
           {isPdfLoading ? 'Preparing…' : 'Download Completion Report'}
         </button>
       </div>

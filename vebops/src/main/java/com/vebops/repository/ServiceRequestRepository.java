@@ -43,4 +43,13 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
      * @return list of service requests for the customer within the tenant
      */
     List<ServiceRequest> findByTenantIdAndCustomer_Id(Long tenantId, Long customerId);
+
+    /**
+     * Returns the most recent service request created from the given proposal if
+     * one exists.  The combination of tenantId and proposal id is unique because
+     * a proposal can only belong to a single tenant.  Using Optional allows the
+     * service layer to short‑circuit duplicate creation attempts when a proposal
+     * is approved multiple times (for example, due to retries from the UI).
+     */
+    Optional<ServiceRequest> findFirstByTenantIdAndProposal_Id(Long tenantId, Long proposalId);
 }

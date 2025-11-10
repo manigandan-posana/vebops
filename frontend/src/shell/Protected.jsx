@@ -20,7 +20,7 @@ export default function Protected({ roles }){
         <div className="card p-6">
           <h2 className="text-xl font-semibold mb-2">Subscription Inactive</h2>
           <p className="text-slate-600 mb-4">Your tenant subscription is inactive. Please contact your administrator.</p>
-          <a href="/login" className="btn">Back to Login</a>
+        <a href="/login" className="btn-secondary">Back to Login</a>
         </div>
       </div>
     )
