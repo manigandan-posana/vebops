@@ -116,10 +116,10 @@ export default function WorkOrders () {
     [statusFilter]
   )
 
-  const { data: woData, isFetching: woLoading, refetch: refetchWos } = useListWOsQuery(woQueryParams)
+  const { data: woData = { content: [] }, isFetching: woLoading, refetch: refetchWos } = useListWOsQuery(woQueryParams)
   const { data: feData } = useGetFieldEngineersQuery({ status: 'AVAILABLE', size: 100 })
   const { data: srData, isFetching: srLoading, refetch: refetchSrs } = useGetServiceRequestsQuery(srParams)
-  const { data: proposalData, isFetching: proposalLoading, refetch: refetchProposals } = useListProposalsQuery(proposalParams)
+  const { data: proposalData = { content: [] }, isFetching: proposalLoading, refetch: refetchProposals } = useListProposalsQuery(proposalParams)
 
   const [assignWo] = useWoAssignMutation()
   const [completeWo, { isLoading: completing }] = useWoCompleteMutation()
@@ -127,12 +127,7 @@ export default function WorkOrders () {
   const [approveProposal, { isLoading: approving }] = useProposalApproveMutation()
   const [rejectProposal, { isLoading: rejecting }] = useProposalRejectMutation()
 
-  const workOrders = useMemo(() => {
-    if (Array.isArray(woData?.content)) return woData.content;
-    if (Array.isArray(woData?.items)) return woData.items;
-    if (Array.isArray(woData)) return woData;
-    return emptyArray;
-  }, [woData]);
+  const workOrders = useMemo(() => (Array.isArray(woData?.content) ? woData.content : emptyArray), [woData]);
 
   const fieldEngineers = useMemo(() => {
     if (Array.isArray(feData?.content)) return feData.content;
@@ -148,12 +143,7 @@ export default function WorkOrders () {
     return emptyArray;
   }, [srData]);
 
-  const proposals = useMemo(() => {
-    if (Array.isArray(proposalData?.content)) return proposalData.content;
-    if (Array.isArray(proposalData?.items)) return proposalData.items;
-    if (Array.isArray(proposalData)) return proposalData;
-    return emptyArray;
-  }, [proposalData]);
+  const proposals = useMemo(() => (Array.isArray(proposalData?.content) ? proposalData.content : emptyArray), [proposalData]);
 
   const pendingProposals = proposals.filter((p) => p.status === 'SENT')
   const availableFEs = fieldEngineers.filter((fe) => (fe.status ? fe.status === 'AVAILABLE' : true))

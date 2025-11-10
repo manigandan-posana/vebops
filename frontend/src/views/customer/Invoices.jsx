@@ -45,9 +45,9 @@ const statusTone = (status) => {
 
 export default function Invoices () {
   const customerId = useSelector(selectAuth)?.user?.customerId ?? null
-  const { data, error, isLoading } = useGetMyInvoicesQuery(customerId ? { customerId } : undefined)
+  const { data = { content: [] }, error, isLoading } = useGetMyInvoicesQuery(customerId ? { customerId } : undefined)
   const [triggerPdf, pdfState] = useLazyGetInvoicePdfQuery()
-  const invoices = Array.isArray(data?.content) ? data.content : (data?.items || data || [])
+  const invoices = Array.isArray(data?.content) ? data.content : []
 
   const handleDownload = async (inv) => {
     try {

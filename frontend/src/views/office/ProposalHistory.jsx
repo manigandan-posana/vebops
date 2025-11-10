@@ -85,9 +85,9 @@ export default function ProposalHistory () {
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState(20)
   const [page, setPage] = useState(0)
-  const { data: raw = [], isFetching, refetch } = useListProposalsQuery(status === 'ALL' ? {} : { status })
+  const { data = { content: [] }, isFetching, refetch } = useListProposalsQuery(status === 'ALL' ? {} : { status })
 
-  const proposals = Array.isArray(raw) ? raw : (Array.isArray(raw?.content) ? raw.content : [])
+  const proposals = Array.isArray(data?.content) ? data.content : []
 
   useEffect(() => {
     setPage(0)

@@ -64,17 +64,12 @@ const statusTone = (status) => {
 export default function Proposals () {
   const auth = useSelector(selectAuth)
   const customerId = auth?.user?.customerId ?? null
-  const { data, error, isLoading, refetch } = useGetMyProposalsQuery(
+  const { data = { content: [] }, error, isLoading, refetch } = useGetMyProposalsQuery(
     customerId ? { customerId } : undefined,
     { skip: customerId === null }
   )
 
-  const proposals = useMemo(() => {
-    if (Array.isArray(data?.content)) return data.content
-    if (Array.isArray(data)) return data
-    if (Array.isArray(data?.items)) return data.items
-    return []
-  }, [data])
+  const proposals = useMemo(() => (Array.isArray(data?.content) ? data.content : []), [data])
 
   const [downloadLatest] = useCustomerDownloadLatestProposalPdfMutation()
   const [approve, { isLoading: approving }] = useApproveProposalMutation()
