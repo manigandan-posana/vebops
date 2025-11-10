@@ -357,18 +357,19 @@ public class ServiceController {
             }
             // Fetch company details for header (optional)
             com.vebops.domain.CompanyDetails company = companyRepo.findByTenantId(tid).orElse(null);
-            // Build PDF using HTML renderer.  The new helper generates a PDF
-            // from an HTML template that mirrors the Preview.jsx design.  When
-            // successfully generated, persist the PDF on disk and record a
-            // Document entity with a reference to the stored file instead of
-            // embedding the base64 content in the database.
+            // Ensure we have a mutable meta map so we can stamp the desired document type.
+            metaMap = new java.util.LinkedHashMap<>(metaMap);
+            metaMap.putIfAbsent("docType", "INVOICE");
+            // Build PDF using the in-app renderer. When successfully generated, persist the
+            // PDF on disk and record a Document entity with a reference to the stored file
+            // instead of embedding the base64 content in the database.
             byte[] pdfBytes = com.vebops.util.PdfUtil.buildServiceInvoicePdf(saved, metaMap, itemsList, totalsMap, company);
             if (pdfBytes != null && pdfBytes.length > 0) {
                 // Create a new Document entry and persist it to obtain an ID.
                 com.vebops.domain.Document doc = new com.vebops.domain.Document();
                 doc.setTenantId(tid);
                 doc.setKind(com.vebops.domain.enums.DocumentKind.PDF);
-                doc.setEntityType(com.vebops.domain.enums.DocumentEntityType.SR);
+                doc.setEntityType(com.vebops.domain.enums.DocumentEntityType.INVOICE);
                 doc.setEntityId(saved.getId());
                 // Derive a filename from meta (invoiceNo) or default to service‑ID
                 String fileName = null;
@@ -746,13 +747,22 @@ public class ServiceController {
         List<com.vebops.domain.Document> docs;
         if (proforma) {
             docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.PROFORMA, id, tid);
-        } else {
-            docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.SR, id, tid);
             if (docs == null || docs.isEmpty()) {
-                docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.INVOICE, id, tid);
+                docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.SR, id, tid);
+            }
+        } else {
+            docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.INVOICE, id, tid);
+            if (docs == null || docs.isEmpty()) {
+                docs = documentRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.SR, id, tid);
             }
         }
         Document doc = (docs != null && !docs.isEmpty()) ? docs.get(0) : null;
+
+        DocumentEntityType desiredType = proforma ? DocumentEntityType.PROFORMA : DocumentEntityType.INVOICE;
+        if (doc != null && doc.getEntityType() != desiredType) {
+            doc.setEntityType(desiredType);
+            doc = documentRepo.save(doc);
+        }
 
         // 2) if missing or invalid, generate now.  Attempt to load bytes
         // from disk or decode base64.  If successful, return existing doc.
@@ -783,12 +793,12 @@ public class ServiceController {
         if (doc == null) {
             doc = new Document();
             doc.setTenantId(tid);
-            doc.setEntityType(proforma ? DocumentEntityType.PROFORMA : DocumentEntityType.SR);
+            doc.setEntityType(desiredType);
             doc.setEntityId(id);
             doc.setKind(DocumentKind.PDF);
             doc.setUploadedAt(Instant.now());
-        } else if (proforma && doc.getEntityType() != DocumentEntityType.PROFORMA) {
-            doc.setEntityType(DocumentEntityType.PROFORMA);
+        } else if (doc.getEntityType() != desiredType) {
+            doc.setEntityType(desiredType);
         }
         // Determine a filename from meta (invoiceNo or PINV/PINV etc.)
         String fname = computeFileName(meta, id, proforma) + ".pdf";

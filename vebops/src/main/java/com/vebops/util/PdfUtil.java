@@ -115,11 +115,16 @@ public class PdfUtil {
       // proforma number/date is provided in meta then treat the document as a
       // proforma invoice; otherwise fall back to a standard invoice. This is
       // analogous to the docType logic in Preview.jsx.
+      String declaredDocType = "";
       String invoiceNo = "";
       String invoiceDate = "";
       String pinvNo = "";
       String pinvDate = "";
       if (meta != null) {
+        Object docTypeObj = meta.get("docType");
+        if (docTypeObj != null) {
+          declaredDocType = String.valueOf(docTypeObj).trim().toUpperCase();
+        }
         invoiceNo = cleanDocNumber(meta.get("invoiceNo"));
         Object invDateObj = meta.get("invoiceDate");
         if (invDateObj != null) invoiceDate = String.valueOf(invDateObj).trim();
@@ -127,12 +132,18 @@ public class PdfUtil {
         Object pinvDateObj = meta.get("pinvDate");
         if (pinvDateObj != null) pinvDate = String.valueOf(pinvDateObj).trim();
       }
-      boolean isProforma = (!pinvNo.isBlank()) || (!pinvDate.isBlank());
+      boolean explicitProforma = "PROFORMA".equals(declaredDocType) || "PINV".equals(declaredDocType);
+      boolean explicitInvoice = "INVOICE".equals(declaredDocType);
+      boolean isProforma = explicitProforma || (!explicitInvoice && (!pinvNo.isBlank() || !pinvDate.isBlank()));
       String docTitle = isProforma ? "PROFORMA INVOICE" : "INVOICE";
       String docNoLabel = isProforma ? "PINV No." : "Invoice No.";
       String docDateLabel = isProforma ? "PINV Date" : "Date";
-      String docNoValue = isProforma ? (pinvNo.isBlank() ? "—" : pinvNo) : (invoiceNo.isBlank() ? "—" : invoiceNo);
-      String docDateValue = isProforma ? (pinvDate.isBlank() ? "—" : pinvDate) : (invoiceDate.isBlank() ? "—" : invoiceDate);
+      String docNoValue = isProforma
+          ? (!pinvNo.isBlank() ? pinvNo : (!invoiceNo.isBlank() ? invoiceNo : "—"))
+          : (!invoiceNo.isBlank() ? invoiceNo : (!pinvNo.isBlank() ? pinvNo : "—"));
+      String docDateValue = isProforma
+          ? (!pinvDate.isBlank() ? pinvDate : (!invoiceDate.isBlank() ? invoiceDate : "—"))
+          : (!invoiceDate.isBlank() ? invoiceDate : (!pinvDate.isBlank() ? pinvDate : "—"));
 
       // -------------------------------------------------------------------------
       // Compute totals and prepare derived values. Subtotal is the sum of
@@ -161,6 +172,9 @@ public class PdfUtil {
           discountSavings = discountSavings.add(lineBase.subtract(discounted));
         }
       }
+      if (discountSavings.compareTo(java.math.BigDecimal.ZERO) < 0) {
+        discountSavings = java.math.BigDecimal.ZERO;
+      }
       // Extract transport and taxes from totals map. Default to zero when missing.
       java.math.BigDecimal transport = java.math.BigDecimal.ZERO;
       java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
@@ -180,6 +194,9 @@ public class PdfUtil {
         totalInWords = com.vebops.util.Words.inIndianSystem(grand) + " Only";
       } catch(Exception e) {
         totalInWords = "";
+      }
+      if (totalInWords == null || totalInWords.isBlank()) {
+        totalInWords = "Rupees " + invoicemoney(grand) + " Only";
       }
 
       // Determine place of supply. Follow the same precedence as Preview.jsx: first
@@ -390,6 +407,11 @@ public class PdfUtil {
       com.lowagie.text.pdf.PdfPTable itemsTable = new com.lowagie.text.pdf.PdfPTable(6);
       itemsTable.setWidthPercentage(100);
       itemsTable.setWidths(new float[]{2.8f, 1.2f, 0.8f, 1.2f, 1.0f, 1.2f});
+      itemsTable.setHeaderRows(1);
+      itemsTable.setSplitLate(false);
+      itemsTable.setSplitRows(true);
+      itemsTable.setSpacingBefore(4f);
+      itemsTable.setSpacingAfter(8f);
       // Header cells with light background
       String[] headers = { "Item Description", "HSN/SAC", "Qty", "Base Rate", "Discount %", "Amount" };
       for (String h : headers) {
@@ -433,7 +455,7 @@ public class PdfUtil {
           qcell.setPadding(5f);
           itemsTable.addCell(qcell);
           // Base Rate
-          com.lowagie.text.pdf.PdfPCell rcell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(rate.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString(), regularFont));
+          com.lowagie.text.pdf.PdfPCell rcell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(formatInr(rate), regularFont));
           rcell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
           rcell.setPadding(5f);
           itemsTable.addCell(rcell);
@@ -443,7 +465,7 @@ public class PdfUtil {
           discCell.setPadding(5f);
           itemsTable.addCell(discCell);
           // Amount (discounted)
-          com.lowagie.text.pdf.PdfPCell amCell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(discounted.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString(), regularFont));
+          com.lowagie.text.pdf.PdfPCell amCell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(formatInr(discounted), regularFont));
           amCell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
           amCell.setPadding(5f);
           itemsTable.addCell(amCell);
@@ -479,28 +501,28 @@ public class PdfUtil {
         v.setPadding(6f);
         totalsTable.addCell(v);
       };
-      addTotalRow.accept("Subtotal:", invoicemoney(subtotal));
-      addTotalRow.accept("Discount savings:", invoicemoney(discountSavings));
-      addTotalRow.accept("Transport:", invoicemoney(transport));
+      addTotalRow.accept("Subtotal:", formatInr(subtotal));
+      addTotalRow.accept("Discount savings:", formatInr(discountSavings));
+      addTotalRow.accept("Transport:", formatInr(transport));
       if (cgst.compareTo(java.math.BigDecimal.ZERO) > 0) {
-        addTotalRow.accept("CGST:", invoicemoney(cgst));
+        addTotalRow.accept("CGST:", formatInr(cgst));
       }
       if (sgst.compareTo(java.math.BigDecimal.ZERO) > 0) {
-        addTotalRow.accept("SGST:", invoicemoney(sgst));
+        addTotalRow.accept("SGST:", formatInr(sgst));
       }
       if (igst.compareTo(java.math.BigDecimal.ZERO) > 0) {
-        addTotalRow.accept("IGST:", invoicemoney(igst));
+        addTotalRow.accept("IGST:", formatInr(igst));
       }
-      addTotalRow.accept("Grand Total:", invoicemoney(grand));
+      addTotalRow.accept("Grand Total:", formatInr(grand));
       // Add amount in words spanning two columns
       com.lowagie.text.pdf.PdfPCell wordsLabel = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("Amount in words:", boldFont));
       wordsLabel.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
       wordsLabel.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
       wordsLabel.setPadding(6f);
       totalsTable.addCell(wordsLabel);
-      com.lowagie.text.pdf.PdfPCell wordsValue = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(totalInWords, boldFont));
+      com.lowagie.text.pdf.PdfPCell wordsValue = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(totalInWords, regularFont));
       wordsValue.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      wordsValue.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
+      wordsValue.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
       wordsValue.setPadding(6f);
       totalsTable.addCell(wordsValue);
       com.lowagie.text.pdf.PdfPCell totalsWrapper = new com.lowagie.text.pdf.PdfPCell(totalsTable);
@@ -578,9 +600,9 @@ public class PdfUtil {
       // Right column: summary card with Total and Amount Due
       com.lowagie.text.Paragraph rightCard = new com.lowagie.text.Paragraph();
       rightCard.add(new com.lowagie.text.Chunk("Total\n", smallBold));
-      rightCard.add(new com.lowagie.text.Chunk(invoicemoney(grand) + "\n", titleFont));
+      rightCard.add(new com.lowagie.text.Chunk(formatInr(grand) + "\n", titleFont));
       rightCard.add(new com.lowagie.text.Chunk("Amount Due\n", smallBold));
-      rightCard.add(new com.lowagie.text.Chunk(invoicemoney(grand), titleFont));
+      rightCard.add(new com.lowagie.text.Chunk(formatInr(grand), titleFont));
       com.lowagie.text.pdf.PdfPCell rightFootCell = new com.lowagie.text.pdf.PdfPCell(rightCard);
       rightFootCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
       rightFootCell.setBackgroundColor(new java.awt.Color(247,249,255));
@@ -607,6 +629,14 @@ public class PdfUtil {
   private static String safe(String s){ return s==null? "" : s; }
   private static String invoicemoney(BigDecimal v){
     return (v==null? BigDecimal.ZERO : v).setScale(2, RoundingMode.HALF_UP).toPlainString();
+  }
+  private static String formatInr(java.math.BigDecimal value) {
+    java.math.BigDecimal normalized = (value == null ? java.math.BigDecimal.ZERO : value)
+        .setScale(2, java.math.RoundingMode.HALF_UP);
+    java.text.NumberFormat fmt = java.text.NumberFormat.getCurrencyInstance(new Locale("en", "IN"));
+    fmt.setMaximumFractionDigits(2);
+    fmt.setMinimumFractionDigits(2);
+    return fmt.format(normalized);
   }
   private static void addHeader(PdfPTable t, String... cells){
     for(String c: cells){
