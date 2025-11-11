@@ -471,6 +471,11 @@ export default function Service () {
     }
   }
 
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    await handleCreateService()
+  }
+
   const filteredIdx = items
     .map((it, idx) => ({ it, idx }))
     .filter(({ it }) => {
@@ -511,7 +516,7 @@ export default function Service () {
           </Button>
         </Stack>
 
-        <Stack spacing={2.5} component='form' autoComplete='off'>
+        <Stack spacing={2.5} component='form' autoComplete='off' onSubmit={handleSubmit}>
           <Section title='Buyer & Consignee'>
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
@@ -987,7 +992,6 @@ export default function Service () {
                   variant='contained'
                   color='success'
                   disabled={creating}
-                  onClick={handleCreateService}
                 >
                   {creating ? 'Creating…' : 'Create service'}
                 </Button>
