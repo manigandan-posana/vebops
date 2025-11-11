@@ -43,6 +43,7 @@ export default function OfficeLayout() {
               <Route path="/" element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<OfficeDashboard />} />
               <Route path="service" element={<Service />} />
+              <Route path="service/:id" element={<ServiceDetail />} />
               <Route path="service-history" element={<ServiceHistory />} />
               <Route path="service-history/:id" element={<ServiceDetail />} />
               <Route path="proposal-history" element={<ProposalHistory />} />
@@ -53,7 +54,7 @@ export default function OfficeLayout() {
               <Route path="users" element={<Users />} />
               <Route path="work-orders" element={<WorkOrders />} />
               <Route path="operations" element={<Navigate to="../office/work-orders" replace />} />
-              <Route path="*" element={<Navigate to="dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/office/dashboard" replace />} />
             </Routes>
           </Container>
         </Box>

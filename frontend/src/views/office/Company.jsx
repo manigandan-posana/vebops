@@ -23,37 +23,8 @@ import {
 import { UploadCloud } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useGetCompanyQuery, useUpdateCompanyMutation } from '../../features/office/officeApi'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
-const shouldFocusOnEnter = (el) => {
-  if (typeof window === 'undefined') return false
-  if (!el) return false
-  const style = window.getComputedStyle(el)
-  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
-}
-
-const handleEnterNavigation = (event) => {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  const target = event.currentTarget
-  const form = target?.form || target?.closest('form')
-  if (!form) return
-  event.preventDefault()
-  const focusables = Array.from(form.querySelectorAll('input, select, textarea, button')).filter((el) => shouldFocusOnEnter(el))
-  const idx = focusables.indexOf(target)
-  if (idx >= 0 && idx < focusables.length - 1) {
-    const next = focusables[idx + 1]
-    next.focus()
-    if (typeof next.select === 'function') next.select()
-  } else {
-    const submit = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submit) {
-      submit.click()
-    } else if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit()
-    } else {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    }
-  }
-}
 
 export default function Company () {
   const navigate = useNavigate()
@@ -212,7 +183,7 @@ export default function Company () {
                         label='Company name'
                         value={company.name || ''}
                         onChange={onChange('name')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -222,7 +193,7 @@ export default function Company () {
                         label='Website'
                         value={company.website || ''}
                         onChange={onChange('website')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -232,7 +203,7 @@ export default function Company () {
                         label='Phone'
                         value={company.phone || ''}
                         onChange={onChange('phone')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -242,7 +213,7 @@ export default function Company () {
                         label='Email'
                         value={company.email || ''}
                         onChange={onChange('email')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -252,7 +223,7 @@ export default function Company () {
                         label='Address line 1'
                         value={company.addressLines?.[0] || ''}
                         onChange={onAddressChange(0)}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -262,7 +233,7 @@ export default function Company () {
                         label='Address line 2'
                         value={company.addressLines?.[1] || ''}
                         onChange={onAddressChange(1)}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -272,7 +243,7 @@ export default function Company () {
                         label='State'
                         value={company.state || ''}
                         onChange={onChange('state')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -282,7 +253,7 @@ export default function Company () {
                         label='State code'
                         value={company.stateCode || ''}
                         onChange={onChange('stateCode')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -292,7 +263,7 @@ export default function Company () {
                         label='GSTIN'
                         value={company.gstin || ''}
                         onChange={onChange('gstin')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -302,7 +273,7 @@ export default function Company () {
                         label='PAN'
                         value={company.pan || ''}
                         onChange={onChange('pan')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -312,7 +283,7 @@ export default function Company () {
                         label='Bank name'
                         value={company.bankName || ''}
                         onChange={onChange('bankName')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -322,7 +293,7 @@ export default function Company () {
                         label='Account number'
                         value={company.accNo || ''}
                         onChange={onChange('accNo')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -332,7 +303,7 @@ export default function Company () {
                         label='IFSC'
                         value={company.ifsc || ''}
                         onChange={onChange('ifsc')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />
@@ -342,7 +313,7 @@ export default function Company () {
                         label='Branch'
                         value={company.branch || ''}
                         onChange={onChange('branch')}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                         fullWidth
                       />

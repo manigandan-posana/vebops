@@ -12,10 +12,46 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { IndianRupee, Send, Share2, FileDown } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
 import { displayDocNumber } from '../../utils/docNumbers'
+import { buildServiceLineDescriptions } from '../../utils/serviceLineDescriptions'
 // Import the getService hook rather than the paginated getServices hook. This
 // endpoint fetches a single service by ID and returns the raw Service
 // object (with metaJson/itemsJson/totalsJson strings). See officeApi.js.
 import { useGetServiceQuery, useDownloadServiceInvoiceMutation, useSendServiceInvoiceMutation, useShareServiceProposalMutation } from '../../features/office/officeApi'
+
+const parseJson = (value, fallback) => {
+  if (!value) return fallback
+  if (Array.isArray(value) || typeof value === 'object') return value
+  try {
+    return JSON.parse(value)
+  } catch (err) {
+    return fallback
+  }
+}
+
+const firstNonEmpty = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue
+    const str = String(value).trim()
+    if (str) return value
+  }
+  return null
+}
+
+const formatServiceType = (value) => {
+  if (!value) return '—'
+  const str = String(value)
+  if (!str.trim()) return '—'
+  return str
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|\s)\w/g, (match) => match.toUpperCase())
+}
+
+const safeNumber = (value, fallback = 0) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
 
 // Local helper to format currency in Indian Rupees.
 const fmtINR = (n) =>
@@ -122,13 +158,43 @@ export default function ServiceDetail () {
     )
   }
 
-  // Parse JSON fields
-  let meta = {}
-  let items = []
-  let totals = {}
-  try { meta = service.metaJson ? JSON.parse(service.metaJson) : {} } catch (e) { meta = {} }
-  try { items = service.itemsJson ? JSON.parse(service.itemsJson) : [] } catch (e) { items = [] }
-  try { totals = service.totalsJson ? JSON.parse(service.totalsJson) : {} } catch (e) { totals = {} }
+  const meta = parseJson(service?.metaJson, {})
+  const parsedItems = parseJson(service?.itemsJson, [])
+  const items = Array.isArray(parsedItems) ? parsedItems : []
+  const totals = parseJson(service?.totalsJson, {})
+
+  const invoiceNumber = displayDocNumber(firstNonEmpty(
+    meta.invoiceNo,
+    meta.invoiceNumber,
+    meta.invoice,
+    meta.invNo,
+    service?.invoiceNo,
+    service?.invoiceNumber
+  ))
+  const proformaNumber = displayDocNumber(firstNonEmpty(
+    meta.pinvNo,
+    meta.proformaNo,
+    meta.proforma,
+    meta.pinv,
+    service?.pinvNo,
+    service?.pinvNumber
+  ))
+  const invoiceDate = firstNonEmpty(meta.invoiceDate, meta.invoice_date, service?.invoiceDate)
+  const proformaDate = firstNonEmpty(meta.pinvDate, meta.proformaDate, meta.pinv_date)
+  const serviceType = formatServiceType(firstNonEmpty(meta.serviceType, meta.service_type, meta.serviceTypeCode))
+
+  const subtotalValue = firstNonEmpty(totals.subtotal, totals.subTotal, totals.beforeTax, totals.totalBeforeTax)
+  const discountValue = firstNonEmpty(totals.discountSavings, totals.discount, totals.discountAmount, totals.discountValue)
+  const transportValue = firstNonEmpty(totals.transport, totals.transportation, totals.freight, totals.deliveryCharge)
+  const cgstRateValue = firstNonEmpty(totals.cgstRate, totals.cgst_percent)
+  const sgstRateValue = firstNonEmpty(totals.sgstRate, totals.sgst_percent)
+  const igstRateValue = firstNonEmpty(totals.igstRate, totals.igst_percent)
+  const cgstAmountValue = firstNonEmpty(totals.cgst, totals.cgstAmount)
+  const sgstAmountValue = firstNonEmpty(totals.sgst, totals.sgstAmount)
+  const igstAmountValue = firstNonEmpty(totals.igst, totals.igstAmount)
+  const grandTotalValue = firstNonEmpty(totals.grand, totals.total, totals.grandTotal, totals.netTotal)
+  const hasSplitTax = cgstRateValue !== null && cgstRateValue !== undefined
+
   const proposalId = meta?.proposalId || meta?.proposalID || null
   const proposalStatus = meta?.proposalStatus || null
   const proposalLink = proposalId
@@ -226,28 +292,37 @@ export default function ServiceDetail () {
         <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
           <h2 className='mb-4 text-lg font-semibold text-slate-900'>Invoice & Service Info</h2>
           <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
-            <LabeledRow label='Invoice No.' value={displayDocNumber(meta.invoiceNo)} />
-            <LabeledRow label='Invoice Date' value={meta.invoiceDate} />
-            <LabeledRow label='PINV No.' value={displayDocNumber(meta.pinvNo)} />
-            <LabeledRow label='PINV Date' value={meta.pinvDate} />
+            <LabeledRow label='Invoice No.' value={invoiceNumber} />
+            <LabeledRow label='Invoice Date' value={invoiceDate} />
+            <LabeledRow label='PINV No.' value={proformaNumber} />
+            <LabeledRow label='PINV Date' value={proformaDate} />
             <LabeledRow label='Linked Proposal' value={proposalLink} />
             <LabeledRow label='Buyer Order No.' value={meta.buyerOrderNo} />
             <LabeledRow label='Order Date' value={meta.orderDate} />
             <LabeledRow label='Delivery Challan No.' value={meta.dcNo} />
             <LabeledRow label='Work Completion Certificate No.' value={meta.wcNo} />
-            <LabeledRow label='Service Type' value={meta.serviceType} />
+            <LabeledRow label='Service Type' value={serviceType} />
+            <LabeledRow label='Created At' value={service.createdAt ? new Date(service.createdAt).toLocaleString() : '—'} />
           </div>
           {meta.terms && (
             <div className='mt-4'>
               <div className='text-xs font-medium uppercase tracking-wider text-slate-500'>Terms & Conditions</div>
-              <ul className='mt-1 list-inside list-decimal space-y-1 text-sm text-slate-900'>
-                {String(meta.terms)
-                  .split(/\r?\n/)
-                  .filter((l) => l.trim())
-                  .map((l, i) => (
-                    <li key={i}>{l}</li>
+              {Array.isArray(meta.terms) ? (
+                <ul className='mt-1 list-inside list-decimal space-y-1 text-sm text-slate-900'>
+                  {meta.terms.filter((line) => String(line || '').trim()).map((line, index) => (
+                    <li key={index}>{line}</li>
                   ))}
-              </ul>
+                </ul>
+              ) : (
+                <ul className='mt-1 list-inside list-decimal space-y-1 text-sm text-slate-900'>
+                  {String(meta.terms)
+                    .split(/\r?\n/)
+                    .filter((l) => l.trim())
+                    .map((l, i) => (
+                      <li key={i}>{l}</li>
+                    ))}
+                </ul>
+              )}
             </div>
           )}
           {meta.narration && (
@@ -264,6 +339,7 @@ export default function ServiceDetail () {
             <table className='min-w-full divide-y divide-slate-200'>
               <thead className='bg-slate-50'>
                 <tr>
+                  <th className='px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500'>#</th>
                   <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>Description</th>
                   <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>HSN/SAC</th>
                   <th className='px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500'>Base</th>
@@ -275,23 +351,37 @@ export default function ServiceDetail () {
               <tbody className='divide-y divide-slate-100 bg-white'>
                 {(!items || items.length === 0) && (
                   <tr>
-                    <td colSpan={6} className='px-3 py-6 text-center text-sm text-slate-500'>No items recorded.</td>
+                    <td colSpan={7} className='px-3 py-6 text-center text-sm text-slate-500'>No items recorded.</td>
                   </tr>
                 )}
                 {items && items.map((it, idx) => {
-                  const qty = Number(it.qty) || 0
-                  const base = Number(it.basePrice) || 0
-                  const disc = Number(it.discount) || 0
-                  const line = Math.round(base * qty * (1 - disc / 100))
+                  const qty = safeNumber(firstNonEmpty(it.qty, it.quantity, it.qtyOrdered), 0)
+                  const base = safeNumber(firstNonEmpty(it.basePrice, it.unitPrice, it.price, it.rate), 0)
+                  const disc = safeNumber(firstNonEmpty(it.discount, it.discountPercent), 0)
+                  const explicitLine = safeNumber(firstNonEmpty(it.lineTotal, it.total, it.amount), null)
+                  const line = explicitLine !== null ? explicitLine : Math.round(base * qty * (1 - disc / 100))
+                  const itemName = firstNonEmpty(it.name, it.itemName) || '—'
+                  const itemCode = firstNonEmpty(it.code, it.itemCode)
+                  const descriptionLines = buildServiceLineDescriptions(meta.serviceType, it)
                   return (
                     <tr key={idx} className='hover:bg-slate-50'>
+                      <td className='px-3 py-2 text-sm font-semibold text-slate-700 text-center align-top'>{idx + 1}</td>
                       <td className='px-3 py-2 text-sm text-slate-900'>
-                        {it.name || '—'}
-                        {it.code && <div className='mt-1 text-xs text-slate-500'>{it.code}</div>}
+                        <div>{itemName}</div>
+                        {itemCode && (
+                          <div className='mt-1 text-xs text-slate-500'>{itemCode}</div>
+                        )}
+                        {descriptionLines.length > 0 && (
+                          <div className='mt-1 space-y-1 text-xs text-slate-500'>
+                            {descriptionLines.map((line, lineIdx) => (
+                              <div key={lineIdx}>{line}</div>
+                            ))}
+                          </div>
+                        )}
                       </td>
-                      <td className='px-3 py-2 text-sm text-slate-700'>{it.hsnSac}</td>
+                      <td className='px-3 py-2 text-sm text-slate-700'>{firstNonEmpty(it.hsnSac, it.hsn, it.sac)}</td>
                       <td className='px-3 py-2 text-right text-sm font-medium text-slate-900'>{fmtINR(base)}</td>
-                      <td className='px-3 py-2 text-right text-sm text-slate-700'>{qty}</td>
+                      <td className='px-3 py-2 text-right text-sm text-slate-700'>{qty || '—'}</td>
                       <td className='px-3 py-2 text-right text-sm text-slate-700'>{disc || '—'}</td>
                       <td className='px-3 py-2 text-right text-sm font-semibold text-slate-900'>{fmtINR(line)}</td>
                     </tr>
@@ -304,36 +394,44 @@ export default function ServiceDetail () {
           <div className='mt-4 flex flex-col gap-2 text-sm text-slate-700'>
             <div className='flex justify-between'>
               <span>Subtotal</span>
-              <span className='font-semibold text-slate-900'>{fmtINR(totals.subtotal)}</span>
+              <span className='font-semibold text-slate-900'>
+                {fmtINR(subtotalValue)}
+              </span>
             </div>
             <div className='flex justify-between'>
               <span>Discount savings</span>
-              <span className='font-semibold text-slate-900'>{fmtINR(totals.discountSavings)}</span>
+              <span className='font-semibold text-slate-900'>
+                {fmtINR(discountValue)}
+              </span>
             </div>
             <div className='flex justify-between'>
               <span>Transport</span>
-              <span className='font-semibold text-slate-900'>{fmtINR(totals.transport)}</span>
+              <span className='font-semibold text-slate-900'>
+                {fmtINR(transportValue)}
+              </span>
             </div>
-            {totals.cgstRate ? (
+            {hasSplitTax ? (
               <>
                 <div className='flex justify-between'>
-                  <span>CGST {totals.cgstRate}%</span>
-                  <span className='font-semibold text-slate-900'>{fmtINR(totals.cgst)}</span>
+                  <span>CGST {cgstRateValue ?? 0}%</span>
+                  <span className='font-semibold text-slate-900'>{fmtINR(cgstAmountValue)}</span>
                 </div>
                 <div className='flex justify-between'>
-                  <span>SGST {totals.sgstRate}%</span>
-                  <span className='font-semibold text-slate-900'>{fmtINR(totals.sgst)}</span>
+                  <span>SGST {sgstRateValue ?? 0}%</span>
+                  <span className='font-semibold text-slate-900'>{fmtINR(sgstAmountValue)}</span>
                 </div>
               </>
             ) : (
               <div className='flex justify-between'>
-                <span>IGST {totals.igstRate}%</span>
-                <span className='font-semibold text-slate-900'>{fmtINR(totals.igst)}</span>
+                <span>IGST {igstRateValue ?? 0}%</span>
+                <span className='font-semibold text-slate-900'>{fmtINR(igstAmountValue)}</span>
               </div>
             )}
             <div className='flex justify-between text-lg font-bold text-slate-900 mt-2'>
               <span>Total</span>
-              <span className='inline-flex items-center gap-1'><IndianRupee size={18}/> {fmtINR(totals.grand)}</span>
+              <span className='inline-flex items-center gap-1'>
+                <IndianRupee size={18}/> {fmtINR(grandTotalValue)}
+              </span>
             </div>
           </div>
         </div>

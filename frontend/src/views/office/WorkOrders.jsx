@@ -55,6 +55,7 @@ import LaunchRoundedIcon from '@mui/icons-material/LaunchRounded'
 import EventNoteRoundedIcon from '@mui/icons-material/EventNoteRounded'
 import NoteAltRoundedIcon from '@mui/icons-material/NoteAltRounded'
 import { alpha } from '@mui/material/styles'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const STATUS_FILTERS = [
   { value: 'ALL', label: 'All' },
@@ -77,36 +78,6 @@ const srParams = { status: 'NEW', size: 15 }
 const proposalParams = { status: 'SENT', size: 20 }
 const emptyArray = []
 
-const shouldFocusOnEnter = (el) => {
-  if (typeof window === 'undefined') return false
-  if (!el) return false
-  const style = window.getComputedStyle(el)
-  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
-}
-
-const handleEnterNavigation = (event) => {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  const target = event.currentTarget
-  const form = target?.form || target?.closest('form')
-  if (!form) return
-  event.preventDefault()
-  const focusables = Array.from(form.querySelectorAll('input, select, textarea, button')).filter((el) => shouldFocusOnEnter(el))
-  const idx = focusables.indexOf(target)
-  if (idx >= 0 && idx < focusables.length - 1) {
-    const next = focusables[idx + 1]
-    next.focus()
-    if (typeof next.select === 'function') next.select()
-  } else {
-    const submit = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submit) {
-      submit.click()
-    } else if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit()
-    } else {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    }
-  }
-}
 
 export default function WorkOrders () {
   const [statusFilter, setStatusFilter] = useState('NEW')
@@ -512,7 +483,7 @@ function AssignDialog ({ open, onClose, workOrder, engineers, note, onNoteChange
             label='Field engineer'
             value={selectedFe}
             onChange={(event) => setSelectedFe(event.target.value)}
-            onKeyDown={handleEnterNavigation}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
             SelectProps={{ displayEmpty: true }}
           >
@@ -528,7 +499,7 @@ function AssignDialog ({ open, onClose, workOrder, engineers, note, onNoteChange
             placeholder='Optional instructions'
             value={note}
             onChange={(event) => onNoteChange(event.target.value)}
-            onKeyDown={handleEnterNavigation}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
         </Stack>
@@ -565,7 +536,7 @@ function ApproveDialog ({ open, onClose, proposal, poNumber, onPoNumberChange, p
             label='Purchase order number'
             value={poNumber}
             onChange={(event) => onPoNumberChange(event.target.value)}
-            onKeyDown={handleEnterNavigation}
+            onKeyDown={focusNextInputOnEnter}
             placeholder='PO number'
             required
             fullWidth
@@ -574,7 +545,7 @@ function ApproveDialog ({ open, onClose, proposal, poNumber, onPoNumberChange, p
             label='PO document URL (optional)'
             value={poUrl}
             onChange={(event) => onPoUrlChange(event.target.value)}
-            onKeyDown={handleEnterNavigation}
+            onKeyDown={focusNextInputOnEnter}
             placeholder='https://…'
             type='url'
             fullWidth
