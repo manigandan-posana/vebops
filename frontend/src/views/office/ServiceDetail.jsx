@@ -91,41 +91,6 @@ const safeNumber = (value, fallback = 0) => {
   return Number.isFinite(num) ? num : fallback
 }
 
-const parseJson = (value, fallback) => {
-  if (!value) return fallback
-  if (Array.isArray(value) || typeof value === 'object') return value
-  try {
-    return JSON.parse(value)
-  } catch (err) {
-    return fallback
-  }
-}
-
-const firstNonEmpty = (...values) => {
-  for (const value of values) {
-    if (value === null || value === undefined) continue
-    const str = String(value).trim()
-    if (str) return value
-  }
-  return null
-}
-
-const formatServiceType = (value) => {
-  if (!value) return '—'
-  const str = String(value)
-  if (!str.trim()) return '—'
-  return str
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .toLowerCase()
-    .replace(/(^|\s)\w/g, (match) => match.toUpperCase())
-}
-
-const safeNumber = (value, fallback = 0) => {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : fallback
-}
-
 // Local helper to format currency in Indian Rupees.
 const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })

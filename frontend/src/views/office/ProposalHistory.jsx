@@ -43,6 +43,45 @@ const fmtINR = (n) =>
 
 const STATUSES = ['ALL', 'DRAFT', 'SENT', 'APPROVED', 'REJECTED']
 
+const safeNumber = (value) => {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'object') {
+    if ('value' in value) return safeNumber(value.value)
+    if ('amount' in value) return safeNumber(value.amount)
+    if ('total' in value) return safeNumber(value.total)
+    if ('grandTotal' in value) return safeNumber(value.grandTotal)
+    return null
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const cleaned = String(value).replace(/[^0-9.-]/g, '')
+  if (!cleaned) return null
+  const num = Number(cleaned)
+  return Number.isFinite(num) ? num : null
+}
+
+const deriveProposalTotal = (proposal) => {
+  if (!proposal) return null
+  const candidates = [
+    proposal.total,
+    proposal.grandTotal,
+    proposal.netTotal,
+    proposal.netAmount,
+    proposal.amount,
+    proposal.subtotal,
+    proposal.summary?.total,
+    proposal.summary?.grandTotal
+  ]
+  for (const candidate of candidates) {
+    const parsed = safeNumber(candidate)
+    if (parsed !== null) return parsed
+  }
+  const subtotal = safeNumber(proposal.subtotal)
+  const tax = safeNumber(proposal.tax)
+  if (subtotal !== null || tax !== null) {
+    return (subtotal || 0) + (tax || 0)
+  }
+  return null
+}
 
 const statusColor = (status) => {
   const map = {
@@ -249,7 +288,7 @@ export default function ProposalHistory () {
                         const code = `P-${p.id}`
                         const customer = p?.customer?.name || p?.customerName || '—'
                         const statusBadge = p?.status || 'UNKNOWN'
-                        const totalValue = fmtINR(p?.total || p?.grandTotal)
+                        const totalValue = fmtINR(deriveProposalTotal(p))
                         const created = p?.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
                         const poNumber = p?.customerPoNumber || p?.customerPO?.poNumber || '—'
                         const isFocused = selected?.id === p.id
@@ -323,7 +362,7 @@ export default function ProposalHistory () {
               <CardContent>
                 <Grid container spacing={2}>
                   <Detail label='Status' value={selected?.status || '—'} />
-                  <Detail label='Total amount' value={fmtINR(selected?.total || selected?.grandTotal)} />
+                  <Detail label='Total amount' value={fmtINR(deriveProposalTotal(selected))} />
                   <Detail label='Customer PO number' value={selected?.customerPoNumber || selected?.customerPO?.poNumber || '—'} />
                   <Detail
                     label='Last updated'
