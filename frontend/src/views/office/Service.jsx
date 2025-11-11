@@ -74,7 +74,7 @@ const NumberField = ({ value, onChange, min, max, inputProps, onBlur, ...props }
     onChange?.(normalised)
   }
 
-  const handleBlur = (event) => {
+  const handleNumberBlur = (event) => {
     onBlur?.(event)
     const raw = event.target.value
     if (raw === '') {
@@ -95,7 +95,7 @@ const NumberField = ({ value, onChange, min, max, inputProps, onBlur, ...props }
       size='small'
       value={value === null || value === undefined ? '' : value}
       onChange={handleChange}
-      onBlur={handleBlur}
+      onBlur={handleNumberBlur}
       inputMode='decimal'
       inputProps={{ inputMode: 'decimal', pattern: '[0-9.]*', style: { textAlign: 'right' }, ...inputProps }}
       onWheel={(e) => e.currentTarget.blur()}
