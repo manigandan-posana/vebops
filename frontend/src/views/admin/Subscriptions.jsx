@@ -34,37 +34,7 @@ import {
   TextField,
   Typography
 } from '@mui/material'
-
-const shouldFocusOnEnter = (el) => {
-  if (typeof window === 'undefined') return false
-  if (!el) return false
-  const style = window.getComputedStyle(el)
-  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
-}
-
-const handleEnterNavigation = (event) => {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  const target = event.currentTarget
-  const form = target?.form || target?.closest('form')
-  if (!form) return
-  event.preventDefault()
-  const focusables = Array.from(form.querySelectorAll('input, select, textarea, button')).filter((el) => shouldFocusOnEnter(el))
-  const idx = focusables.indexOf(target)
-  if (idx >= 0 && idx < focusables.length - 1) {
-    const next = focusables[idx + 1]
-    next.focus()
-    if (typeof next.select === 'function') next.select()
-  } else {
-    const submit = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submit) {
-      submit.click()
-    } else if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit()
-    } else {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    }
-  }
-}
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const STATUS_OPTIONS = ['ALL', 'ACTIVE', 'INACTIVE', 'EXPIRED']
 
@@ -107,7 +77,7 @@ export default function Subscriptions () {
                     placeholder='Search tenants by name/code/email…'
                     value={q}
                     onChange={(event) => { setPage(0); setQ(event.target.value) }}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />
@@ -117,7 +87,7 @@ export default function Subscriptions () {
                     label='Status'
                     value={subFilter}
                     onChange={(event) => { setPage(0); setSubFilter(event.target.value) }}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     sx={{ minWidth: 140 }}
                   >
                     {STATUS_OPTIONS.map((option) => (
@@ -130,7 +100,7 @@ export default function Subscriptions () {
                     label='Rows'
                     value={size}
                     onChange={(event) => setSize(Number(event.target.value))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     sx={{ minWidth: 120 }}
                   >
                     {[10, 20, 50].map((n) => (
@@ -310,7 +280,7 @@ function SubscriptionEditor ({ tenantId, tenant }) {
             name='startsAt'
             value={form.startsAt}
             onChange={onChange}
-            onKeyDown={handleEnterNavigation}
+            onKeyDown={focusNextInputOnEnter}
             size='small'
             fullWidth
             InputLabelProps={{ shrink: true }}
@@ -321,7 +291,7 @@ function SubscriptionEditor ({ tenantId, tenant }) {
             name='endsAt'
             value={form.endsAt}
             onChange={onChange}
-            onKeyDown={handleEnterNavigation}
+            onKeyDown={focusNextInputOnEnter}
             size='small'
             fullWidth
             InputLabelProps={{ shrink: true }}
@@ -332,7 +302,7 @@ function SubscriptionEditor ({ tenantId, tenant }) {
             name='status'
             value={form.status}
             onChange={onChange}
-            onKeyDown={handleEnterNavigation}
+            onKeyDown={focusNextInputOnEnter}
             size='small'
             fullWidth
           >

@@ -32,7 +32,7 @@ import {
   useGetWorkOrderDetailQuery
 } from '../../features/fe/feApi'
 import { downloadBlob } from '../../utils/file'
-import { focusNextOnEnter } from '../../utils/formNavigation'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const STEPS = [
   { label: 'Started', value: 'STARTED' },
@@ -247,7 +247,7 @@ export default function JobDetail () {
                   label='Status'
                   value={status}
                   onChange={(event) => setStatus(event.target.value)}
-                  onKeyDown={focusNextOnEnter}
+                  onKeyDown={focusNextInputOnEnter}
                 >
                   {STEPS.map((step) => (
                     <MenuItem key={step.value} value={step.value}>
@@ -263,7 +263,7 @@ export default function JobDetail () {
                   label='Photo URL (optional)'
                   value={photoUrl}
                   onChange={(event) => setPhotoUrl(event.target.value)}
-                  onKeyDown={focusNextOnEnter}
+                  onKeyDown={focusNextInputOnEnter}
                   autoComplete='on'
                 />
               </Grid>
@@ -274,7 +274,7 @@ export default function JobDetail () {
                   label='Remarks (optional)'
                   value={remarks}
                   onChange={(event) => setRemarks(event.target.value)}
-                  onKeyDown={focusNextOnEnter}
+                  onKeyDown={focusNextInputOnEnter}
                   autoComplete='on'
                 />
               </Grid>

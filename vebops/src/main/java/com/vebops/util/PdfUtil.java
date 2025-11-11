@@ -1144,7 +1144,8 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
             if (items != null) {
                 for (java.util.Map<String, Object> it : items) {
                     if (it == null) continue;
-                    String desc = it.get("name") != null ? String.valueOf(it.get("name")) : "";
+                    String itemName = it.get("name") != null ? String.valueOf(it.get("name")) : "";
+                    String customDescription = it.get("description") != null ? String.valueOf(it.get("description")) : "";
                     String hsn = it.get("hsnSac") != null ? String.valueOf(it.get("hsnSac")) : "";
                     java.math.BigDecimal rate = java.math.BigDecimal.ZERO;
                     java.math.BigDecimal qty = java.math.BigDecimal.ONE;
@@ -1163,21 +1164,23 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
                     // Description column: include the item name and a secondary description based on service type
                     String rowDesc = "";
                     String stLower = serviceType != null ? serviceType.toLowerCase() : "";
-                    if (desc != null && !desc.isBlank()) {
+                    if (customDescription != null && !customDescription.isBlank()) {
+                        rowDesc = customDescription;
+                    } else if (itemName != null && !itemName.isBlank()) {
                         if (stLower.contains("installation only")) {
-                            rowDesc = "Installation of " + desc;
+                            rowDesc = "Installation of " + itemName;
                         } else if (stLower.contains("supply with installation")) {
-                            if (desc.toLowerCase().contains("installation")) {
-                                rowDesc = "Installation of " + desc;
+                            if (itemName.toLowerCase().contains("installation")) {
+                                rowDesc = "Installation of " + itemName;
                             } else {
-                                rowDesc = "Supply of " + desc;
+                                rowDesc = "Supply of " + itemName;
                             }
                         } else if (stLower.contains("supply")) {
-                            rowDesc = "Supply of " + desc;
+                            rowDesc = "Supply of " + itemName;
                         }
                     }
                     itemsRows.append("<td>");
-                    itemsRows.append("<div class='item-name'>" + escapeHtml(desc) + "</div>");
+                    itemsRows.append("<div class='item-name'>" + escapeHtml(itemName) + "</div>");
                     if (rowDesc != null && !rowDesc.isBlank()) {
                         itemsRows.append("<div class='item-sub'>" + escapeHtml(rowDesc) + "</div>");
                     }
