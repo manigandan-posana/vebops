@@ -40,6 +40,7 @@ import {
   useGetKitsQuery
 } from '../../features/office/officeApi'
 import { normalizeDocNumber } from '../../utils/docNumbers'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const SERVICE_TYPES = [
   'Installation only',
@@ -63,39 +64,6 @@ const fmtINR = (n) =>
 
 const safeNum = (v, fallback = 0) => (Number.isFinite(+v) ? +v : fallback)
 
-const shouldFocusOnEnter = (el) => {
-  if (typeof window === 'undefined' || !el) return false
-  const style = window.getComputedStyle(el)
-  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
-}
-
-const handleEnterNavigation = (event) => {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  const target = event.currentTarget
-  const form = target?.form || target?.closest('form')
-  if (!form) return
-  event.preventDefault()
-  const focusables = Array.from(
-    form.querySelectorAll('input:not([type="hidden"]), select, textarea, button')
-  ).filter((el) => shouldFocusOnEnter(el))
-  const idx = focusables.indexOf(target)
-  if (idx >= 0 && idx < focusables.length - 1) {
-    focusables[idx + 1].focus()
-    if (typeof focusables[idx + 1].select === 'function') {
-      focusables[idx + 1].select()
-    }
-    return
-  }
-
-  const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
-  if (submitBtn) {
-    submitBtn.click()
-  } else if (typeof form.requestSubmit === 'function') {
-    form.requestSubmit()
-  } else {
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-  }
-}
 
 const NumberField = ({ value, onChange, min, max, step = 1, ...props }) => {
   const handleChange = (event) => {
@@ -122,7 +90,7 @@ const NumberField = ({ value, onChange, min, max, step = 1, ...props }) => {
       onChange={handleChange}
       inputProps={{ min, max, step, style: { textAlign: 'right' } }}
       onWheel={(e) => e.currentTarget.blur()}
-      onKeyDown={handleEnterNavigation}
+      onKeyDown={focusNextInputOnEnter}
       fullWidth
       {...props}
     />
@@ -173,7 +141,7 @@ const KitCatalogue = ({ kits, onAdd, pageSize: initialPageSize = 20 }) => {
         <TextField
           value={q}
           onChange={(event) => setQ(event.target.value)}
-          onKeyDown={handleEnterNavigation}
+          onKeyDown={focusNextInputOnEnter}
           placeholder='Search kits by code or name'
           size='small'
           fullWidth
@@ -191,7 +159,7 @@ const KitCatalogue = ({ kits, onAdd, pageSize: initialPageSize = 20 }) => {
           size='small'
           value={pageSize}
           onChange={(event) => setPageSize(Number(event.target.value))}
-          onKeyDown={handleEnterNavigation}
+          onKeyDown={focusNextInputOnEnter}
           sx={{ minWidth: 120 }}
         >
           {[10, 20, 50, 100].map((n) => (
@@ -471,6 +439,11 @@ export default function Service () {
     }
   }
 
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    await handleCreateService()
+  }
+
   const filteredIdx = items
     .map((it, idx) => ({ it, idx }))
     .filter(({ it }) => {
@@ -511,7 +484,7 @@ export default function Service () {
           </Button>
         </Stack>
 
-        <Stack spacing={2.5} component='form' autoComplete='off'>
+        <Stack spacing={2.5} component='form' autoComplete='off' onSubmit={handleSubmit}>
           <Section title='Buyer & Consignee'>
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
@@ -523,7 +496,7 @@ export default function Service () {
                       onChange={(event) => setBuyer((prev) => ({ ...prev, name: event.target.value }))}
                       onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 150)}
                       onFocus={() => buyerSuggestions?.length && setShowBuyerSuggestions(true)}
-                      onKeyDown={handleEnterNavigation}
+                      onKeyDown={focusNextInputOnEnter}
                       fullWidth
                       size='small'
                     />
@@ -533,14 +506,14 @@ export default function Service () {
                     label='Buyer GSTIN'
                     value={buyer.gst}
                     onChange={(event) => setBuyer((prev) => ({ ...prev, gst: event.target.value.toUpperCase() }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                   <TextField
                     label='Buyer address'
                     value={buyer.address}
                     onChange={(event) => setBuyer((prev) => ({ ...prev, address: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     multiline
                     minRows={2}
@@ -551,7 +524,7 @@ export default function Service () {
                         label='PIN'
                         value={buyer.pin}
                         onChange={(event) => setBuyer((prev) => ({ ...prev, pin: event.target.value }))}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                       />
                     </Grid>
@@ -561,7 +534,7 @@ export default function Service () {
                         label='State'
                         value={buyer.state}
                         onChange={(event) => setBuyer((prev) => ({ ...prev, state: event.target.value }))}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                       >
                         <MenuItem value=''>Select state…</MenuItem>
@@ -575,14 +548,14 @@ export default function Service () {
                     label='Buyer contact'
                     value={buyer.contact}
                     onChange={(event) => setBuyer((prev) => ({ ...prev, contact: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                   <TextField
                     label='Buyer email'
                     value={buyer.email}
                     onChange={(event) => setBuyer((prev) => ({ ...prev, email: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                 </Stack>
@@ -593,21 +566,21 @@ export default function Service () {
                     label='Consignee (Ship To) name'
                     value={consignee.name}
                     onChange={(event) => setConsignee((prev) => ({ ...prev, name: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                   <TextField
                     label='Consignee GSTIN'
                     value={consignee.gst}
                     onChange={(event) => setConsignee((prev) => ({ ...prev, gst: event.target.value.toUpperCase() }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                   <TextField
                     label='Consignee address'
                     value={consignee.address}
                     onChange={(event) => setConsignee((prev) => ({ ...prev, address: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     multiline
                     minRows={2}
@@ -618,7 +591,7 @@ export default function Service () {
                         label='PIN'
                         value={consignee.pin}
                         onChange={(event) => setConsignee((prev) => ({ ...prev, pin: event.target.value }))}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                       />
                     </Grid>
@@ -628,7 +601,7 @@ export default function Service () {
                         label='State'
                         value={consignee.state}
                         onChange={(event) => setConsignee((prev) => ({ ...prev, state: event.target.value }))}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                       >
                         <MenuItem value=''>Select state…</MenuItem>
@@ -650,7 +623,7 @@ export default function Service () {
                   label='Invoice number'
                   value={meta.invoiceNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, invoiceNo: normalizeDocNumber(event.target.value) }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -661,7 +634,7 @@ export default function Service () {
                   type='date'
                   value={meta.invoiceDate}
                   onChange={(event) => setMeta((prev) => ({ ...prev, invoiceDate: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                   InputLabelProps={{ shrink: true }}
@@ -672,7 +645,7 @@ export default function Service () {
                   label='PINV number'
                   value={meta.pinvNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, pinvNo: normalizeDocNumber(event.target.value) }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -683,7 +656,7 @@ export default function Service () {
                   type='date'
                   value={meta.pinvDate}
                   onChange={(event) => setMeta((prev) => ({ ...prev, pinvDate: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                   InputLabelProps={{ shrink: true }}
@@ -694,7 +667,7 @@ export default function Service () {
                   label='Buyer order / PO / WO number'
                   value={meta.buyerOrderNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, buyerOrderNo: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -705,7 +678,7 @@ export default function Service () {
                   type='date'
                   value={meta.orderDate}
                   onChange={(event) => setMeta((prev) => ({ ...prev, orderDate: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                   InputLabelProps={{ shrink: true }}
@@ -716,7 +689,7 @@ export default function Service () {
                   label='Delivery challan number'
                   value={meta.dcNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, dcNo: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -726,7 +699,7 @@ export default function Service () {
                   label='Work completion certificate number'
                   value={meta.wcNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, wcNo: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -737,7 +710,7 @@ export default function Service () {
                   label='Service type'
                   value={meta.serviceType}
                   onChange={(event) => setMeta((prev) => ({ ...prev, serviceType: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 >
@@ -752,7 +725,7 @@ export default function Service () {
                   label='Narration / remarks'
                   value={meta.narration}
                   onChange={(event) => setMeta((prev) => ({ ...prev, narration: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -762,7 +735,7 @@ export default function Service () {
                   label='Terms & conditions (one per line)'
                   value={meta.terms}
                   onChange={(event) => setMeta((prev) => ({ ...prev, terms: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                   multiline
@@ -791,7 +764,7 @@ export default function Service () {
               <TextField
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={handleEnterNavigation}
+                onKeyDown={focusNextInputOnEnter}
                 placeholder='Filter lines by code or description'
                 size='small'
                 InputProps={{
@@ -836,7 +809,7 @@ export default function Service () {
                                 size='small'
                                 value={it.name}
                                 onChange={(event) => updateItem(idx, { name: event.target.value })}
-                                onKeyDown={handleEnterNavigation}
+                                onKeyDown={focusNextInputOnEnter}
                                 placeholder='Service / goods name'
                                 fullWidth
                               />
@@ -844,7 +817,7 @@ export default function Service () {
                                 size='small'
                                 value={it.code}
                                 onChange={(event) => updateItem(idx, { code: event.target.value })}
-                                onKeyDown={handleEnterNavigation}
+                                onKeyDown={focusNextInputOnEnter}
                                 placeholder='Code (optional)'
                                 sx={{ maxWidth: 180 }}
                               />
@@ -855,7 +828,7 @@ export default function Service () {
                               size='small'
                               value={it.hsnSac}
                               onChange={(event) => updateItem(idx, { hsnSac: event.target.value })}
-                              onKeyDown={handleEnterNavigation}
+                              onKeyDown={focusNextInputOnEnter}
                               placeholder='995461'
                               fullWidth
                             />
@@ -919,7 +892,7 @@ export default function Service () {
                     label='Transportation charges (₹)'
                     value={hasTransportLine ? 0 : transport}
                     onChange={(event) => setTransport(Number(event.target.value) || 0)}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     disabled={hasTransportLine}
                     size='small'
                     type='number'
@@ -987,7 +960,6 @@ export default function Service () {
                   variant='contained'
                   color='success'
                   disabled={creating}
-                  onClick={handleCreateService}
                 >
                   {creating ? 'Creating…' : 'Create service'}
                 </Button>

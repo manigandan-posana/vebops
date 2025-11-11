@@ -7,10 +7,10 @@ import { store } from './app/store'
 import App from './shell/App'
 import './index.css'
 import { Toaster } from 'react-hot-toast'
-import { installGlobalEnterNavigation } from './utils/formNavigation'
+import { installGlobalEnterKeyNavigation } from './utils/enterKeyNavigation'
 import theme from './theme'
 
-installGlobalEnterNavigation();
+installGlobalEnterKeyNavigation();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

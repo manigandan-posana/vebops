@@ -40,7 +40,7 @@ import {
   useCustomerDownloadProposalDocumentFileMutation
 } from '../../features/customer/customerApi'
 import { docLabel } from '../../utils/docs'
-import { focusNextOnEnter } from '../../utils/formNavigation'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const selectAuth = (s) => s?.auth || {}
 
@@ -298,7 +298,7 @@ export default function Proposals () {
               label='PO Number'
               value={approveModal.poNumber}
               onChange={(event) => setApproveModal((m) => ({ ...m, poNumber: event.target.value }))}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
               size='small'
             />
@@ -306,7 +306,7 @@ export default function Proposals () {
               label='Note (optional)'
               value={approveModal.note}
               onChange={(event) => setApproveModal((m) => ({ ...m, note: event.target.value }))}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
               size='small'
             />
@@ -352,7 +352,7 @@ export default function Proposals () {
             label='Reason (optional)'
             value={rejectModal.note}
             onChange={(event) => setRejectModal((m) => ({ ...m, note: event.target.value }))}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
             multiline
             minRows={4}
