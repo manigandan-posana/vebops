@@ -7,16 +7,89 @@
 // table of individual line items with totals. The component offers a
 // back link to return to the history list.
 
-import React, { useMemo, useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import React, { useState } from 'react'
+import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom'
 import { IndianRupee, Send, Share2, FileDown } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Chip,
+  CircularProgress,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
+  Grid,
+  Link,
+  Paper,
+  Radio,
+  RadioGroup,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography
+} from '@mui/material'
 import { displayDocNumber } from '../../utils/docNumbers'
 import { buildServiceLineDescriptions } from '../../utils/serviceLineDescriptions'
 // Import the getService hook rather than the paginated getServices hook. This
 // endpoint fetches a single service by ID and returns the raw Service
 // object (with metaJson/itemsJson/totalsJson strings). See officeApi.js.
-import { useGetServiceQuery, useDownloadServiceInvoiceMutation, useSendServiceInvoiceMutation, useShareServiceProposalMutation } from '../../features/office/officeApi'
+import {
+  useGetServiceQuery,
+  useDownloadServiceInvoiceMutation,
+  useSendServiceInvoiceMutation,
+  useShareServiceProposalMutation
+} from '../../features/office/officeApi'
+
+const parseJson = (value, fallback) => {
+  if (!value) return fallback
+  if (Array.isArray(value) || typeof value === 'object') return value
+  try {
+    return JSON.parse(value)
+  } catch (err) {
+    return fallback
+  }
+}
+
+const firstNonEmpty = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue
+    const str = String(value).trim()
+    if (str) return value
+  }
+  return null
+}
+
+const formatServiceType = (value) => {
+  if (!value) return '—'
+  const str = String(value)
+  if (!str.trim()) return '—'
+  return str
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/(^|\s)\w/g, (match) => match.toUpperCase())
+}
+
+const safeNumber = (value, fallback = 0) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
 
 const parseJson = (value, fallback) => {
   if (!value) return fallback
@@ -58,30 +131,32 @@ const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
     .format(Number.isFinite(+n) ? +n : 0)
 
-const describeLineItem = (serviceType, item) => {
-  if (!item) return ''
-  const explicit = firstNonEmpty(item.description, item.details, item.itemDescription)
-  const explicitStr = String(explicit || '').trim()
-  if (explicitStr) return explicitStr
-  const name = String(firstNonEmpty(item.name, item.itemName) || '').trim()
-  if (!name) return ''
-  const st = String(serviceType || '').toLowerCase()
-  if (st.includes('installation only')) return `Installation charges for ${name}`
-  if (st.includes('supply with installation')) {
-    if (/installation/i.test(name)) return `Installation charges for ${name}`
-    return `Supply charges for ${name}`
-  }
-  if (st.includes('supply')) return `Supply charges for ${name}`
-  return ''
-}
+const InfoRow = ({ label, value }) => {
+  const isElement = React.isValidElement(value)
+  const textValue = isElement
+    ? null
+    : (() => {
+        if (value === null || value === undefined) return '—'
+        if (typeof value === 'string') return value.trim() || '—'
+        const str = String(value)
+        return str.trim() ? str : '—'
+      })()
 
-// Simple container for labelled rows
-const LabeledRow = ({ label, value }) => (
-  <div className='flex flex-col gap-0.5'>
-    <span className='text-xs font-medium uppercase tracking-wider text-slate-500'>{label}</span>
-    <span className='text-sm text-slate-900'>{value || '—'}</span>
-  </div>
-)
+  return (
+    <Stack spacing={0.5} alignItems='flex-start'>
+      <Typography variant='caption' color='text.secondary' sx={{ letterSpacing: 0.6 }}>
+        {label}
+      </Typography>
+      {isElement ? (
+        value
+      ) : (
+        <Typography variant='body2' color='text.primary'>
+          {textValue}
+        </Typography>
+      )}
+    </Stack>
+  )
+}
 
 export default function ServiceDetail () {
   const { id } = useParams()
@@ -157,21 +232,39 @@ export default function ServiceDetail () {
 
   if (isFetching) {
     return (
-      <div className='min-h-screen bg-slate-50 p-6 lg:p-10'>
+      <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
         <Toaster />
-        <div className='mx-auto max-w-4xl'>Loading…</div>
-      </div>
+        <Container maxWidth='lg'>
+          <Stack alignItems='center' spacing={2} sx={{ py: 12 }}>
+            <CircularProgress color='primary' />
+            <Typography variant='body2' color='text.secondary'>
+              Loading service details…
+            </Typography>
+          </Stack>
+        </Container>
+      </Box>
     )
   }
+
   if (error || !service) {
     return (
-      <div className='min-h-screen bg-slate-50 p-6 lg:p-10'>
+      <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
         <Toaster />
-        <div className='mx-auto max-w-4xl space-y-4'>
-          <div className='text-xl font-semibold text-red-600'>Service not found</div>
-          <button onClick={() => navigate(-1)} className='rounded-md bg-blue-600 px-4 py-2 text-white'>Go Back</button>
-        </div>
-      </div>
+        <Container maxWidth='md'>
+          <Card>
+            <CardContent>
+              <Stack spacing={3} alignItems='flex-start'>
+                <Alert severity='error' sx={{ width: '100%' }}>
+                  Unable to load this service right now.
+                </Alert>
+                <Button variant='contained' onClick={() => navigate(-1)}>
+                  Go back
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Container>
+      </Box>
     )
   }
 
@@ -216,314 +309,385 @@ export default function ServiceDetail () {
   const proposalStatus = meta?.proposalStatus || null
   const proposalLink = proposalId
     ? (
-        <span className='inline-flex items-center gap-2'>
-          <Link to={`/office/proposal-history?focus=${proposalId}`} className='text-blue-600 hover:underline'>P-{proposalId}</Link>
+        <Stack direction='row' spacing={1} alignItems='center'>
+          <Link component={RouterLink} to={`/office/proposal-history?focus=${proposalId}`} underline='hover'>
+            P-{proposalId}
+          </Link>
           {proposalStatus && (
-            <span className='rounded-full bg-slate-100 px-2 py-0.5 text-[11px] uppercase tracking-wide text-slate-600'>{String(proposalStatus)}</span>
+            <Chip size='small' label={String(proposalStatus)} color='secondary' variant='outlined' sx={{ textTransform: 'uppercase' }} />
           )}
-        </span>
+        </Stack>
       )
-    : '—'
+    : null
 
   return (
-    <div className='min-h-screen bg-slate-50 p-6 lg:p-10'>
+    <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
       <Toaster />
-      <div className='mx-auto max-w-4xl space-y-6'>
-        <div className='flex items-center justify-between'>
-          <h1 className='text-2xl font-semibold text-slate-900'>Service Detail</h1>
-          <Link to='/office/service-history' className='rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black'>
-            Back to History
-          </Link>
-        </div>
-        <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
-          <h2 className='mb-3 text-base font-semibold text-slate-900'>Actions</h2>
-          <div className='flex flex-wrap gap-2'>
-            <button
-              className='inline-flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60'
-              onClick={() => handleDownload('INVOICE')}
-              disabled={!service?.id}
-            >
-              <FileDown size={16} /> Invoice PDF
-            </button>
-            <button
-              className='inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60'
-              onClick={() => handleDownload('PROFORMA')}
-              disabled={!service?.id}
-            >
-              <FileDown size={16} /> Proforma PDF
-            </button>
-            <button
-              className='inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60'
-              onClick={() => openSendModal('INVOICE')}
-              disabled={!service?.id}
-            >
-              <Send size={16} /> Send Invoice
-            </button>
-            <button
-              className='inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60'
-              onClick={() => openSendModal('PROFORMA')}
-              disabled={!service?.id}
-            >
-              <Send size={16} /> Send Proforma
-            </button>
-            <button
-              className='inline-flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60'
-              onClick={() => handleShare('PROFORMA')}
-              disabled={!service?.id || sharingDocType === 'PROFORMA'}
-            >
-              <Share2 size={16} /> {sharingDocType === 'PROFORMA' ? 'Sharing…' : 'Share Proforma to Portal'}
-            </button>
-            <button
-              className='inline-flex items-center gap-1 rounded-lg bg-fuchsia-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-fuchsia-700 disabled:opacity-60'
-              onClick={() => handleShare('INVOICE')}
-              disabled={!service?.id || sharingDocType === 'INVOICE'}
-            >
-              <Share2 size={16} /> {sharingDocType === 'INVOICE' ? 'Sharing…' : 'Share Invoice to Portal'}
-            </button>
-          </div>
-        </div>
-        {/* Buyer & Consignee */}
-        <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
-          <h2 className='mb-4 text-lg font-semibold text-slate-900'>Buyer & Consignee</h2>
-          <div className='grid grid-cols-1 gap-6 sm:grid-cols-2'>
-            <div className='space-y-2'>
-              <div className='font-semibold text-slate-800'>Buyer (Bill To)</div>
-              <LabeledRow label='Name' value={service.buyerName} />
-              <LabeledRow label='GSTIN' value={service.buyerGst} />
-              <LabeledRow label='Contact' value={service.buyerContact} />
-              <LabeledRow label='Address' value={service.buyerAddress} />
-              <LabeledRow label='PIN' value={service.buyerPin} />
-              <LabeledRow label='State' value={service.buyerState} />
-            </div>
-            <div className='space-y-2'>
-              <div className='font-semibold text-slate-800'>Consignee (Ship To)</div>
-              <LabeledRow label='Name' value={service.consigneeName} />
-              <LabeledRow label='GSTIN' value={service.consigneeGst} />
-              <LabeledRow label='Address' value={service.consigneeAddress} />
-              <LabeledRow label='PIN' value={service.consigneePin} />
-              <LabeledRow label='State' value={service.consigneeState} />
-            </div>
-          </div>
-        </div>
-        {/* Invoice Meta */}
-        <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
-          <h2 className='mb-4 text-lg font-semibold text-slate-900'>Invoice & Service Info</h2>
-          <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
-            <LabeledRow label='Invoice No.' value={invoiceNumber} />
-            <LabeledRow label='Invoice Date' value={invoiceDate} />
-            <LabeledRow label='PINV No.' value={proformaNumber} />
-            <LabeledRow label='PINV Date' value={proformaDate} />
-            <LabeledRow label='Linked Proposal' value={proposalLink} />
-            <LabeledRow label='Buyer Order No.' value={meta.buyerOrderNo} />
-            <LabeledRow label='Order Date' value={meta.orderDate} />
-            <LabeledRow label='Delivery Challan No.' value={meta.dcNo} />
-            <LabeledRow label='Work Completion Certificate No.' value={meta.wcNo} />
-            <LabeledRow label='Service Type' value={serviceType} />
-            <LabeledRow label='Created At' value={service.createdAt ? new Date(service.createdAt).toLocaleString() : '—'} />
-          </div>
-          {meta.terms && (
-            <div className='mt-4'>
-              <div className='text-xs font-medium uppercase tracking-wider text-slate-500'>Terms & Conditions</div>
-              {Array.isArray(meta.terms) ? (
-                <ul className='mt-1 list-inside list-decimal space-y-1 text-sm text-slate-900'>
-                  {meta.terms.filter((line) => String(line || '').trim()).map((line, index) => (
-                    <li key={index}>{line}</li>
-                  ))}
-                </ul>
-              ) : (
-                <ul className='mt-1 list-inside list-decimal space-y-1 text-sm text-slate-900'>
-                  {String(meta.terms)
-                    .split(/\r?\n/)
-                    .filter((l) => l.trim())
-                    .map((l, i) => (
-                      <li key={i}>{l}</li>
-                    ))}
-                </ul>
-              )}
-            </div>
-          )}
-          {meta.narration && (
-            <div className='mt-4'>
-              <div className='text-xs font-medium uppercase tracking-wider text-slate-500'>Narration / Remarks</div>
-              <p className='mt-1 text-sm text-slate-900'>{meta.narration}</p>
-            </div>
-          )}
-        </div>
-        {/* Items & Totals */}
-        <div className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
-          <h2 className='mb-4 text-lg font-semibold text-slate-900'>Items / Services</h2>
-          <div className='overflow-x-auto rounded-lg border border-slate-200'>
-            <table className='min-w-full divide-y divide-slate-200'>
-              <thead className='bg-slate-50'>
-                <tr>
-                  <th className='px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500'>#</th>
-                  <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>Description</th>
-                  <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>HSN/SAC</th>
-                  <th className='px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500'>Base</th>
-                  <th className='px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500'>Qty</th>
-                  <th className='px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500'>Disc %</th>
-                  <th className='px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500'>Line</th>
-                </tr>
-              </thead>
-              <tbody className='divide-y divide-slate-100 bg-white'>
-                {(!items || items.length === 0) && (
-                  <tr>
-                    <td colSpan={7} className='px-3 py-6 text-center text-sm text-slate-500'>No items recorded.</td>
-                  </tr>
-                )}
-                {items && items.map((it, idx) => {
-                  const qty = safeNumber(firstNonEmpty(it.qty, it.quantity, it.qtyOrdered), 0)
-                  const base = safeNumber(firstNonEmpty(it.basePrice, it.unitPrice, it.price, it.rate), 0)
-                  const disc = safeNumber(firstNonEmpty(it.discount, it.discountPercent), 0)
-                  const explicitLine = safeNumber(firstNonEmpty(it.lineTotal, it.total, it.amount), null)
-                  const line = explicitLine !== null ? explicitLine : Math.round(base * qty * (1 - disc / 100))
-                  const itemName = firstNonEmpty(it.name, it.itemName) || '—'
-                  const itemCode = firstNonEmpty(it.code, it.itemCode)
-                  const descriptionLines = buildServiceLineDescriptions(meta.serviceType, it)
-                  return (
-                    <tr key={idx} className='hover:bg-slate-50'>
-                      <td className='px-3 py-2 text-sm font-semibold text-slate-700 text-center align-top'>{idx + 1}</td>
-                      <td className='px-3 py-2 text-sm text-slate-900'>
-                        <div>{itemName}</div>
-                        {itemCode && (
-                          <div className='mt-1 text-xs text-slate-500'>{itemCode}</div>
-                        )}
-                        {descriptionLines.length > 0 && (
-                          <div className='mt-1 space-y-1 text-xs text-slate-500'>
-                            {descriptionLines.map((line, lineIdx) => (
-                              <div key={lineIdx}>{line}</div>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td className='px-3 py-2 text-sm text-slate-700'>{firstNonEmpty(it.hsnSac, it.hsn, it.sac)}</td>
-                      <td className='px-3 py-2 text-right text-sm font-medium text-slate-900'>{fmtINR(base)}</td>
-                      <td className='px-3 py-2 text-right text-sm text-slate-700'>{qty || '—'}</td>
-                      <td className='px-3 py-2 text-right text-sm text-slate-700'>{disc || '—'}</td>
-                      <td className='px-3 py-2 text-right text-sm font-semibold text-slate-900'>{fmtINR(line)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          {/* Totals summary */}
-          <div className='mt-4 flex flex-col gap-2 text-sm text-slate-700'>
-            <div className='flex justify-between'>
-              <span>Subtotal</span>
-              <span className='font-semibold text-slate-900'>
-                {fmtINR(subtotalValue)}
-              </span>
-            </div>
-            <div className='flex justify-between'>
-              <span>Discount savings</span>
-              <span className='font-semibold text-slate-900'>
-                {fmtINR(discountValue)}
-              </span>
-            </div>
-            <div className='flex justify-between'>
-              <span>Transport</span>
-              <span className='font-semibold text-slate-900'>
-                {fmtINR(transportValue)}
-              </span>
-            </div>
-            {hasSplitTax ? (
-              <>
-                <div className='flex justify-between'>
-                  <span>CGST {cgstRateValue ?? 0}%</span>
-                  <span className='font-semibold text-slate-900'>{fmtINR(cgstAmountValue)}</span>
-                </div>
-                <div className='flex justify-between'>
-                  <span>SGST {sgstRateValue ?? 0}%</span>
-                  <span className='font-semibold text-slate-900'>{fmtINR(sgstAmountValue)}</span>
-                </div>
-              </>
-            ) : (
-              <div className='flex justify-between'>
-                <span>IGST {igstRateValue ?? 0}%</span>
-                <span className='font-semibold text-slate-900'>{fmtINR(igstAmountValue)}</span>
-              </div>
-            )}
-            <div className='flex justify-between text-lg font-bold text-slate-900 mt-2'>
-              <span>Total</span>
-              <span className='inline-flex items-center gap-1'>
-                <IndianRupee size={18}/> {fmtINR(grandTotalValue)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-      {modal.open && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/40'>
-          <div className='w-[90vw] max-w-md rounded-lg bg-white p-5 shadow-lg'>
-            <h2 className='mb-4 text-lg font-semibold text-slate-900'>Send Document</h2>
-            <div className='mb-4 flex flex-wrap gap-4'>
-              <label className='inline-flex items-center gap-1'>
-                <input
-                  type='radio'
-                  name='sendMethod'
-                  value='email'
-                  checked={modal.method === 'email'}
-                  onChange={() => setModal((m) => ({ ...m, method: 'email' }))}
-                />
-                <span>Email</span>
-              </label>
-              <label className='inline-flex items-center gap-1'>
-                <input
-                  type='radio'
-                  name='sendMethod'
-                  value='whatsapp'
-                  checked={modal.method === 'whatsapp'}
-                  onChange={() => setModal((m) => ({ ...m, method: 'whatsapp' }))}
-                />
-                <span>WhatsApp</span>
-              </label>
-              <label className='inline-flex items-center gap-1'>
-                <input
-                  type='radio'
-                  name='docType'
-                  value='INVOICE'
-                  checked={(modal.docType || 'INVOICE') === 'INVOICE'}
-                  onChange={() => setModal((m) => ({ ...m, docType: 'INVOICE' }))}
-                />
-                <span>Invoice</span>
-              </label>
-              <label className='inline-flex items-center gap-1'>
-                <input
-                  type='radio'
-                  name='docType'
-                  value='PROFORMA'
-                  checked={(modal.docType || 'INVOICE') === 'PROFORMA'}
-                  onChange={() => setModal((m) => ({ ...m, docType: 'PROFORMA' }))}
-                />
-                <span>Proforma</span>
-              </label>
-            </div>
-            <input
-              type='text'
-              className='mb-4 w-full rounded-md border border-slate-300 p-2 text-sm'
-              placeholder={modal.method === 'email' ? 'Customer email' : 'Customer mobile'}
-              value={modal.contact}
-              onChange={(e) => setModal((m) => ({ ...m, contact: e.target.value }))}
+      <Container maxWidth='lg'>
+        <Stack spacing={3}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent='space-between' spacing={2}>
+            <Stack spacing={0.5}>
+              <Typography variant='h4' fontWeight={700} color='text.primary'>
+                Service Detail
+              </Typography>
+              <Typography variant='body2' color='text.secondary'>
+                Review buyer, consignee and invoice level information for this service.
+              </Typography>
+            </Stack>
+            <Button component={RouterLink} to='/office/service-history' variant='outlined'>
+              Back to history
+            </Button>
+          </Stack>
+
+          <Card>
+            <CardHeader
+              title='Quick Actions'
+              subheader='Download or share invoice and proforma documents'
             />
-            <div className='flex justify-end gap-2'>
-              <button
-                className='rounded-md bg-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-300'
-                onClick={closeModal}
+            <CardContent>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} useFlexGap flexWrap='wrap'>
+                <Button
+                  variant='contained'
+                  color='success'
+                  startIcon={<FileDown size={18} />}
+                  onClick={() => handleDownload('INVOICE')}
+                  disabled={!service?.id}
+                >
+                  Invoice PDF
+                </Button>
+                <Button
+                  variant='contained'
+                  color='success'
+                  startIcon={<FileDown size={18} />}
+                  onClick={() => handleDownload('PROFORMA')}
+                  disabled={!service?.id}
+                  sx={{ bgcolor: 'success.dark' }}
+                >
+                  Proforma PDF
+                </Button>
+                <Divider flexItem orientation='vertical' sx={{ display: { xs: 'none', sm: 'block' }, mx: 1 }} />
+                <Button
+                  variant='contained'
+                  color='primary'
+                  startIcon={<Send size={18} />}
+                  onClick={() => openSendModal('INVOICE')}
+                  disabled={!service?.id}
+                >
+                  Send invoice
+                </Button>
+                <Button
+                  variant='contained'
+                  color='primary'
+                  startIcon={<Send size={18} />}
+                  onClick={() => openSendModal('PROFORMA')}
+                  disabled={!service?.id}
+                  sx={{ bgcolor: 'primary.dark' }}
+                >
+                  Send proforma
+                </Button>
+                <Divider flexItem orientation='vertical' sx={{ display: { xs: 'none', sm: 'block' }, mx: 1 }} />
+                <Button
+                  variant='contained'
+                  color='secondary'
+                  startIcon={<Share2 size={18} />}
+                  onClick={() => handleShare('PROFORMA')}
+                  disabled={!service?.id || sharingDocType === 'PROFORMA'}
+                >
+                  {sharingDocType === 'PROFORMA' ? 'Sharing…' : 'Share proforma to portal'}
+                </Button>
+                <Button
+                  variant='contained'
+                  color='secondary'
+                  startIcon={<Share2 size={18} />}
+                  onClick={() => handleShare('INVOICE')}
+                  disabled={!service?.id || sharingDocType === 'INVOICE'}
+                  sx={{ bgcolor: 'secondary.dark' }}
+                >
+                  {sharingDocType === 'INVOICE' ? 'Sharing…' : 'Share invoice to portal'}
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardHeader title='Buyer (Bill To)' subheader={service.buyerName || 'Buyer information'} />
+                <CardContent>
+                  <Stack spacing={2}>
+                    <InfoRow label='GSTIN' value={service.buyerGst} />
+                    <InfoRow label='Contact' value={service.buyerContact} />
+                    <InfoRow label='Address' value={service.buyerAddress} />
+                    <InfoRow label='PIN' value={service.buyerPin} />
+                    <InfoRow label='State' value={service.buyerState} />
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardHeader title='Consignee (Ship To)' subheader={service.consigneeName || 'Consignee information'} />
+                <CardContent>
+                  <Stack spacing={2}>
+                    <InfoRow label='GSTIN' value={service.consigneeGst} />
+                    <InfoRow label='Contact' value={service.consigneeContact} />
+                    <InfoRow label='Address' value={service.consigneeAddress} />
+                    <InfoRow label='PIN' value={service.consigneePin} />
+                    <InfoRow label='State' value={service.consigneeState} />
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          <Card>
+            <CardHeader title='Invoice & Service Information' subheader='Key references and metadata for this service' />
+            <CardContent>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Invoice No.' value={invoiceNumber} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Invoice Date' value={invoiceDate} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Proforma No.' value={proformaNumber} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Proforma Date' value={proformaDate} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Linked Proposal' value={proposalLink} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Buyer Order No.' value={meta.buyerOrderNo} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Order Date' value={meta.orderDate} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Delivery Challan No.' value={meta.dcNo} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Work Completion Certificate No.' value={meta.wcNo} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow label='Service Type' value={serviceType} />
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <InfoRow
+                    label='Created At'
+                    value={service.createdAt ? new Date(service.createdAt).toLocaleString() : null}
+                  />
+                </Grid>
+              </Grid>
+
+              {(meta.terms || meta.narration) && (
+                <Stack spacing={3} sx={{ mt: 4 }}>
+                  {meta.terms && (
+                    <Stack spacing={1}>
+                      <Typography variant='subtitle2' color='text.secondary' sx={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                        Terms & Conditions
+                      </Typography>
+                      <Stack component='ul' spacing={1} sx={{ pl: 2, m: 0 }}>
+                        {(Array.isArray(meta.terms) ? meta.terms : String(meta.terms).split(/\r?\n/))
+                          .map((line) => String(line || '').trim())
+                          .filter(Boolean)
+                          .map((line, index) => (
+                            <Typography component='li' key={index} variant='body2' color='text.primary'>
+                              {line}
+                            </Typography>
+                          ))}
+                      </Stack>
+                    </Stack>
+                  )}
+                  {meta.narration && (
+                    <Stack spacing={1}>
+                      <Typography variant='subtitle2' color='text.secondary' sx={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                        Narration / Remarks
+                      </Typography>
+                      <Typography variant='body2' color='text.primary'>
+                        {meta.narration}
+                      </Typography>
+                    </Stack>
+                  )}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader title='Items & Services' subheader='Line items captured for this service' />
+            <CardContent>
+              <TableContainer component={Paper} variant='outlined' sx={{ borderRadius: 2 }}>
+                <Table size='small'>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell align='center' width={56}>#</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell>HSN/SAC</TableCell>
+                      <TableCell align='right'>Base</TableCell>
+                      <TableCell align='right'>Qty</TableCell>
+                      <TableCell align='right'>Disc %</TableCell>
+                      <TableCell align='right'>Line Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(!items || items.length === 0) && (
+                      <TableRow>
+                        <TableCell colSpan={7} align='center'>
+                          <Typography variant='body2' color='text.secondary'>
+                            No items recorded.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {items && items.map((it, idx) => {
+                      const qty = safeNumber(firstNonEmpty(it.qty, it.quantity, it.qtyOrdered), 0)
+                      const base = safeNumber(firstNonEmpty(it.basePrice, it.unitPrice, it.price, it.rate), 0)
+                      const disc = safeNumber(firstNonEmpty(it.discount, it.discountPercent), 0)
+                      const explicitLine = safeNumber(firstNonEmpty(it.lineTotal, it.total, it.amount), null)
+                      const line = explicitLine !== null ? explicitLine : Math.round(base * qty * (1 - disc / 100))
+                      const itemName = firstNonEmpty(it.name, it.itemName) || '—'
+                      const itemCode = firstNonEmpty(it.code, it.itemCode)
+                      const descriptionLines = buildServiceLineDescriptions(meta.serviceType, it)
+                      return (
+                        <TableRow key={idx} hover>
+                          <TableCell align='center'>
+                            <Typography variant='body2' fontWeight={600}>{idx + 1}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Stack spacing={0.75}>
+                              <Typography variant='subtitle2' color='text.primary'>
+                                {itemName}
+                              </Typography>
+                              {itemCode && (
+                                <Typography variant='caption' color='text.secondary'>
+                                  {itemCode}
+                                </Typography>
+                              )}
+                              {descriptionLines.length > 0 && (
+                                <Stack spacing={0.5}>
+                                  {descriptionLines.map((line, lineIdx) => (
+                                    <Typography key={lineIdx} variant='caption' color='text.secondary'>
+                                      {line}
+                                    </Typography>
+                                  ))}
+                                </Stack>
+                              )}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2'>{firstNonEmpty(it.hsnSac, it.hsn, it.sac) || '—'}</Typography>
+                          </TableCell>
+                          <TableCell align='right'>
+                            <Typography variant='body2' fontWeight={600}>{fmtINR(base)}</Typography>
+                          </TableCell>
+                          <TableCell align='right'>
+                            <Typography variant='body2'>{qty || '—'}</Typography>
+                          </TableCell>
+                          <TableCell align='right'>
+                            <Typography variant='body2'>{disc || '—'}</Typography>
+                          </TableCell>
+                          <TableCell align='right'>
+                            <Typography variant='body2' fontWeight={600}>{fmtINR(line)}</Typography>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Divider sx={{ my: 3 }} />
+
+              <Stack spacing={1.5}>
+                <Stack direction='row' justifyContent='space-between'>
+                  <Typography variant='body2'>Subtotal</Typography>
+                  <Typography variant='body2' fontWeight={600}>{fmtINR(subtotalValue)}</Typography>
+                </Stack>
+                <Stack direction='row' justifyContent='space-between'>
+                  <Typography variant='body2'>Discount savings</Typography>
+                  <Typography variant='body2' fontWeight={600}>{fmtINR(discountValue)}</Typography>
+                </Stack>
+                <Stack direction='row' justifyContent='space-between'>
+                  <Typography variant='body2'>Transport</Typography>
+                  <Typography variant='body2' fontWeight={600}>{fmtINR(transportValue)}</Typography>
+                </Stack>
+                {hasSplitTax ? (
+                  <>
+                    <Stack direction='row' justifyContent='space-between'>
+                      <Typography variant='body2'>CGST {cgstRateValue ?? 0}%</Typography>
+                      <Typography variant='body2' fontWeight={600}>{fmtINR(cgstAmountValue)}</Typography>
+                    </Stack>
+                    <Stack direction='row' justifyContent='space-between'>
+                      <Typography variant='body2'>SGST {sgstRateValue ?? 0}%</Typography>
+                      <Typography variant='body2' fontWeight={600}>{fmtINR(sgstAmountValue)}</Typography>
+                    </Stack>
+                  </>
+                ) : (
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='body2'>IGST {igstRateValue ?? 0}%</Typography>
+                    <Typography variant='body2' fontWeight={600}>{fmtINR(igstAmountValue)}</Typography>
+                  </Stack>
+                )}
+                <Divider sx={{ my: 1.5 }} />
+                <Stack direction='row' justifyContent='space-between' alignItems='center'>
+                  <Typography variant='h6' fontWeight={700}>Total</Typography>
+                  <Stack direction='row' spacing={0.5} alignItems='center'>
+                    <IndianRupee size={18} />
+                    <Typography variant='h6' fontWeight={700}>{fmtINR(grandTotalValue)}</Typography>
+                  </Stack>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Stack>
+      </Container>
+
+      <Dialog open={modal.open} onClose={closeModal} maxWidth='sm' fullWidth>
+        <DialogTitle>Send document</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <FormControl component='fieldset'>
+              <FormLabel component='legend'>Delivery method</FormLabel>
+              <RadioGroup
+                row
+                value={modal.method}
+                onChange={(_, value) => setModal((m) => ({ ...m, method: value }))}
               >
-                Cancel
-              </button>
-              <button
-                className='rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60'
-                disabled={sendState.isLoading}
-                onClick={handleSend}
+                <FormControlLabel value='email' control={<Radio />} label='Email' />
+                <FormControlLabel value='whatsapp' control={<Radio />} label='WhatsApp' />
+              </RadioGroup>
+            </FormControl>
+            <FormControl component='fieldset'>
+              <FormLabel component='legend'>Document</FormLabel>
+              <RadioGroup
+                row
+                value={modal.docType || 'INVOICE'}
+                onChange={(_, value) => setModal((m) => ({ ...m, docType: value }))}
               >
-                {sendState.isLoading ? 'Sending…' : 'Send'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+                <FormControlLabel value='INVOICE' control={<Radio />} label='Invoice' />
+                <FormControlLabel value='PROFORMA' control={<Radio />} label='Proforma' />
+              </RadioGroup>
+            </FormControl>
+            <TextField
+              label={modal.method === 'email' ? 'Customer email' : 'Customer mobile'}
+              value={modal.contact}
+              onChange={(event) => setModal((m) => ({ ...m, contact: event.target.value }))}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeModal} color='inherit'>
+            Cancel
+          </Button>
+          <Button onClick={handleSend} variant='contained' disabled={sendState.isLoading}>
+            {sendState.isLoading ? 'Sending…' : 'Send'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   )
 }
