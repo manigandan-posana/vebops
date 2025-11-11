@@ -39,37 +39,8 @@ import {
   useGetKitsQuery,
   useUpdateKitMutation
 } from '../../features/office/officeApi'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
-const shouldFocusOnEnter = (el) => {
-  if (typeof window === 'undefined') return false
-  if (!el) return false
-  const style = window.getComputedStyle(el)
-  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
-}
-
-const handleEnterNavigation = (event) => {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  const target = event.currentTarget
-  const form = target?.form || target?.closest('form')
-  if (!form) return
-  event.preventDefault()
-  const focusables = Array.from(form.querySelectorAll('input, select, textarea, button')).filter((el) => shouldFocusOnEnter(el))
-  const idx = focusables.indexOf(target)
-  if (idx >= 0 && idx < focusables.length - 1) {
-    const next = focusables[idx + 1]
-    next.focus()
-    if (typeof next.select === 'function') next.select()
-  } else {
-    const submit = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submit) {
-      submit.click()
-    } else if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit()
-    } else {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    }
-  }
-}
 
 const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -228,7 +199,7 @@ export default function Kits () {
                   <TextField
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     placeholder='Search kits'
                     size='small'
                     fullWidth
@@ -339,7 +310,7 @@ export default function Kits () {
                     label='Code'
                     value={editing.code}
                     onChange={(event) => setEditing((f) => ({ ...f, code: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />
@@ -349,7 +320,7 @@ export default function Kits () {
                     label='HSN / SAC'
                     value={editing.hsnSac}
                     onChange={(event) => setEditing((f) => ({ ...f, hsnSac: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />
@@ -359,7 +330,7 @@ export default function Kits () {
                     label='Name'
                     value={editing.name}
                     onChange={(event) => setEditing((f) => ({ ...f, name: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />
@@ -370,7 +341,7 @@ export default function Kits () {
                     label='Service type'
                     value={editing.serviceType}
                     onChange={(event) => setEditing((f) => ({ ...f, serviceType: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   >
@@ -385,7 +356,7 @@ export default function Kits () {
                     type='number'
                     value={editing.price}
                     onChange={(event) => setEditing((f) => ({ ...f, price: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                     InputProps={{ inputProps: { min: 0, step: 100 } }}
@@ -396,7 +367,7 @@ export default function Kits () {
                     label='Description'
                     value={editing.description || ''}
                     onChange={(event) => setEditing((f) => ({ ...f, description: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                     multiline
@@ -408,7 +379,7 @@ export default function Kits () {
                     label='Brand'
                     value={editing.brand}
                     onChange={(event) => setEditing((f) => ({ ...f, brand: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />
@@ -418,7 +389,7 @@ export default function Kits () {
                     label='Voltage (kV)'
                     value={editing.voltageKV}
                     onChange={(event) => setEditing((f) => ({ ...f, voltageKV: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />
@@ -428,7 +399,7 @@ export default function Kits () {
                     label='Cores'
                     value={editing.cores}
                     onChange={(event) => setEditing((f) => ({ ...f, cores: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />
@@ -439,7 +410,7 @@ export default function Kits () {
                     type='number'
                     value={editing.sizeSqmm}
                     onChange={(event) => setEditing((f) => ({ ...f, sizeSqmm: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                     InputProps={{ inputProps: { min: 0, step: 1 } }}
@@ -450,7 +421,7 @@ export default function Kits () {
                     label='Category'
                     value={editing.category}
                     onChange={(event) => setEditing((f) => ({ ...f, category: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />
@@ -460,7 +431,7 @@ export default function Kits () {
                     label='Material'
                     value={editing.material}
                     onChange={(event) => setEditing((f) => ({ ...f, material: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   />

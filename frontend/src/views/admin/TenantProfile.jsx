@@ -35,7 +35,7 @@ import PeopleAltRoundedIcon from '@mui/icons-material/PeopleAltRounded'
 import LockResetRoundedIcon from '@mui/icons-material/LockResetRounded'
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded'
-import { focusNextOnEnter } from '../../utils/formNavigation'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const statusChip = (status) => {
   if (!status) return { label: 'Active', color: 'primary' }
@@ -180,7 +180,7 @@ export default function TenantProfile () {
                 setQ(event.target.value)
                 setMPage(0)
               }}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               placeholder='Search members by name or email'
               InputProps={{
                 startAdornment: (
@@ -200,7 +200,7 @@ export default function TenantProfile () {
                   setFeStatus(event.target.value)
                   setMPage(0)
                 }}
-                onKeyDown={focusNextOnEnter}
+                onKeyDown={focusNextInputOnEnter}
                 sx={{ minWidth: { xs: '100%', md: 180 } }}
                 label='Status'
               >
