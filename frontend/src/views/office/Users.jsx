@@ -10,7 +10,7 @@ import {
   useOfficeDeleteCustomerMutation,
   useOfficeResetPasswordMutation,
 } from '../../features/office/officeApi';
-import { focusNextOnEnter } from '../../utils/formNavigation';
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation';
 import {
   Box,
   Stack,
@@ -51,6 +51,7 @@ import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import { alpha } from '@mui/material/styles';
 import Modal from '../../shell/components/Modal';
+import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
 
 const FE_STATUSES = ['AVAILABLE', 'BUSY', 'INACTIVE'];
 const TABS = {
@@ -85,9 +86,10 @@ export default function Users() {
       return (
         String(name).toLowerCase().includes(q) ||
         String(email).toLowerCase().includes(q) ||
-        String(fe?.status || '').toLowerCase().includes(q)
+        String(fe?.status || '').toLowerCase().includes(q) ||
+        String(fe?.id || '').toLowerCase().includes(q)
       );
-    });
+  });
   }, [feRows, feQ]);
 
   const [showCreateFE, setShowCreateFE] = useState(false);
@@ -216,6 +218,19 @@ export default function Users() {
       payload: row,
       loading: false,
     });
+  }
+
+  async function copyFeId(fe) {
+    if (!fe?.id) return;
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard) {
+        throw new Error('Clipboard not available');
+      }
+      await navigator.clipboard.writeText(String(fe.id));
+      setMsg(`Copied field engineer ID ${fe.id} to clipboard.`);
+    } catch (e) {
+      setErr('Unable to copy ID to clipboard.');
+    }
   }
 
   async function runConfirmDeleteFE(row) {
@@ -460,6 +475,7 @@ export default function Users() {
               <Table>
                 <TableHead>
                   <TableRow>
+                    <TableCell>ID</TableCell>
                     <TableCell>Name</TableCell>
                     <TableCell>Email</TableCell>
                     <TableCell>Status</TableCell>
@@ -469,7 +485,7 @@ export default function Users() {
                 <TableBody>
                   {!feLoading && feFiltered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} align="center">
+                      <TableCell colSpan={5} align="center">
                         <Typography variant="body2" color="text.secondary">
                           No field engineers found.
                         </Typography>
@@ -482,6 +498,16 @@ export default function Users() {
                     const userId = fe?.user?.id || fe?.userId || null;
                     return (
                       <TableRow key={fe.id} hover>
+                        <TableCell>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Chip label={fe?.id ? `FE-${fe.id}` : '—'} size="small" variant="outlined" />
+                            {fe?.id && (
+                              <TooltipIconButton title="Copy ID" onClick={() => copyFeId(fe)}>
+                                <ContentCopyRoundedIcon fontSize="inherit" />
+                              </TooltipIconButton>
+                            )}
+                          </Stack>
+                        </TableCell>
                         <TableCell>{name}</TableCell>
                         <TableCell>{email}</TableCell>
                         <TableCell>
@@ -551,7 +577,7 @@ export default function Users() {
                   setCPage(0);
                 }}
                 sx={{ minWidth: { xs: '100%', md: 220 } }}
-                onKeyDown={focusNextOnEnter}
+                onKeyDown={focusNextInputOnEnter}
               >
                 <MenuItem value="ALL">All</MenuItem>
                 <MenuItem value="YES">Portal linked</MenuItem>
@@ -654,7 +680,7 @@ export default function Users() {
             label="Display name"
             value={feDisplayName}
             onChange={(e) => setFeDisplayName(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <TextField
@@ -662,7 +688,7 @@ export default function Users() {
             type="email"
             value={feEmail}
             onChange={(e) => setFeEmail(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <Stack direction="row" justifyContent="flex-end" spacing={1.5}>
@@ -687,7 +713,7 @@ export default function Users() {
               label="Display name"
               value={efeDisplay}
               onChange={(e) => setEfeDisplay(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
             <TextField
@@ -695,7 +721,7 @@ export default function Users() {
               type="email"
               value={efeEmail}
               onChange={(e) => setEfeEmail(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
           </Stack>
@@ -704,7 +730,7 @@ export default function Users() {
             label="Status"
             value={efeStatus}
             onChange={(e) => setEfeStatus(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
           >
             {FE_STATUSES.map((status) => (
               <MenuItem key={status} value={status}>
@@ -729,7 +755,7 @@ export default function Users() {
             label="Name"
             value={custName}
             onChange={(e) => setCustName(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -738,14 +764,14 @@ export default function Users() {
               type="email"
               value={custEmail}
               onChange={(e) => setCustEmail(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
             <TextField
               label="Mobile"
               value={custMobile}
               onChange={(e) => setCustMobile(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
           </Stack>
@@ -753,7 +779,7 @@ export default function Users() {
             label="Address"
             value={custAddress}
             onChange={(e) => setCustAddress(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <FormControlLabel
@@ -786,7 +812,7 @@ export default function Users() {
             label="Name"
             value={ecName}
             onChange={(e) => setEcName(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -795,14 +821,14 @@ export default function Users() {
               type="email"
               value={ecEmail}
               onChange={(e) => setEcEmail(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
             <TextField
               label="Mobile"
               value={ecMobile}
               onChange={(e) => setEcMobile(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
           </Stack>
@@ -810,7 +836,7 @@ export default function Users() {
             label="Address"
             value={ecAddress}
             onChange={(e) => setEcAddress(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <FormControlLabel
@@ -939,3 +965,4 @@ function TooltipIconButton({ title, color = 'default', disabled, onClick, childr
     </Tooltip>
   );
 }
+
