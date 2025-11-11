@@ -64,31 +64,61 @@ const fmtINR = (n) =>
 
 const safeNum = (v, fallback = 0) => (Number.isFinite(+v) ? +v : fallback)
 
+const ITEM_KINDS = {
+  SUPPLY: 'SUPPLY',
+  INSTALLATION: 'INSTALLATION',
+  TRANSPORT: 'TRANSPORT',
+  CUSTOM: 'CUSTOM'
+}
 
-const NumberField = ({ value, onChange, min, max, step = 1, ...props }) => {
+const computeChargesDescription = (serviceType, label, kind = ITEM_KINDS.SUPPLY) => {
+  const name = String(label || '').trim()
+  if (!name) return ''
+  if (kind === ITEM_KINDS.TRANSPORT) return 'Transportation charges'
+  if (kind === ITEM_KINDS.INSTALLATION) return `Installation charges for ${name}`
+  const st = String(serviceType || '').toLowerCase()
+  if (st.includes('installation only')) return `Installation charges for ${name}`
+  if (st.includes('supply with installation')) {
+    if (/installation/i.test(name)) return `Installation charges for ${name}`
+    return `Supply charges for ${name}`
+  }
+  if (st.includes('supply')) return `Supply charges for ${name}`
+  return name
+}
+
+const NumberField = ({ value, onChange, min, max, inputProps, onBlur, ...props }) => {
   const handleChange = (event) => {
     const raw = event.target.value
+    const sanitized = raw.replace(/[^0-9.]/g, '')
+    const parts = sanitized.split('.')
+    const normalised = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : sanitized
+    onChange?.(normalised)
+  }
+
+  const handleBlur = (event) => {
+    onBlur?.(event)
+    const raw = event.target.value
     if (raw === '') {
-      onChange?.('')
+      if (typeof min === 'number') onChange?.(min)
       return
     }
-    const next = Number(raw)
-    if (Number.isFinite(next)) {
-      let computed = next
-      if (typeof min === 'number') computed = Math.max(min, computed)
-      if (typeof max === 'number') computed = Math.min(max, computed)
-      onChange?.(computed)
-    }
+    let numeric = Number(raw)
+    if (!Number.isFinite(numeric)) numeric = typeof min === 'number' ? min : 0
+    if (typeof min === 'number' && numeric < min) numeric = min
+    if (typeof max === 'number' && numeric > max) numeric = max
+    onChange?.(Number.isInteger(numeric) ? numeric : Number(numeric.toFixed(2)))
   }
 
   return (
     <TextField
-      type='number'
+      type='text'
       variant='outlined'
       size='small'
       value={value === null || value === undefined ? '' : value}
       onChange={handleChange}
-      inputProps={{ min, max, step, style: { textAlign: 'right' } }}
+      onBlur={handleBlur}
+      inputMode='decimal'
+      inputProps={{ inputMode: 'decimal', pattern: '[0-9.]*', style: { textAlign: 'right' }, ...inputProps }}
       onWheel={(e) => e.currentTarget.blur()}
       onKeyDown={focusNextInputOnEnter}
       fullWidth
@@ -297,7 +327,9 @@ export default function Service () {
     code: k.code || k.id,
     name: k.name,
     hsnSac: k.hsnSac || '854690',
-    basePrice: safeNum(k.price, 0)
+    basePrice: safeNum(k.price, 0),
+    description: k.description || '',
+    serviceType: k.serviceType || ''
   })), [kitsData])
 
   const addBlank = () => {
@@ -310,7 +342,10 @@ export default function Service () {
         hsnSac: '',
         basePrice: 0,
         qty: 1,
-        discount: ''
+        discount: '',
+        description: '',
+        autoDescription: false,
+        kind: ITEM_KINDS.CUSTOM
       }
     ]))
   }
@@ -325,7 +360,10 @@ export default function Service () {
         hsnSac: '995461',
         basePrice: 0,
         qty: 1,
-        discount: ''
+        discount: '',
+        description: computeChargesDescription(meta.serviceType, 'Installation Charges', ITEM_KINDS.INSTALLATION),
+        autoDescription: true,
+        kind: ITEM_KINDS.INSTALLATION
       }
     ]))
   }
@@ -340,7 +378,10 @@ export default function Service () {
         hsnSac: '995461',
         basePrice: 0,
         qty: 1,
-        discount: ''
+        discount: '',
+        description: 'Transportation charges',
+        autoDescription: false,
+        kind: ITEM_KINDS.TRANSPORT
       }
     ]))
   }
@@ -353,30 +394,101 @@ export default function Service () {
         clone[existingIdx] = { ...clone[existingIdx], qty: safeNum(clone[existingIdx].qty, 0) + 1 }
         return clone
       }
-      return [
-        ...prev,
-        {
-          key: `${kit.code}-${Date.now()}`,
-          code: kit.code,
-          name: kit.name,
-          basePrice: safeNum(kit.basePrice, 0),
+      const normalisedType = String(kit.serviceType || '').toUpperCase()
+      const kitKind = normalisedType.includes('INSTALL') ? ITEM_KINDS.INSTALLATION : ITEM_KINDS.SUPPLY
+      const supplyLine = {
+        key: `${kit.code}-${Date.now()}`,
+        code: kit.code,
+        name: kit.name,
+        basePrice: safeNum(kit.basePrice, 0),
+        qty: 1,
+        discount: '',
+        hsnSac: kit.hsnSac || '854690',
+        description: kit.description || computeChargesDescription(meta.serviceType, kit.name, kitKind),
+        autoDescription: !kit.description,
+        kind: kitKind,
+        linkedKit: kit.code
+      }
+      const shouldAddInstall = kitKind === ITEM_KINDS.SUPPLY && String(meta.serviceType || '').toLowerCase().includes('supply with installation')
+      const next = [...prev, supplyLine]
+      if (shouldAddInstall) {
+        next.push({
+          key: `inst-${kit.code}-${Date.now()}`,
+          code: '',
+          name: `Installation - ${kit.name}`,
+          hsnSac: '995461',
+          basePrice: 0,
           qty: 1,
           discount: '',
-          hsnSac: kit.hsnSac || '854690'
-        }
-      ]
+          description: computeChargesDescription(meta.serviceType, kit.name, ITEM_KINDS.INSTALLATION),
+          autoDescription: true,
+          kind: ITEM_KINDS.INSTALLATION,
+          linkedKit: kit.code
+        })
+      }
+      return next
     })
   }
 
   const updateItem = (idx, patch) => {
     setItems((prev) => {
       const copy = [...prev]
-      copy[idx] = { ...copy[idx], ...patch }
+      const current = copy[idx] || {}
+      const next = { ...current, ...patch }
+      if (Object.prototype.hasOwnProperty.call(patch, 'description')) {
+        next.autoDescription = false
+      } else if (Object.prototype.hasOwnProperty.call(patch, 'name') && current.autoDescription) {
+        next.description = computeChargesDescription(meta.serviceType, patch.name, current.kind || ITEM_KINDS.SUPPLY)
+      }
+      copy[idx] = next
       return copy
     })
   }
 
   const removeItem = (idx) => setItems((prev) => prev.filter((_, index) => index !== idx))
+
+  useEffect(() => {
+    setItems((prev) => {
+      let changed = false
+      const installFor = new Set(
+        prev
+          .filter((it) => it && it.kind === ITEM_KINDS.INSTALLATION && it.linkedKit)
+          .map((it) => it.linkedKit)
+      )
+      const next = prev.map((item) => {
+        if (!item || !item.autoDescription) return item
+        const targetKind = item.kind || ITEM_KINDS.SUPPLY
+        const updated = computeChargesDescription(meta.serviceType, item.name, targetKind)
+        if (updated === item.description) return item
+        changed = true
+        return { ...item, description: updated }
+      })
+      const shouldAttach = String(meta.serviceType || '').toLowerCase().includes('supply with installation')
+      if (shouldAttach) {
+        prev.forEach((item) => {
+          if (!item) return
+          if (item.kind === ITEM_KINDS.SUPPLY && item.linkedKit && !installFor.has(item.linkedKit)) {
+            installFor.add(item.linkedKit)
+            changed = true
+            next.push({
+              key: `inst-${item.linkedKit}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              code: '',
+              name: `Installation - ${item.name || item.linkedKit}`,
+              hsnSac: '995461',
+              basePrice: 0,
+              qty: 1,
+              discount: '',
+              description: computeChargesDescription(meta.serviceType, item.name || item.linkedKit, ITEM_KINDS.INSTALLATION),
+              autoDescription: true,
+              kind: ITEM_KINDS.INSTALLATION,
+              linkedKit: item.linkedKit
+            })
+          }
+        })
+      }
+      return changed ? next : prev
+    })
+  }, [meta.serviceType])
 
   const clearAllItems = () => {
     if (!items.length) return
@@ -395,7 +507,10 @@ export default function Service () {
   const sgstRate = sameState ? 9 : 0
   const igstRate = sameState ? 0 : 18
 
-  const hasTransportLine = useMemo(() => items.some((it) => /transport/i.test(it.name || '')), [items])
+  const hasTransportLine = useMemo(
+    () => items.some((it) => (it?.kind === ITEM_KINDS.TRANSPORT) || /transport/i.test(it?.name || '')),
+    [items]
+  )
 
   const totals = useMemo(() => {
     const raw = items.reduce((acc, it) => acc + safeNum(it.basePrice, 0) * safeNum(it.qty, 0), 0)
@@ -420,11 +535,30 @@ export default function Service () {
       invoiceNo: normalizeDocNumber(meta.invoiceNo),
       pinvNo: normalizeDocNumber(meta.pinvNo)
     }
+    const cleanItems = items.map((item) => {
+      if (!item) return item
+      const { autoDescription, kind, linkedKit, ...rest } = item
+      const basePrice = safeNum(rest.basePrice, 0)
+      const qty = safeNum(rest.qty, 1) || 1
+      const discountValue = rest.discount === ''
+        ? ''
+        : Math.max(0, Math.min(100, safeNum(rest.discount, 0)))
+      return {
+        ...rest,
+        code: (rest.code || '').trim(),
+        name: (rest.name || '').trim(),
+        description: (rest.description || '').trim(),
+        hsnSac: (rest.hsnSac || '').trim(),
+        basePrice,
+        qty,
+        discount: discountValue
+      }
+    })
     return {
       buyer,
       consignee,
       meta: cleanMeta,
-      items,
+      items: cleanItems,
       totals
     }
   }
@@ -449,7 +583,7 @@ export default function Service () {
     .filter(({ it }) => {
       if (!search.trim()) return true
       const needle = search.toLowerCase()
-      return [it.code, it.name].some((value) => (value || '').toLowerCase().includes(needle))
+      return [it.code, it.name, it.description].some((value) => (value || '').toLowerCase().includes(needle))
     })
 
   const renderBuyerSuggestions = () => {
@@ -780,6 +914,7 @@ export default function Service () {
                 <Table size='small'>
                   <TableHead>
                     <TableRow>
+                      <TableCell width='24%'>Item</TableCell>
                       <TableCell>Description</TableCell>
                       <TableCell width='12%'>HSN / SAC</TableCell>
                       <TableCell align='right' width='12%'>Base (₹)</TableCell>
@@ -792,7 +927,7 @@ export default function Service () {
                   <TableBody>
                     {filteredIdx.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} align='center'>
+                        <TableCell colSpan={8} align='center'>
                           <Typography variant='body2' color='text.secondary'>No lines yet. Add one from the actions above.</Typography>
                         </TableCell>
                       </TableRow>
@@ -801,6 +936,8 @@ export default function Service () {
                       const qty = safeNum(it.qty, 0)
                       const disc = safeNum(it.discount, 0)
                       const lineTotal = Math.round(safeNum(it.basePrice, 0) * qty * (1 - disc / 100))
+                      const lineKind = it.kind || (it.linkedKit && /install/i.test(it.name || '') ? ITEM_KINDS.INSTALLATION : ITEM_KINDS.SUPPLY)
+                      const descriptionPlaceholder = computeChargesDescription(meta.serviceType, it.name, lineKind)
                       return (
                         <TableRow hover key={it.key}>
                           <TableCell>
@@ -822,6 +959,18 @@ export default function Service () {
                                 sx={{ maxWidth: 180 }}
                               />
                             </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              size='small'
+                              value={it.description || ''}
+                              onChange={(event) => updateItem(idx, { description: event.target.value })}
+                              onKeyDown={focusNextInputOnEnter}
+                              placeholder={descriptionPlaceholder || 'Add a description…'}
+                              fullWidth
+                              multiline
+                              minRows={2}
+                            />
                           </TableCell>
                           <TableCell>
                             <TextField
@@ -888,16 +1037,24 @@ export default function Service () {
 
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
-                  <TextField
+                  <NumberField
                     label='Transportation charges (₹)'
                     value={hasTransportLine ? 0 : transport}
-                    onChange={(event) => setTransport(Number(event.target.value) || 0)}
-                    onKeyDown={focusNextInputOnEnter}
+                    onChange={(value) => {
+                      if (hasTransportLine) return
+                      if (value === '') {
+                        setTransport(0)
+                        return
+                      }
+                      const numeric = Number(value)
+                      setTransport(Number.isFinite(numeric) ? Math.max(0, numeric) : 0)
+                    }}
                     disabled={hasTransportLine}
                     size='small'
-                    type='number'
+                    inputProps={{ style: { textAlign: 'right' } }}
+                    InputProps={{ endAdornment: <InputAdornment position='end'>₹</InputAdornment> }}
+                    min={0}
                     fullWidth
-                    InputProps={{ inputProps: { min: 0, step: 100 }, endAdornment: <InputAdornment position='end'>₹</InputAdornment> }}
                   />
                   {hasTransportLine && (
                     <Typography variant='caption' color='text.secondary'>A transport line already exists – this field is disabled.</Typography>

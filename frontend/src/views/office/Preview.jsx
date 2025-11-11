@@ -124,7 +124,10 @@ export default function Preview () {
   // items and "Installation of <item>" for lines whose name contains the word
   // "installation" (case‑insensitive). An "Installation only" service type prefixes
   // all items with "Installation of".  All other service types return an empty string.
-  const getDescription = (itemName) => {
+  const getDescription = (item) => {
+    const explicit = String(item?.description || '').trim()
+    if (explicit) return explicit
+    const itemName = item?.name
     const st = String(meta.serviceType || '').toLowerCase()
     const name = String(itemName || '').trim()
     if (!name) return ''
@@ -318,7 +321,7 @@ export default function Preview () {
                 const rate = Number(it.basePrice) || 0
                 // Compute line after discount; discount is still applied internally
                 const line = Math.round(rate * qty * (1 - disc / 100) * 100) / 100
-                const desc = getDescription(it.name)
+                const desc = getDescription(it)
                 return (
                   <tr key={idx} className='border-b border-slate-200'>
                     <Td className='text-left pl-3'>

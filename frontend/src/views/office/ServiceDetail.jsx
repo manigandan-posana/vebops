@@ -57,6 +57,23 @@ const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
     .format(Number.isFinite(+n) ? +n : 0)
 
+const describeLineItem = (serviceType, item) => {
+  if (!item) return ''
+  const explicit = firstNonEmpty(item.description, item.details, item.itemDescription)
+  const explicitStr = String(explicit || '').trim()
+  if (explicitStr) return explicitStr
+  const name = String(firstNonEmpty(item.name, item.itemName) || '').trim()
+  if (!name) return ''
+  const st = String(serviceType || '').toLowerCase()
+  if (st.includes('installation only')) return `Installation charges for ${name}`
+  if (st.includes('supply with installation')) {
+    if (/installation/i.test(name)) return `Installation charges for ${name}`
+    return `Supply charges for ${name}`
+  }
+  if (st.includes('supply')) return `Supply charges for ${name}`
+  return ''
+}
+
 // Simple container for labelled rows
 const LabeledRow = ({ label, value }) => (
   <div className='flex flex-col gap-0.5'>
@@ -360,12 +377,18 @@ export default function ServiceDetail () {
                   const disc = safeNumber(firstNonEmpty(it.discount, it.discountPercent), 0)
                   const explicitLine = safeNumber(firstNonEmpty(it.lineTotal, it.total, it.amount), null)
                   const line = explicitLine !== null ? explicitLine : Math.round(base * qty * (1 - disc / 100))
+                  const itemName = firstNonEmpty(it.name, it.itemName) || '—'
+                  const itemCode = firstNonEmpty(it.code, it.itemCode)
+                  const itemDescription = describeLineItem(meta.serviceType, it)
                   return (
                     <tr key={idx} className='hover:bg-slate-50'>
                       <td className='px-3 py-2 text-sm text-slate-900'>
-                        {firstNonEmpty(it.name, it.description, it.itemName) || '—'}
-                        {firstNonEmpty(it.code, it.itemCode) && (
-                          <div className='mt-1 text-xs text-slate-500'>{firstNonEmpty(it.code, it.itemCode)}</div>
+                        <div>{itemName}</div>
+                        {itemCode && (
+                          <div className='mt-1 text-xs text-slate-500'>{itemCode}</div>
+                        )}
+                        {itemDescription && (
+                          <div className='mt-1 text-xs text-slate-500'>{itemDescription}</div>
                         )}
                       </td>
                       <td className='px-3 py-2 text-sm text-slate-700'>{firstNonEmpty(it.hsnSac, it.hsn, it.sac)}</td>
