@@ -35,6 +35,7 @@ import {
   useListProposalDocumentsQuery,
   useListProposalsQuery
 } from '../../features/office/officeApi'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -42,35 +43,44 @@ const fmtINR = (n) =>
 
 const STATUSES = ['ALL', 'DRAFT', 'SENT', 'APPROVED', 'REJECTED']
 
-const shouldFocusOnEnter = (el) => {
-  if (typeof window === 'undefined') return false
-  if (!el) return false
-  const style = window.getComputedStyle(el)
-  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
+const safeNumber = (value) => {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'object') {
+    if ('value' in value) return safeNumber(value.value)
+    if ('amount' in value) return safeNumber(value.amount)
+    if ('total' in value) return safeNumber(value.total)
+    if ('grandTotal' in value) return safeNumber(value.grandTotal)
+    return null
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const cleaned = String(value).replace(/[^0-9.-]/g, '')
+  if (!cleaned) return null
+  const num = Number(cleaned)
+  return Number.isFinite(num) ? num : null
 }
 
-const handleEnterNavigation = (event) => {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  const target = event.currentTarget
-  const form = target?.form || target?.closest('form')
-  if (!form) return
-  event.preventDefault()
-  const focusables = Array.from(form.querySelectorAll('input, select, textarea, button')).filter((el) => shouldFocusOnEnter(el))
-  const idx = focusables.indexOf(target)
-  if (idx >= 0 && idx < focusables.length - 1) {
-    const next = focusables[idx + 1]
-    next.focus()
-    if (typeof next.select === 'function') next.select()
-  } else {
-    const submit = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submit) {
-      submit.click()
-    } else if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit()
-    } else {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    }
+const deriveProposalTotal = (proposal) => {
+  if (!proposal) return null
+  const candidates = [
+    proposal.total,
+    proposal.grandTotal,
+    proposal.netTotal,
+    proposal.netAmount,
+    proposal.amount,
+    proposal.subtotal,
+    proposal.summary?.total,
+    proposal.summary?.grandTotal
+  ]
+  for (const candidate of candidates) {
+    const parsed = safeNumber(candidate)
+    if (parsed !== null) return parsed
   }
+  const subtotal = safeNumber(proposal.subtotal)
+  const tax = safeNumber(proposal.tax)
+  if (subtotal !== null || tax !== null) {
+    return (subtotal || 0) + (tax || 0)
+  }
+  return null
 }
 
 const statusColor = (status) => {
@@ -198,7 +208,7 @@ export default function ProposalHistory () {
                     label='Status'
                     value={status}
                     onChange={(event) => setStatus(event.target.value)}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   >
@@ -211,7 +221,7 @@ export default function ProposalHistory () {
                   <TextField
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     placeholder='Search by proposal, customer or PO number'
                     size='small'
                     fullWidth
@@ -230,7 +240,7 @@ export default function ProposalHistory () {
                     label='Rows'
                     value={pageSize}
                     onChange={(event) => setPageSize(Number(event.target.value))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   >
@@ -278,7 +288,7 @@ export default function ProposalHistory () {
                         const code = `P-${p.id}`
                         const customer = p?.customer?.name || p?.customerName || '—'
                         const statusBadge = p?.status || 'UNKNOWN'
-                        const totalValue = fmtINR(p?.total || p?.grandTotal)
+                        const totalValue = fmtINR(deriveProposalTotal(p))
                         const created = p?.createdAt ? new Date(p.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'
                         const poNumber = p?.customerPoNumber || p?.customerPO?.poNumber || '—'
                         const isFocused = selected?.id === p.id
@@ -352,7 +362,7 @@ export default function ProposalHistory () {
               <CardContent>
                 <Grid container spacing={2}>
                   <Detail label='Status' value={selected?.status || '—'} />
-                  <Detail label='Total amount' value={fmtINR(selected?.total || selected?.grandTotal)} />
+                  <Detail label='Total amount' value={fmtINR(deriveProposalTotal(selected))} />
                   <Detail label='Customer PO number' value={selected?.customerPoNumber || selected?.customerPO?.poNumber || '—'} />
                   <Detail
                     label='Last updated'

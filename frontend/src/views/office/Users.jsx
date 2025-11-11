@@ -10,7 +10,7 @@ import {
   useOfficeDeleteCustomerMutation,
   useOfficeResetPasswordMutation,
 } from '../../features/office/officeApi';
-import { focusNextOnEnter } from '../../utils/formNavigation';
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation';
 import {
   Box,
   Stack,
@@ -551,7 +551,7 @@ export default function Users() {
                   setCPage(0);
                 }}
                 sx={{ minWidth: { xs: '100%', md: 220 } }}
-                onKeyDown={focusNextOnEnter}
+                onKeyDown={focusNextInputOnEnter}
               >
                 <MenuItem value="ALL">All</MenuItem>
                 <MenuItem value="YES">Portal linked</MenuItem>
@@ -654,7 +654,7 @@ export default function Users() {
             label="Display name"
             value={feDisplayName}
             onChange={(e) => setFeDisplayName(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <TextField
@@ -662,7 +662,7 @@ export default function Users() {
             type="email"
             value={feEmail}
             onChange={(e) => setFeEmail(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <Stack direction="row" justifyContent="flex-end" spacing={1.5}>
@@ -687,7 +687,7 @@ export default function Users() {
               label="Display name"
               value={efeDisplay}
               onChange={(e) => setEfeDisplay(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
             <TextField
@@ -695,7 +695,7 @@ export default function Users() {
               type="email"
               value={efeEmail}
               onChange={(e) => setEfeEmail(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
           </Stack>
@@ -704,7 +704,7 @@ export default function Users() {
             label="Status"
             value={efeStatus}
             onChange={(e) => setEfeStatus(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
           >
             {FE_STATUSES.map((status) => (
               <MenuItem key={status} value={status}>
@@ -729,7 +729,7 @@ export default function Users() {
             label="Name"
             value={custName}
             onChange={(e) => setCustName(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -738,14 +738,14 @@ export default function Users() {
               type="email"
               value={custEmail}
               onChange={(e) => setCustEmail(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
             <TextField
               label="Mobile"
               value={custMobile}
               onChange={(e) => setCustMobile(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
           </Stack>
@@ -753,7 +753,7 @@ export default function Users() {
             label="Address"
             value={custAddress}
             onChange={(e) => setCustAddress(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <FormControlLabel
@@ -786,7 +786,7 @@ export default function Users() {
             label="Name"
             value={ecName}
             onChange={(e) => setEcName(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -795,14 +795,14 @@ export default function Users() {
               type="email"
               value={ecEmail}
               onChange={(e) => setEcEmail(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
             <TextField
               label="Mobile"
               value={ecMobile}
               onChange={(e) => setEcMobile(e.target.value)}
-              onKeyDown={focusNextOnEnter}
+              onKeyDown={focusNextInputOnEnter}
               fullWidth
             />
           </Stack>
@@ -810,7 +810,7 @@ export default function Users() {
             label="Address"
             value={ecAddress}
             onChange={(e) => setEcAddress(e.target.value)}
-            onKeyDown={focusNextOnEnter}
+            onKeyDown={focusNextInputOnEnter}
             fullWidth
           />
           <FormControlLabel
