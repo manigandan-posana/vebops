@@ -335,6 +335,20 @@ export const officeApi = baseApi.injectEndpoints({
      */
     getService: b.query({
       query: (id) => ({ url: `/office/services/${id}`, method: 'GET' }),
+      transformResponse: (res) => {
+        if (!res || typeof res !== 'object') {
+          return { service: null, workOrder: null, serviceRequest: null, progress: [], assignments: [] }
+        }
+        const progress = Array.isArray(res.progress) ? res.progress : []
+        const assignments = Array.isArray(res.assignments) ? res.assignments : []
+        return {
+          service: res.service ?? res,
+          workOrder: res.workOrder ?? null,
+          serviceRequest: res.serviceRequest ?? null,
+          progress,
+          assignments
+        }
+      },
       providesTags: (_r,_e,id) => [{ type:'Services', id }]
     }),
 

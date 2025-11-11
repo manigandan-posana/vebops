@@ -20,12 +20,15 @@ import {
   TextField,
   Button,
   Box,
-  MenuItem
+  MenuItem,
+  Chip,
+  Link
 } from '@mui/material'
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
 import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded'
 import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded'
 import AssignmentRoundedIcon from '@mui/icons-material/AssignmentRounded'
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import {
   usePostProgressMutation,
   useLazyGetCompletionReportPdfQuery,
@@ -54,10 +57,13 @@ export default function JobDetail () {
   const workOrder = detail?.workOrder || {}
   const instruction = detail?.instruction || ''
   const items = Array.isArray(detail?.items) ? detail.items : []
+  const serviceInfo = detail?.serviceInfo || {}
+  const progress = Array.isArray(detail?.progress) ? detail.progress : []
   const sr = workOrder?.serviceRequest || {}
   const customer = sr?.customer || {}
   const po = workOrder?.customerPO || {}
   const srSiteAddress = [
+    serviceInfo?.siteAddress,
     sr?.siteAddress,
     sr?.serviceLocation,
     sr?.siteLocation,
@@ -65,7 +71,9 @@ export default function JobDetail () {
   ]
     .map((val) => (typeof val === 'string' ? val.trim() : ''))
     .find((val) => val) || ''
-  const srDescription = typeof sr?.description === 'string' ? sr.description.trim() : ''
+  const srDescription = [serviceInfo?.description, sr?.description]
+    .map((val) => (typeof val === 'string' ? val.trim() : ''))
+    .find((val) => val) || ''
 
   const [status, setStatus] = useState(STEPS[0].value)
   const [remarks, setRemarks] = useState('')
@@ -174,6 +182,26 @@ export default function JobDetail () {
             <Grid item xs={12} sm={6} md={4}>
               <Info label='Service Type' value={sr?.serviceType || '—'} />
             </Grid>
+            {serviceInfo?.customerName && (
+              <Grid item xs={12} sm={6} md={4}>
+                <Info
+                  label='Customer'
+                  value={
+                    <Stack spacing={0.5}>
+                      <Typography variant='body2' color='text.primary'>
+                        {serviceInfo.customerName}
+                      </Typography>
+                      <Typography variant='caption' color='text.secondary'>
+                        {serviceInfo.customerEmail || '—'}
+                      </Typography>
+                      <Typography variant='caption' color='text.secondary'>
+                        {serviceInfo.customerMobile || '—'}
+                      </Typography>
+                    </Stack>
+                  }
+                />
+              </Grid>
+            )}
             <Grid item xs={12} md={8}>
               <Info icon={<LocationOnRoundedIcon fontSize='small' color='primary' />} label='Site Address' value={srSiteAddress} multiline />
             </Grid>
@@ -215,14 +243,25 @@ export default function JobDetail () {
                       <TableCell>Item</TableCell>
                       <TableCell>Code</TableCell>
                       <TableCell align='right'>Qty</TableCell>
+                      <TableCell align='right'>Issued</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {items.map((item) => (
-                      <TableRow key={item.id || `${item.item?.id}-${item.workOrderId}`}>
-                        <TableCell>{item.item?.name || item.description || '—'}</TableCell>
-                        <TableCell>{item.item?.code || item.code || '—'}</TableCell>
-                        <TableCell align='right'>{item.qty ?? item.quantity ?? '—'}</TableCell>
+                      <TableRow key={item.id || `${item.item?.id || item.code}-${item.workOrderId || 'row'}`}>
+                        <TableCell>
+                          <Stack spacing={0.5}>
+                            <Typography variant='body2'>{item.name || item.description || '—'}</Typography>
+                            {(item.spec || item.hsn || item.uom) && (
+                              <Typography variant='caption' color='text.secondary'>
+                                {[item.spec, item.uom, item.hsn].filter(Boolean).join(' • ')}
+                              </Typography>
+                            )}
+                          </Stack>
+                        </TableCell>
+                        <TableCell>{item.code || '—'}</TableCell>
+                        <TableCell align='right'>{item.qtyPlanned ?? item.qty ?? item.quantity ?? '—'}</TableCell>
+                        <TableCell align='right'>{item.qtyIssued ?? '—'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -230,6 +269,57 @@ export default function JobDetail () {
               </TableContainer>
             )}
           </Stack>
+        </CardContent>
+      </Card>
+
+      <Card elevation={0}>
+        <CardHeader
+          avatar={<HistoryRoundedIcon color='primary' />}
+          title='Recent updates'
+          subheader='Timeline of progress shared with the back office'
+        />
+        <Divider />
+        <CardContent>
+          {progress.length === 0 ? (
+            <Typography variant='body2' color='text.secondary'>No updates logged yet.</Typography>
+          ) : (
+            <Stack spacing={2.5}>
+              {progress.map((entry) => (
+                <Box
+                  key={entry.id || `${entry.status}-${entry.createdAt}`}
+                  sx={{
+                    border: (theme) => `1px solid ${theme.palette.divider}`,
+                    borderRadius: 2,
+                    p: 2
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent='space-between' spacing={1.5}>
+                    <Chip label={(entry.status || '').replace(/_/g, ' ')} size='small' color='primary' variant='outlined' />
+                    <Typography variant='caption' color='text.secondary'>
+                      {entry.createdAt ? new Date(entry.createdAt).toLocaleString('en-IN') : '—'}
+                    </Typography>
+                  </Stack>
+                  {entry.remarks && (
+                    <Typography variant='body2' sx={{ mt: 1 }}>
+                      {entry.remarks}
+                    </Typography>
+                  )}
+                  <Stack direction='row' spacing={2} sx={{ mt: 1 }}>
+                    {entry.by?.name && (
+                      <Typography variant='caption' color='text.secondary'>
+                        By {entry.by.name}
+                      </Typography>
+                    )}
+                    {entry.photoUrl && (
+                      <Link href={entry.photoUrl} target='_blank' rel='noreferrer' variant='caption'>
+                        View photo
+                      </Link>
+                    )}
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          )}
         </CardContent>
       </Card>
 

@@ -7,7 +7,7 @@
 // table of individual line items with totals. The component offers a
 // back link to return to the history list.
 
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom'
 import { IndianRupee, Send, Share2, FileDown } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
@@ -44,6 +44,9 @@ import {
   TextField,
   Typography
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
+import EventNoteRoundedIcon from '@mui/icons-material/EventNoteRounded'
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
 import { displayDocNumber } from '../../utils/docNumbers'
 import { buildServiceLineDescriptions } from '../../utils/serviceLineDescriptions'
 // Import the getService hook rather than the paginated getServices hook. This
@@ -144,7 +147,12 @@ export default function ServiceDetail () {
   // paginated getServices endpoint expects query parameters and will not
   // return a single record when provided an ID. Using getService
   // ensures we fetch the correct Service entity.
-  const { data: service, isFetching, error } = useGetServiceQuery(id)
+  const { data, isFetching, error } = useGetServiceQuery(id)
+  const service = data?.service ?? data ?? {}
+  const workOrder = data?.workOrder ?? null
+  const serviceRequest = data?.serviceRequest ?? null
+  const progress = Array.isArray(data?.progress) ? data.progress : []
+  const assignments = Array.isArray(data?.assignments) ? data.assignments : []
   const [downloadInvoice] = useDownloadServiceInvoiceMutation()
   const [sendServiceInvoice, sendState] = useSendServiceInvoiceMutation()
   const [shareServiceProposal] = useShareServiceProposalMutation()
@@ -358,6 +366,46 @@ export default function ServiceDetail () {
   }
 
   const totalTax = (cgstAmount ?? 0) + (sgstAmount ?? 0) + (igstAmount ?? 0)
+
+  const statusChip = useMemo(() => {
+    if (!workOrder?.status) return null
+    const label = String(workOrder.status).replace(/_/g, ' ').toLowerCase()
+    const text = label.replace(/(^|\s)\w/g, (m) => m.toUpperCase())
+    let color = 'default'
+    const upper = String(workOrder.status).toUpperCase()
+    if (upper === 'COMPLETED') color = 'success'
+    else if (upper === 'IN_PROGRESS') color = 'primary'
+    else if (upper === 'ASSIGNED') color = 'info'
+    else if (upper === 'ON_HOLD') color = 'error'
+    return <Chip label={text} size='small' color={color} variant={color === 'default' ? 'outlined' : 'filled'} />
+  }, [workOrder?.status])
+
+  const progressStatusColor = (status) => {
+    const upper = String(status || '').toUpperCase()
+    switch (upper) {
+      case 'COMPLETED':
+        return 'success'
+      case 'INSTALLATION_STARTED':
+        return 'info'
+      case 'MATERIAL_RECEIVED':
+        return 'warning'
+      case 'STARTED':
+        return 'primary'
+      case 'ON_HOLD':
+        return 'error'
+      default:
+        return 'default'
+    }
+  }
+
+  const formatDateTime = (value) => {
+    if (!value) return '—'
+    try {
+      return new Date(value).toLocaleString('en-IN')
+    } catch (err) {
+      return String(value)
+    }
+  }
   if (grandTotalAmount === null) {
     grandTotalAmount = effectiveSubtotal - effectiveDiscount + effectiveTransport + totalTax
   }
@@ -497,6 +545,78 @@ export default function ServiceDetail () {
             </Grid>
           </Grid>
 
+          {(workOrder || serviceRequest) && (
+            <Card>
+              <CardHeader
+                avatar={<EventNoteRoundedIcon color='primary' />}
+                title='Work order context'
+                subheader='Operational details shared with field engineers'
+              />
+              <CardContent>
+                <Grid container spacing={3}>
+                  {workOrder && (
+                    <>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <InfoRow label='Work Order' value={workOrder?.wan || workOrder?.id || '—'} />
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <InfoRow label='Status' value={statusChip || workOrder?.status || '—'} />
+                      </Grid>
+                      {workOrder?.assignedFE && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <InfoRow label='Field Engineer' value={`${workOrder.assignedFE.name || '—'}${workOrder.assignedFE.id ? ` (ID ${workOrder.assignedFE.id})` : ''}`} />
+                        </Grid>
+                      )}
+                      {workOrder?.customerPO && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <InfoRow label='Customer PO' value={workOrder.customerPO.poNumber || '—'} />
+                        </Grid>
+                      )}
+                    </>
+                  )}
+                  {serviceRequest && (
+                    <>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <InfoRow label='Service Request' value={serviceRequest.srn || serviceRequest.id || '—'} />
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <InfoRow label='Service Type' value={formatServiceType(serviceRequest.serviceType)} />
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <InfoRow label='Site Address' value={serviceRequest.siteAddress} />
+                      </Grid>
+                      {serviceRequest.customer && (
+                        <Grid item xs={12} md={6}>
+                          <InfoRow
+                            label='Customer'
+                            value={
+                              <Stack spacing={0.5}>
+                                <Typography variant='body2' color='text.primary'>
+                                  {serviceRequest.customer.name || '—'}
+                                </Typography>
+                                <Typography variant='caption' color='text.secondary'>
+                                  {serviceRequest.customer.email || '—'}
+                                </Typography>
+                                <Typography variant='caption' color='text.secondary'>
+                                  {serviceRequest.customer.mobile || '—'}
+                                </Typography>
+                              </Stack>
+                            }
+                          />
+                        </Grid>
+                      )}
+                    </>
+                  )}
+                  {assignments.length > 0 && assignments[0]?.note && (
+                    <Grid item xs={12}>
+                      <InfoRow label='Latest assignment note' value={assignments[0].note} />
+                    </Grid>
+                  )}
+                </Grid>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader title='Invoice & Service Information' subheader='Key references and metadata for this service' />
             <CardContent>
@@ -572,6 +692,71 @@ export default function ServiceDetail () {
               )}
             </CardContent>
           </Card>
+
+          {(workOrder || progress.length > 0) && (
+            <Card>
+              <CardHeader
+                avatar={<HistoryRoundedIcon color='primary' />}
+                title='Progress updates'
+                subheader={workOrder ? 'Latest updates from the field team' : 'No linked work order was found'}
+              />
+              <CardContent>
+                {progress.length === 0 ? (
+                  <Typography variant='body2' color='text.secondary'>
+                    No progress updates recorded yet.
+                  </Typography>
+                ) : (
+                  <Stack spacing={2.5}>
+                    {progress.map((entry) => {
+                      const key = entry.id || `${entry.status}-${entry.createdAt}`
+                      const color = progressStatusColor(entry.status)
+                      const chipProps = {
+                        label: formatServiceType(entry.status),
+                        size: 'small',
+                        color: color === 'default' ? undefined : color,
+                        variant: color === 'default' ? 'outlined' : 'filled'
+                      }
+                      return (
+                        <Box
+                          key={key}
+                          sx={{
+                            border: (theme) => `1px solid ${theme.palette.divider}`,
+                            borderRadius: 2,
+                            p: 2,
+                            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.02)
+                          }}
+                        >
+                          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent='space-between' spacing={1.5}>
+                            <Chip {...chipProps} />
+                            <Typography variant='caption' color='text.secondary'>
+                              {formatDateTime(entry.createdAt)}
+                            </Typography>
+                          </Stack>
+                          {entry.remarks && (
+                            <Typography variant='body2' sx={{ mt: 1 }}>
+                              {entry.remarks}
+                            </Typography>
+                          )}
+                          <Stack direction='row' spacing={2} sx={{ mt: 1 }}>
+                            {entry.byFE?.name && (
+                              <Typography variant='caption' color='text.secondary'>
+                                By {entry.byFE.name}{entry.byFE.id ? ` (ID ${entry.byFE.id})` : ''}
+                              </Typography>
+                            )}
+                            {entry.photoUrl && (
+                              <Link href={entry.photoUrl} target='_blank' rel='noreferrer' variant='caption'>
+                                View photo evidence
+                              </Link>
+                            )}
+                          </Stack>
+                        </Box>
+                      )
+                    })}
+                  </Stack>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader title='Items & Services' subheader='Line items captured for this service' />

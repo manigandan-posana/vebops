@@ -1,5 +1,7 @@
 package com.vebops.service;
 
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.http.HttpHeaders;
@@ -157,42 +159,141 @@ public class FeService {
             throw new BusinessException("Work order is not assigned to you");
         }
 
+        List<com.vebops.domain.WorkOrderItem> items = woItemRepo.findByTenantIdAndWorkOrder_Id(tid, woId);
+        List<FeWorkOrderItem> dtoItems = new ArrayList<>();
+        items.forEach(it -> {
+            if (it.getItem() != null) {
+                it.getItem().getName();
+                it.getItem().getCode();
+                it.getItem().getSpec();
+                it.getItem().getHsnSac();
+                it.getItem().getUom();
+            }
+            dtoItems.add(new FeWorkOrderItem(
+                it.getId(),
+                it.getItem() != null ? it.getItem().getName() : null,
+                it.getItem() != null ? it.getItem().getCode() : null,
+                it.getItem() != null ? it.getItem().getSpec() : null,
+                it.getItem() != null ? it.getItem().getHsnSac() : null,
+                it.getItem() != null ? it.getItem().getUom() : null,
+                it.getQtyPlanned(),
+                it.getQtyIssued()
+            ));
+        });
+
+        ServiceSummary summary = null;
         if (wo.getServiceRequest() != null) {
             var sr = wo.getServiceRequest();
             sr.getServiceType();
             sr.getSrn();
             sr.getDescription();
             sr.getSiteAddress();
+            String serviceType = sr.getServiceType() != null ? sr.getServiceType().name() : null;
+            String srn = sr.getSrn();
+            String description = sr.getDescription();
+            String siteAddress = sr.getSiteAddress();
+            String customerName = null;
+            String customerEmail = null;
+            String customerMobile = null;
+            String customerAddress = null;
             if (sr.getCustomer() != null) {
                 sr.getCustomer().getName();
                 sr.getCustomer().getEmail();
                 sr.getCustomer().getMobile();
+                sr.getCustomer().getAddress();
+                customerName = sr.getCustomer().getName();
+                customerEmail = sr.getCustomer().getEmail();
+                customerMobile = sr.getCustomer().getMobile();
+                customerAddress = sr.getCustomer().getAddress();
             }
-            if (sr.getProposal() != null && sr.getProposal().getKit() != null) {
-                sr.getProposal().getKit().getName();
-            }
+            summary = new ServiceSummary(
+                sr.getId(),
+                srn,
+                serviceType,
+                description,
+                siteAddress,
+                customerName,
+                customerEmail,
+                customerMobile,
+                customerAddress
+            );
         }
+
         if (wo.getCustomerPO() != null) {
             wo.getCustomerPO().getPoNumber();
         }
 
-        List<com.vebops.domain.WorkOrderItem> items = woItemRepo.findByTenantIdAndWorkOrder_Id(tid, woId);
-        items.forEach(it -> {
-            if (it.getItem() != null) {
-                it.getItem().getName();
-                it.getItem().getCode();
+        List<WorkOrderProgress> progress = woProgressRepo.findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, woId);
+        List<ProgressEntry> progressEntries = new ArrayList<>(progress.size());
+        for (WorkOrderProgress p : progress) {
+            Instant createdAt = p.getCreatedAt();
+            String status = p.getStatus() != null ? p.getStatus().name() : null;
+            ProgressUser by = null;
+            if (p.getByFE() != null) {
+                p.getByFE().getId();
+                if (p.getByFE().getUser() != null) {
+                    p.getByFE().getUser().getDisplayName();
+                }
+                String name = p.getByFE().getUser() != null
+                        ? p.getByFE().getUser().getDisplayName()
+                        : p.getByFE().getName();
+                by = new ProgressUser(p.getByFE().getId(), name);
             }
-        });
+            progressEntries.add(new ProgressEntry(
+                p.getId(),
+                status,
+                p.getRemarks(),
+                p.getPhotoUrl(),
+                createdAt,
+                by
+            ));
+        }
 
         var assignment = woAssignRepo.findByTenantIdAndWorkOrder_IdOrderByAssignedAtDesc(tid, woId)
                 .stream().findFirst().orElse(null);
         String instruction = assignment != null ? assignment.getNote() : null;
 
-        return ResponseEntity.ok(new FeWorkOrderDetail(wo, instruction, items));
+        return ResponseEntity.ok(new FeWorkOrderDetail(
+            wo,
+            instruction,
+            dtoItems,
+            summary,
+            progressEntries
+        ));
     }
 
     public record FeWorkOrderDetail(WorkOrder workOrder,
                                     String instruction,
-                                    List<com.vebops.domain.WorkOrderItem> items) { }
+                                    List<FeWorkOrderItem> items,
+                                    ServiceSummary serviceInfo,
+                                    List<ProgressEntry> progress) { }
+
+    public record FeWorkOrderItem(Long id,
+                                  String name,
+                                  String code,
+                                  String spec,
+                                  String hsn,
+                                  String uom,
+                                  java.math.BigDecimal qtyPlanned,
+                                  java.math.BigDecimal qtyIssued) { }
+
+    public record ServiceSummary(Long serviceRequestId,
+                                 String srn,
+                                 String serviceType,
+                                 String description,
+                                 String siteAddress,
+                                 String customerName,
+                                 String customerEmail,
+                                 String customerMobile,
+                                 String customerAddress) { }
+
+    public record ProgressEntry(Long id,
+                                String status,
+                                String remarks,
+                                String photoUrl,
+                                Instant createdAt,
+                                ProgressUser by) { }
+
+    public record ProgressUser(Long id, String name) { }
 
 }

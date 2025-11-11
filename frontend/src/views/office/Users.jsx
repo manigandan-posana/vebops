@@ -51,6 +51,7 @@ import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import { alpha } from '@mui/material/styles';
 import Modal from '../../shell/components/Modal';
+import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
 
 const FE_STATUSES = ['AVAILABLE', 'BUSY', 'INACTIVE'];
 const TABS = {
@@ -85,9 +86,10 @@ export default function Users() {
       return (
         String(name).toLowerCase().includes(q) ||
         String(email).toLowerCase().includes(q) ||
-        String(fe?.status || '').toLowerCase().includes(q)
+        String(fe?.status || '').toLowerCase().includes(q) ||
+        String(fe?.id || '').toLowerCase().includes(q)
       );
-    });
+  });
   }, [feRows, feQ]);
 
   const [showCreateFE, setShowCreateFE] = useState(false);
@@ -216,6 +218,19 @@ export default function Users() {
       payload: row,
       loading: false,
     });
+  }
+
+  async function copyFeId(fe) {
+    if (!fe?.id) return;
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard) {
+        throw new Error('Clipboard not available');
+      }
+      await navigator.clipboard.writeText(String(fe.id));
+      setMsg(`Copied field engineer ID ${fe.id} to clipboard.`);
+    } catch (e) {
+      setErr('Unable to copy ID to clipboard.');
+    }
   }
 
   async function runConfirmDeleteFE(row) {
@@ -460,6 +475,7 @@ export default function Users() {
               <Table>
                 <TableHead>
                   <TableRow>
+                    <TableCell>ID</TableCell>
                     <TableCell>Name</TableCell>
                     <TableCell>Email</TableCell>
                     <TableCell>Status</TableCell>
@@ -469,7 +485,7 @@ export default function Users() {
                 <TableBody>
                   {!feLoading && feFiltered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} align="center">
+                      <TableCell colSpan={5} align="center">
                         <Typography variant="body2" color="text.secondary">
                           No field engineers found.
                         </Typography>
@@ -482,6 +498,16 @@ export default function Users() {
                     const userId = fe?.user?.id || fe?.userId || null;
                     return (
                       <TableRow key={fe.id} hover>
+                        <TableCell>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Chip label={fe?.id ? `FE-${fe.id}` : '—'} size="small" variant="outlined" />
+                            {fe?.id && (
+                              <TooltipIconButton title="Copy ID" onClick={() => copyFeId(fe)}>
+                                <ContentCopyRoundedIcon fontSize="inherit" />
+                              </TooltipIconButton>
+                            )}
+                          </Stack>
+                        </TableCell>
                         <TableCell>{name}</TableCell>
                         <TableCell>{email}</TableCell>
                         <TableCell>
@@ -939,3 +965,4 @@ function TooltipIconButton({ title, color = 'default', disabled, onClick, childr
     </Tooltip>
   );
 }
+

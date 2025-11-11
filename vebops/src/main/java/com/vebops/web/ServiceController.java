@@ -11,7 +11,15 @@ import com.vebops.domain.Service;
 import com.vebops.domain.enums.DocumentEntityType;
 import com.vebops.domain.enums.DocumentKind;
 import com.vebops.domain.enums.ProposalStatus;
+import com.vebops.domain.ServiceRequest;
+import com.vebops.domain.WorkOrder;
+import com.vebops.domain.WorkOrderAssignment;
+import com.vebops.domain.WorkOrderProgress;
 import com.vebops.repository.ServiceRepository;
+import com.vebops.repository.ServiceRequestRepository;
+import com.vebops.repository.WorkOrderAssignmentRepository;
+import com.vebops.repository.WorkOrderProgressRepository;
+import com.vebops.repository.WorkOrderRepository;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +33,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -54,6 +63,10 @@ public class ServiceController {
     private final ObjectMapper objectMapper;
     private final com.vebops.repository.CustomerRepository customerRepo;
     private final com.vebops.repository.ProposalRepository proposalRepo;
+    private final ServiceRequestRepository serviceRequestRepo;
+    private final WorkOrderRepository workOrderRepo;
+    private final WorkOrderProgressRepository workOrderProgressRepo;
+    private final WorkOrderAssignmentRepository workOrderAssignmentRepo;
 
     private final com.vebops.repository.DocumentRepository documentRepo;
     private final com.vebops.repository.CompanyDetailsRepository companyRepo;
@@ -69,6 +82,10 @@ public class ServiceController {
                              ObjectMapper objectMapper,
                              com.vebops.repository.CustomerRepository customerRepo,
                              com.vebops.repository.ProposalRepository proposalRepo,
+                             ServiceRequestRepository serviceRequestRepo,
+                             WorkOrderRepository workOrderRepo,
+                             WorkOrderProgressRepository workOrderProgressRepo,
+                             WorkOrderAssignmentRepository workOrderAssignmentRepo,
                              com.vebops.repository.DocumentRepository documentRepo,
                              com.vebops.repository.CompanyDetailsRepository companyRepo,
                              org.springframework.mail.javamail.JavaMailSender mailSender,
@@ -78,6 +95,10 @@ public class ServiceController {
         this.objectMapper = objectMapper;
         this.customerRepo = customerRepo;
         this.proposalRepo = proposalRepo;
+        this.serviceRequestRepo = serviceRequestRepo;
+        this.workOrderRepo = workOrderRepo;
+        this.workOrderProgressRepo = workOrderProgressRepo;
+        this.workOrderAssignmentRepo = workOrderAssignmentRepo;
         this.documentRepo = documentRepo;
         this.companyRepo = companyRepo;
         this.mailSender = mailSender;
@@ -453,7 +474,7 @@ public class ServiceController {
      */
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('OFFICE','BACK_OFFICE')")
-    public ResponseEntity<Service> getService(@PathVariable("id") Long id) {
+    public ResponseEntity<Map<String, Object>> getService(@PathVariable("id") Long id) {
         if (id == null) {
             return ResponseEntity.notFound().build();
         }
@@ -468,7 +489,11 @@ public class ServiceController {
             return ResponseEntity.notFound().build();
         }
         normaliseServicePayload(svc);
-        return ResponseEntity.ok(svc);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("service", svc);
+        Map<String, Object> context = resolveServiceContext(tenantId, svc);
+        response.putAll(context);
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -485,8 +510,273 @@ public class ServiceController {
             @RequestParam(name = "limit", defaultValue = "5") int limit
     ) {
         if (q == null || q.isBlank()) {
-            return ResponseEntity.ok(java.util.Collections.emptyList());
+        return ResponseEntity.ok(java.util.Collections.emptyList());
+    }
+
+    private Map<String, Object> resolveServiceContext(Long tenantId, Service svc) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, Object> meta = safeReadMap(svc.getMetaJson());
+
+        Long workOrderId = coerceLong(meta.get("workOrderId"));
+        if (workOrderId == null) {
+            workOrderId = coerceLong(meta.get("woId"));
         }
+        Long serviceRequestId = coerceLong(meta.get("serviceRequestId"));
+        if (serviceRequestId == null) {
+            serviceRequestId = coerceLong(meta.get("srId"));
+        }
+        Long proposalId = coerceLong(meta.get("proposalId"));
+        if (proposalId == null) {
+            proposalId = coerceLong(meta.get("proposalID"));
+        }
+
+        ServiceRequest sr = null;
+        WorkOrder wo = null;
+
+        if (workOrderId != null) {
+            wo = workOrderRepo.findById(workOrderId)
+                    .filter(w -> tenantId.equals(w.getTenantId()))
+                    .orElse(null);
+        }
+
+        if (wo != null) {
+            hydrateWorkOrderForContext(wo);
+            sr = wo.getServiceRequest();
+        }
+
+        if (sr == null && serviceRequestId != null) {
+            sr = serviceRequestRepo.findById(serviceRequestId)
+                    .filter(req -> tenantId.equals(req.getTenantId()))
+                    .orElse(null);
+        }
+
+        if (sr == null && proposalId != null) {
+            sr = serviceRequestRepo.findFirstByTenantIdAndProposal_Id(tenantId, proposalId)
+                    .orElse(null);
+        }
+
+        if (wo == null && sr != null) {
+            java.util.List<WorkOrder> list = workOrderRepo.findByTenantIdAndServiceRequest_Id(tenantId, sr.getId());
+            if (!list.isEmpty()) {
+                list.sort((a, b) -> Long.compare(
+                        b.getId() != null ? b.getId() : 0L,
+                        a.getId() != null ? a.getId() : 0L));
+                wo = list.get(0);
+                hydrateWorkOrderForContext(wo);
+            }
+        }
+
+        if (sr == null && wo != null) {
+            sr = wo.getServiceRequest();
+        }
+
+        if (sr != null) {
+            hydrateServiceRequestForContext(sr);
+            out.put("serviceRequest", summariseServiceRequest(sr));
+        } else {
+            out.put("serviceRequest", null);
+        }
+
+        if (wo != null) {
+            out.put("workOrder", summariseWorkOrder(wo));
+            List<WorkOrderAssignment> assignments = workOrderAssignmentRepo
+                    .findByTenantIdAndWorkOrder_IdOrderByAssignedAtDesc(tenantId, wo.getId());
+            assignments.forEach(this::hydrateAssignmentForContext);
+            out.put("assignments", summariseAssignments(assignments));
+            List<WorkOrderProgress> progress = workOrderProgressRepo
+                    .findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tenantId, wo.getId());
+            progress.forEach(this::hydrateProgressForContext);
+            out.put("progress", summariseProgress(progress));
+        } else {
+            out.put("workOrder", null);
+            out.put("assignments", java.util.Collections.emptyList());
+            out.put("progress", java.util.Collections.emptyList());
+        }
+
+        return out;
+    }
+
+    private void hydrateWorkOrderForContext(WorkOrder wo) {
+        if (wo == null) return;
+        if (wo.getServiceRequest() != null) {
+            wo.getServiceRequest().getId();
+            if (wo.getServiceRequest().getCustomer() != null) {
+                wo.getServiceRequest().getCustomer().getName();
+                wo.getServiceRequest().getCustomer().getEmail();
+                wo.getServiceRequest().getCustomer().getMobile();
+            }
+        }
+        if (wo.getAssignedFE() != null) {
+            wo.getAssignedFE().getId();
+            if (wo.getAssignedFE().getUser() != null) {
+                wo.getAssignedFE().getUser().getDisplayName();
+            }
+        }
+        if (wo.getAssignedTeam() != null) {
+            wo.getAssignedTeam().getId();
+            wo.getAssignedTeam().getName();
+        }
+        if (wo.getCustomerPO() != null) {
+            wo.getCustomerPO().getPoNumber();
+        }
+    }
+
+    private void hydrateServiceRequestForContext(ServiceRequest sr) {
+        if (sr == null) return;
+        sr.getSrn();
+        sr.getServiceType();
+        sr.getDescription();
+        sr.getSiteAddress();
+        if (sr.getCustomer() != null) {
+            sr.getCustomer().getName();
+            sr.getCustomer().getEmail();
+            sr.getCustomer().getMobile();
+            sr.getCustomer().getAddress();
+        }
+    }
+
+    private void hydrateAssignmentForContext(WorkOrderAssignment a) {
+        if (a == null) return;
+        if (a.getFieldEngineer() != null) {
+            a.getFieldEngineer().getId();
+            if (a.getFieldEngineer().getUser() != null) {
+                a.getFieldEngineer().getUser().getDisplayName();
+            }
+        }
+        if (a.getTeam() != null) {
+            a.getTeam().getId();
+            a.getTeam().getName();
+        }
+    }
+
+    private void hydrateProgressForContext(WorkOrderProgress p) {
+        if (p == null) return;
+        p.getStatus();
+        if (p.getByFE() != null) {
+            p.getByFE().getId();
+            if (p.getByFE().getUser() != null) {
+                p.getByFE().getUser().getDisplayName();
+            }
+        }
+    }
+
+    private Map<String, Object> summariseWorkOrder(WorkOrder wo) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", wo.getId());
+        map.put("wan", wo.getWan());
+        map.put("status", wo.getStatus() != null ? wo.getStatus().name() : null);
+        map.put("startDate", wo.getStartDate());
+        map.put("dueDate", wo.getDueDate());
+        if (wo.getAssignedFE() != null) {
+            Map<String, Object> fe = new LinkedHashMap<>();
+            fe.put("id", wo.getAssignedFE().getId());
+            String name = wo.getAssignedFE().getUser() != null
+                    ? wo.getAssignedFE().getUser().getDisplayName()
+                    : wo.getAssignedFE().getName();
+            fe.put("name", name);
+            map.put("assignedFE", fe);
+        }
+        if (wo.getAssignedTeam() != null) {
+            Map<String, Object> team = new LinkedHashMap<>();
+            team.put("id", wo.getAssignedTeam().getId());
+            team.put("name", wo.getAssignedTeam().getName());
+            map.put("assignedTeam", team);
+        }
+        if (wo.getCustomerPO() != null) {
+            Map<String, Object> po = new LinkedHashMap<>();
+            po.put("id", wo.getCustomerPO().getId());
+            po.put("poNumber", wo.getCustomerPO().getPoNumber());
+            map.put("customerPO", po);
+        }
+        return map;
+    }
+
+    private Map<String, Object> summariseServiceRequest(ServiceRequest sr) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", sr.getId());
+        map.put("srn", sr.getSrn());
+        map.put("serviceType", sr.getServiceType() != null ? sr.getServiceType().name() : null);
+        map.put("description", sr.getDescription());
+        map.put("siteAddress", sr.getSiteAddress());
+        map.put("createdAt", sr.getCreatedAt());
+        if (sr.getCustomer() != null) {
+            Map<String, Object> customer = new LinkedHashMap<>();
+            customer.put("id", sr.getCustomer().getId());
+            customer.put("name", sr.getCustomer().getName());
+            customer.put("email", sr.getCustomer().getEmail());
+            customer.put("mobile", sr.getCustomer().getMobile());
+            customer.put("address", sr.getCustomer().getAddress());
+            map.put("customer", customer);
+        }
+        return map;
+    }
+
+    private List<Map<String, Object>> summariseAssignments(List<WorkOrderAssignment> assignments) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (WorkOrderAssignment a : assignments) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", a.getId());
+            map.put("assignedAt", a.getAssignedAt());
+            map.put("note", a.getNote());
+            if (a.getFieldEngineer() != null) {
+                Map<String, Object> fe = new LinkedHashMap<>();
+                fe.put("id", a.getFieldEngineer().getId());
+                String name = a.getFieldEngineer().getUser() != null
+                        ? a.getFieldEngineer().getUser().getDisplayName()
+                        : a.getFieldEngineer().getName();
+                fe.put("name", name);
+                map.put("fieldEngineer", fe);
+            }
+            if (a.getTeam() != null) {
+                Map<String, Object> team = new LinkedHashMap<>();
+                team.put("id", a.getTeam().getId());
+                team.put("name", a.getTeam().getName());
+                map.put("team", team);
+            }
+            list.add(map);
+        }
+        return list;
+    }
+
+    private List<Map<String, Object>> summariseProgress(List<WorkOrderProgress> progress) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (WorkOrderProgress p : progress) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", p.getId());
+            map.put("status", p.getStatus() != null ? p.getStatus().name() : null);
+            map.put("remarks", p.getRemarks());
+            map.put("photoUrl", p.getPhotoUrl());
+            map.put("createdAt", p.getCreatedAt());
+            if (p.getByFE() != null) {
+                Map<String, Object> fe = new LinkedHashMap<>();
+                fe.put("id", p.getByFE().getId());
+                String name = p.getByFE().getUser() != null
+                        ? p.getByFE().getUser().getDisplayName()
+                        : p.getByFE().getName();
+                fe.put("name", name);
+                map.put("byFE", fe);
+            }
+            list.add(map);
+        }
+        return list;
+    }
+
+    private Long coerceLong(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        if (value instanceof String s) {
+            String trimmed = s.trim();
+            if (trimmed.isEmpty()) return null;
+            try {
+                return Long.parseLong(trimmed);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
         Long tenantId = TenantContext.getTenantId();
         int max = Math.max(1, Math.min(limit, 50));
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, max);
