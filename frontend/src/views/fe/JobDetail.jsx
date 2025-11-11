@@ -24,7 +24,7 @@ import {
 } from '@mui/material'
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
 import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded'
-import MapPinRoundedIcon from '@mui/icons-material/MapPinRounded'
+import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded'
 import AssignmentRoundedIcon from '@mui/icons-material/AssignmentRounded'
 import {
   usePostProgressMutation,
@@ -175,7 +175,7 @@ export default function JobDetail () {
               <Info label='Service Type' value={sr?.serviceType || '—'} />
             </Grid>
             <Grid item xs={12} md={8}>
-              <Info icon={<MapPinRoundedIcon fontSize='small' color='primary' />} label='Site Address' value={srSiteAddress} multiline />
+              <Info icon={<LocationOnRoundedIcon fontSize='small' color='primary' />} label='Site Address' value={srSiteAddress} multiline />
             </Grid>
             {srDescription ? (
               <Grid item xs={12}>

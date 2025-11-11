@@ -152,12 +152,12 @@ public class BackOfficeController {
 
     // ----- Service Requests -----
     @GetMapping({"/requests","/service-requests"})
-    public ResponseEntity<List<ServiceRequest>> listServiceRequests(
+    public ResponseEntity<Page<ServiceRequest>> listServiceRequests(
             @RequestParam(required = false) SRStatus status,
             @RequestParam(name = "customerId", required = false) Long customerId,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size,
-            @RequestParam(required = false) String sort) {
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
         return bo.listServiceRequests(status, customerId, page, size, sort);
     }
 
@@ -173,7 +173,7 @@ public class BackOfficeController {
 
     // ----- Proposals -----
     @GetMapping("/proposals")
-    public ResponseEntity<List<Proposal>> listProposals(
+    public ResponseEntity<Page<Proposal>> listProposals(
             @RequestParam(required = false) ProposalStatus status,
             @RequestParam(required = false) Long customerId,
             @RequestParam(defaultValue = "0") int page,
@@ -219,7 +219,7 @@ public class BackOfficeController {
 
     // ----- Work Orders -----
     @GetMapping("/wo")
-    public ResponseEntity<List<WorkOrder>> listWOs(
+    public ResponseEntity<Page<WorkOrder>> listWOs(
             @RequestParam(required = false) WOStatus status,
             @RequestParam(required = false) Long feId,
             @RequestParam(required = false) Long srId,

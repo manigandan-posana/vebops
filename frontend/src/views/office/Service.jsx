@@ -81,21 +81,19 @@ const handleEnterNavigation = (event) => {
   const idx = focusables.indexOf(target)
   if (idx >= 0 && idx < focusables.length - 1) {
     focusables[idx + 1].focus()
-    if (focusables[idx + 1].select) {
+    if (typeof focusables[idx + 1].select === 'function') {
       focusables[idx + 1].select()
     }
+    return
+  }
+
+  const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
+  if (submitBtn) {
+    submitBtn.click()
+  } else if (typeof form.requestSubmit === 'function') {
+    form.requestSubmit()
   } else {
-    const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submitBtn) {
-      submitBtn.click()
-    } else if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit()
-    } else {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    }
-  } else if (idx === focusables.length - 1) {
-    const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submitBtn) submitBtn.click()
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
   }
 }
 

@@ -1,10 +1,14 @@
 package com.vebops.repository;
 
+import java.util.*;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.stereotype.Repository;
-import java.util.*;
-import com.vebops.domain.enums.*;
+
 import com.vebops.domain.WorkOrder;
+import com.vebops.domain.enums.*;
 
 @Repository
 public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long> {
@@ -12,6 +16,9 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long> {
     List<WorkOrder> findByTenantIdAndStatus(Long tenantId, WOStatus status);
     List<WorkOrder> findByTenantIdAndServiceRequest_Id(Long tenantId, Long srId);
     List<WorkOrder> findByTenantId(Long tenantId);
+    Page<WorkOrder> findByTenantId(Long tenantId, Pageable pageable);
+    Page<WorkOrder> findByTenantIdAndStatus(Long tenantId, WOStatus status, Pageable pageable);
+    Page<WorkOrder> findByTenantIdAndServiceRequest_Id(Long tenantId, Long srId, Pageable pageable);
     long countByStatus(WOStatus status);
     long countByTenantIdAndStatus(Long tenantId, WOStatus status);
 }

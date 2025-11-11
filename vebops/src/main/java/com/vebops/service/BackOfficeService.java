@@ -389,37 +389,19 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
     }
 
     // ----- Service Requests -----
-    public ResponseEntity<List<ServiceRequest>> listServiceRequests(SRStatus status, Long customerId, int page, int size, String sort) {
+    public ResponseEntity<Page<ServiceRequest>> listServiceRequests(SRStatus status, Long customerId, int page, int size, String sort) {
         final Long tid = tenant();
-        List<ServiceRequest> base = new ArrayList<>();
+        Pageable pageable = buildPageRequest(page, size, sort, "createdAt");
+        Page<ServiceRequest> result;
         if (status != null) {
-            base.addAll(srRepo.findByTenantIdAndStatus(tid, status));
+            result = srRepo.findByTenantIdAndStatus(tid, status, pageable);
         } else if (customerId != null) {
-            base.addAll(srRepo.findByTenantIdAndCustomer_Id(tid, customerId));
+            result = srRepo.findByTenantIdAndCustomer_Id(tid, customerId, pageable);
         } else {
-            base.addAll(srRepo.findByTenantId(tid));
+            result = srRepo.findByTenantId(tid, pageable);
         }
-        Comparator<ServiceRequest> cmp = Comparator.comparing(ServiceRequest::getId).reversed();
-        if (sort != null && !sort.isBlank()) {
-            String[] parts = sort.split(",");
-            String field = parts[0];
-            boolean desc = parts.length > 1 && "desc".equalsIgnoreCase(parts[1]);
-            if ("createdAt".equals(field)) cmp = Comparator.comparing(BaseTenantEntity::getCreatedAt);
-            else if ("updatedAt".equals(field)) cmp = Comparator.comparing(BaseTenantEntity::getUpdatedAt);
-            else cmp = Comparator.comparing(ServiceRequest::getId);
-            if (desc) cmp = cmp.reversed();
-        }
-        List<ServiceRequest> list = base.stream().sorted(cmp)
-            .skip((long) page * size)
-            .limit(size)
-            .collect(Collectors.toList());
-        list.forEach(sr -> {
-            if (sr.getCustomer() != null) sr.getCustomer().getName();
-            if (sr.getProposal() != null) {
-                sr.getProposal().getId();
-            }
-        });
-        return ResponseEntity.ok(list);
+        result.getContent().forEach(this::hydrateServiceRequest);
+        return ResponseEntity.ok(result);
     }
 
     public ResponseEntity<ServiceRequest> getServiceRequest(Long id) {
@@ -473,40 +455,19 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
     }
 
     // ----- Proposals -----
-    public ResponseEntity<List<Proposal>> listProposals(ProposalStatus status, Long customerId, int page, int size, String sort) {
+    public ResponseEntity<Page<Proposal>> listProposals(ProposalStatus status, Long customerId, int page, int size, String sort) {
         Long tid = tenant();
-        List<Proposal> base;
+        Pageable pageable = buildPageRequest(page, size, sort, "id");
+        Page<Proposal> result;
         if (status != null) {
-            base = proposalRepo.findByTenantIdAndStatus(tid, status);
+            result = proposalRepo.findByTenantIdAndStatus(tid, status, pageable);
         } else if (customerId != null) {
-            base = proposalRepo.findByTenantIdAndCustomer_Id(tid, customerId);
+            result = proposalRepo.findByTenantIdAndCustomer_Id(tid, customerId, pageable);
         } else {
-            base = proposalRepo.findByTenantId(tid);
+            result = proposalRepo.findByTenantId(tid, pageable);
         }
-        Comparator<Proposal> cmp = Comparator.comparing(Proposal::getId);
-        if (sort != null && !sort.isBlank()) {
-            String[] parts = sort.split(",");
-            String field = parts[0];
-            boolean desc = parts.length > 1 && "desc".equalsIgnoreCase(parts[1]);
-            if ("createdAt".equals(field)) cmp = Comparator.comparing(BaseTenantEntity::getCreatedAt);
-            else if ("updatedAt".equals(field)) cmp = Comparator.comparing(BaseTenantEntity::getUpdatedAt);
-            else cmp = Comparator.comparing(Proposal::getId);
-            if (desc) cmp = cmp.reversed();
-        }
-        List<Proposal> list = base.stream().sorted(cmp)
-                .skip((long) page * size).limit(size).collect(Collectors.toList());
-        list.forEach(p -> {
-            if (p.getCustomer() != null) {
-                p.getCustomer().getName();
-            }
-            if (p.getKit() != null) {
-                p.getKit().getName();
-            }
-            if (p.getApprovedBy() != null) {
-                p.getApprovedBy().getDisplayName();
-            }
-        });
-        return ResponseEntity.ok(list);
+        result.getContent().forEach(this::hydrateProposal);
+        return ResponseEntity.ok(result);
     }
 
     public ResponseEntity<Map<String, Object>> getProposal(Long id) {
@@ -626,52 +587,21 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
     }
 
     // ----- Work Orders -----
-    public ResponseEntity<List<WorkOrder>> listWOs(WOStatus status, Long feId, Long srId, int page, int size, String sort) {
+    public ResponseEntity<Page<WorkOrder>> listWOs(WOStatus status, Long feId, Long srId, int page, int size, String sort) {
         Long tid = tenant();
-        List<WorkOrder> base;
+        Pageable pageable = buildPageRequest(page, size, sort, "id");
+        Page<WorkOrder> result;
         if (feId != null) {
-            base = woQueryRepo.findByTenantIdAndAssignedFE_Id(tid, feId);
+            result = woQueryRepo.findByTenantIdAndAssignedFE_Id(tid, feId, pageable);
         } else if (status != null) {
-            base = workOrderRepo.findByTenantIdAndStatus(tid, status);
+            result = workOrderRepo.findByTenantIdAndStatus(tid, status, pageable);
         } else if (srId != null) {
-            base = workOrderRepo.findByTenantIdAndServiceRequest_Id(tid, srId);
+            result = workOrderRepo.findByTenantIdAndServiceRequest_Id(tid, srId, pageable);
         } else {
-            base = workOrderRepo.findByTenantId(tid);
+            result = workOrderRepo.findByTenantId(tid, pageable);
         }
-        Comparator<WorkOrder> cmp = Comparator.comparing(WorkOrder::getId);
-        if (sort != null && !sort.isBlank()) {
-            String[] parts = sort.split(",");
-            String field = parts[0];
-            boolean desc = parts.length > 1 && "desc".equalsIgnoreCase(parts[1]);
-            if ("createdAt".equals(field)) cmp = Comparator.comparing(BaseTenantEntity::getCreatedAt);
-            else if ("updatedAt".equals(field)) cmp = Comparator.comparing(BaseTenantEntity::getUpdatedAt);
-            else cmp = Comparator.comparing(WorkOrder::getId);
-            if (desc) cmp = cmp.reversed();
-        }
-        List<WorkOrder> list = base.stream().sorted(cmp)
-                .skip((long) page * size).limit(size).collect(Collectors.toList());
-        list.forEach(wo -> {
-            if (wo.getServiceRequest() != null) {
-                wo.getServiceRequest().getId();
-                if (wo.getServiceRequest().getCustomer() != null) {
-                    wo.getServiceRequest().getCustomer().getName();
-                }
-            }
-            if (wo.getAssignedFE() != null) {
-                wo.getAssignedFE().getId();
-                if (wo.getAssignedFE().getUser() != null) {
-                    wo.getAssignedFE().getUser().getDisplayName();
-                }
-            }
-            if (wo.getAssignedTeam() != null) {
-                wo.getAssignedTeam().getId();
-                wo.getAssignedTeam().getName();
-            }
-            if (wo.getCustomerPO() != null) {
-                wo.getCustomerPO().getId();
-            }
-        });
-        return ResponseEntity.ok(list);
+        result.getContent().forEach(this::hydrateWorkOrder);
+        return ResponseEntity.ok(result);
     }
 
     public ResponseEntity<WorkOrder> getWO(Long id) {
@@ -697,6 +627,69 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
             wo.getCustomerPO().getId();
         }
         return ResponseEntity.ok(wo);
+    }
+
+    private Pageable buildPageRequest(int page, int size, String sort, String defaultProperty) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(1, Math.min(size, 200));
+        Sort sortSpec = Sort.by(Sort.Direction.DESC, defaultProperty);
+        if (sort != null && !sort.isBlank()) {
+            String[] parts = sort.split(",");
+            String property = parts.length > 0 && !parts[0].isBlank() ? parts[0].trim() : defaultProperty;
+            Sort.Direction direction = (parts.length > 1 && "asc".equalsIgnoreCase(parts[1]))
+                    ? Sort.Direction.ASC : Sort.Direction.DESC;
+            sortSpec = Sort.by(direction, property);
+        }
+        return PageRequest.of(safePage, safeSize, sortSpec);
+    }
+
+    private void hydrateProposal(Proposal p) {
+        if (p == null) return;
+        if (p.getCustomer() != null) {
+            p.getCustomer().getName();
+        }
+        if (p.getKit() != null) {
+            p.getKit().getName();
+        }
+        if (p.getApprovedBy() != null) {
+            p.getApprovedBy().getDisplayName();
+        }
+    }
+
+    private void hydrateServiceRequest(ServiceRequest sr) {
+        if (sr == null) return;
+        if (sr.getCustomer() != null) {
+            sr.getCustomer().getName();
+        }
+        if (sr.getProposal() != null) {
+            sr.getProposal().getId();
+            if (sr.getProposal().getCustomer() != null) {
+                sr.getProposal().getCustomer().getName();
+            }
+        }
+    }
+
+    private void hydrateWorkOrder(WorkOrder wo) {
+        if (wo == null) return;
+        if (wo.getServiceRequest() != null) {
+            wo.getServiceRequest().getId();
+            if (wo.getServiceRequest().getCustomer() != null) {
+                wo.getServiceRequest().getCustomer().getName();
+            }
+        }
+        if (wo.getAssignedFE() != null) {
+            wo.getAssignedFE().getId();
+            if (wo.getAssignedFE().getUser() != null) {
+                wo.getAssignedFE().getUser().getDisplayName();
+            }
+        }
+        if (wo.getAssignedTeam() != null) {
+            wo.getAssignedTeam().getId();
+            wo.getAssignedTeam().getName();
+        }
+        if (wo.getCustomerPO() != null) {
+            wo.getCustomerPO().getId();
+        }
     }
 
     public ResponseEntity<Map<String, Object>> woTimeline(Long id) {
