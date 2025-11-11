@@ -22,6 +22,7 @@ import {
   Grid,
   IconButton,
   InputAdornment,
+  Menu,
   MenuItem,
   Stack,
   Table,
@@ -44,6 +45,66 @@ import {
 } from '../../features/office/officeApi'
 import { displayDocNumber } from '../../utils/docNumbers'
 import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
+
+const parseJson = (value, fallback) => {
+  if (!value) return fallback
+  if (Array.isArray(value) || typeof value === 'object') return value
+  try {
+    return JSON.parse(value)
+  } catch (err) {
+    return fallback
+  }
+}
+
+const normaliseServiceRow = (service) => {
+  const meta = parseJson(service.metaJson, {}) || {}
+  const totals = parseJson(service.totalsJson, {}) || {}
+
+  const pick = (...keys) => {
+    for (const key of keys) {
+      const val = meta?.[key]
+      if (val !== undefined && val !== null && String(val).trim() !== '') return val
+    }
+    return null
+  }
+
+  const invoiceNo = pick('invoiceNo', 'invoiceNumber', 'invoice', 'invNo')
+  const proformaNo = pick('pinvNo', 'proformaNo', 'proforma', 'pinv')
+  const invoiceDate = pick('invoiceDate', 'invoice_date', 'invDate')
+  const proformaDate = pick('pinvDate', 'proformaDate', 'pinv_date')
+  const serviceType = pick('serviceType', 'service_type', 'serviceTypeCode')
+  const status = service.status || pick('status', 'invoiceStatus', 'pinvStatus')
+
+  const safeNumber = (value) => {
+    const num = Number(value)
+    return Number.isFinite(num) ? num : null
+  }
+
+  const derivedTotal =
+    safeNumber(service.grandTotal) ??
+    safeNumber(service.total) ??
+    safeNumber(totals.grand) ??
+    safeNumber(totals.total) ??
+    safeNumber(totals.grandTotal) ??
+    safeNumber(totals.netTotal)
+
+  return {
+    ...service,
+    meta,
+    totals,
+    derived: {
+      invoiceNo,
+      proformaNo,
+      invoiceDate,
+      proformaDate,
+      serviceType,
+      status,
+      total: derivedTotal,
+      buyerEmail: service.buyerEmail || pick('buyerEmail', 'email'),
+      buyerContact: service.buyerContact || pick('buyerContact', 'contact')
+    }
+  }
+}
 
 const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -80,11 +141,19 @@ export default function ServiceHistory () {
   const [downloadInvoice] = useDownloadServiceInvoiceMutation()
   const [sendServiceInvoice, sendState] = useSendServiceInvoiceMutation()
   const [shareServiceProposal] = useShareServiceProposalMutation()
-  const [sharingId, setSharingId] = useState(null)
+  const [sharing, setSharing] = useState({ id: null, docType: null })
+  const [actionMenu, setActionMenu] = useState({ anchorEl: null, service: null, action: null })
 
   const openSendModal = (srv, docType = 'INVOICE') => {
-    const contact = srv?.buyerContact || ''
-    setModal({ open: true, serviceId: srv.id, method: 'email', contact, docType })
+    if (!srv) return
+    const contact = srv.derived?.buyerEmail || srv.derived?.buyerContact || srv.buyerContact || ''
+    setModal({
+      open: true,
+      serviceId: srv.id,
+      method: contact && /@/.test(contact) ? 'email' : (contact ? 'whatsapp' : 'email'),
+      contact,
+      docType
+    })
   }
 
   const closeModal = () => setModal((m) => ({ ...m, open: false }))
@@ -102,9 +171,10 @@ export default function ServiceHistory () {
     }
     const res = await sendServiceInvoice({ ...payload, type: modal.docType || 'INVOICE' })
     if ('error' in res) {
-      toast.error(res.error?.data?.message || 'Failed to send invoice')
+      toast.error(res.error?.data?.message || 'Failed to send document')
     } else {
-      toast.success('Invoice sent to customer')
+      const label = modal.docType === 'PROFORMA' ? 'Proforma invoice' : 'Invoice'
+      toast.success(`${label} sent to customer`)
       closeModal()
     }
   }
@@ -126,14 +196,34 @@ export default function ServiceHistory () {
   const handleShare = async (srv, docType = 'PROFORMA') => {
     if (!srv?.id) return
     try {
-      setSharingId(srv.id)
+      setSharing({ id: srv.id, docType })
       const res = await shareServiceProposal({ id: srv.id, docType }).unwrap()
       const pid = res?.proposalId ? `P-${res.proposalId}` : 'proposal'
-      toast.success(`${pid} shared to portal`)
+      toast.success(`${pid} shared to portal as ${docType === 'PROFORMA' ? 'proforma invoice' : 'invoice'}`)
     } catch (e) {
       toast.error(String(e?.data?.message || e?.error || e?.message || 'Failed to share proposal'))
     } finally {
-      setSharingId(null)
+      setSharing({ id: null, docType: null })
+    }
+  }
+
+  const openMenu = (event, service, action) => {
+    event.preventDefault()
+    setActionMenu({ anchorEl: event.currentTarget, service, action })
+  }
+
+  const closeMenu = () => setActionMenu({ anchorEl: null, service: null, action: null })
+
+  const handleMenuSelect = async (docType) => {
+    const { service, action } = actionMenu
+    closeMenu()
+    if (!service || !action) return
+    if (action === 'download') {
+      await handleDownload(service.id, docType)
+    } else if (action === 'share') {
+      await handleShare(service, docType)
+    } else if (action === 'send') {
+      openSendModal(service, docType)
     }
   }
 
@@ -152,11 +242,16 @@ export default function ServiceHistory () {
 
   const { content, totalPages, totalElements } = data
 
+  const rows = useMemo(
+    () => (content || []).map((svc) => normaliseServiceRow(svc)),
+    [content]
+  )
+
   const firstRow = useMemo(() => (totalElements === 0 ? 0 : page * size + 1), [page, size, totalElements])
   const lastRow = useMemo(() => {
-    if (!content || content.length === 0) return 0
-    return page * size + content.length
-  }, [content, page, size])
+    if (!rows || rows.length === 0) return 0
+    return page * size + rows.length
+  }, [rows, page, size])
 
   const goFirst = () => setPage(0)
   const goPrev = () => setPage((p) => Math.max(0, p - 1))
@@ -170,6 +265,7 @@ export default function ServiceHistory () {
       COMPLETED: { label: 'Completed', color: 'success' }
     }
     const meta = tone[status] || { label: status || 'Unknown', color: 'default' }
+    if (!status) return null
     return <Chip label={meta.label} color={meta.color} size='small' variant='outlined' />
   }, [])
 
@@ -246,25 +342,33 @@ export default function ServiceHistory () {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {isFetching && (!content || content.length === 0) && (
+                    {isFetching && rows.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} align='center'>
                           <Typography variant='body2' color='text.secondary'>Loading services…</Typography>
                         </TableCell>
                       </TableRow>
                     )}
-                    {!isFetching && (!content || content.length === 0) && (
+                    {!isFetching && rows.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} align='center'>
                           <Typography variant='body2' color='text.secondary'>No services found.</Typography>
                         </TableCell>
                       </TableRow>
                     )}
-                    {content.map((srv) => (
+                    {rows.map((srv) => (
                       <TableRow hover key={srv.id}>
                         <TableCell>
                           <Stack spacing={0.3}>
-                            <Typography variant='body2' fontWeight={600}>{displayDocNumber(srv.invoiceNumber)}</Typography>
+                            {srv.derived?.invoiceNo && (
+                              <Typography variant='body2' fontWeight={600}>Invoice: {displayDocNumber(srv.derived.invoiceNo)}</Typography>
+                            )}
+                            {srv.derived?.proformaNo && (
+                              <Typography variant='body2' fontWeight={600}>Proforma: {displayDocNumber(srv.derived.proformaNo)}</Typography>
+                            )}
+                            {!srv.derived?.invoiceNo && !srv.derived?.proformaNo && (
+                              <Typography variant='body2' color='text.secondary'>No document numbers</Typography>
+                            )}
                             <Typography variant='caption' color='text.secondary'>#{srv.id}</Typography>
                           </Stack>
                         </TableCell>
@@ -276,31 +380,36 @@ export default function ServiceHistory () {
                         </TableCell>
                         <TableCell>
                           <Stack direction='row' spacing={1} alignItems='center'>
-                            {renderStatus(srv.status)}
-                            <Typography variant='body2' color='text.secondary'>{srv.serviceType || '—'}</Typography>
+                            {renderStatus(srv.derived?.status)}
+                            <Typography variant='body2' color='text.secondary'>{srv.derived?.serviceType || '—'}</Typography>
                           </Stack>
                         </TableCell>
                         <TableCell align='right'>
-                          <Typography variant='body2' fontWeight={600}>{fmtINR(srv.grandTotal || srv.total)}</Typography>
+                          <Typography variant='body2' fontWeight={600}>{fmtINR(srv.derived?.total)}</Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant='body2'>{new Date(srv.createdAt).toLocaleString()}</Typography>
+                          <Typography variant='body2'>
+                            {srv.createdAt ? new Date(srv.createdAt).toLocaleString() : '—'}
+                          </Typography>
                         </TableCell>
                         <TableCell align='center'>
                           <Stack direction='row' spacing={1} justifyContent='center'>
-                            <Tooltip title='Download invoice'>
+                            <Tooltip title='Download as PDF'>
                               <span>
-                                <IconButton size='small' onClick={() => handleDownload(srv.id, 'INVOICE')}>
+                                <IconButton
+                                  size='small'
+                                  onClick={(event) => openMenu(event, srv, 'download')}
+                                >
                                   <FileDown size={16} />
                                 </IconButton>
                               </span>
                             </Tooltip>
-                            <Tooltip title='Share proposal to portal'>
+                            <Tooltip title='Share to customer portal'>
                               <span>
                                 <IconButton
                                   size='small'
-                                  onClick={() => handleShare(srv, 'PROFORMA')}
-                                  disabled={sharingId === srv.id}
+                                  onClick={(event) => openMenu(event, srv, 'share')}
+                                  disabled={sharing.id === srv.id}
                                 >
                                   <Share2 size={16} />
                                 </IconButton>
@@ -308,7 +417,10 @@ export default function ServiceHistory () {
                             </Tooltip>
                             <Tooltip title='Send to customer'>
                               <span>
-                                <IconButton size='small' onClick={() => openSendModal(srv)}>
+                                <IconButton
+                                  size='small'
+                                  onClick={(event) => openMenu(event, srv, 'send')}
+                                >
                                   <Send size={16} />
                                 </IconButton>
                               </span>
@@ -342,6 +454,17 @@ export default function ServiceHistory () {
               <MenuItem value='whatsapp'>WhatsApp</MenuItem>
             </TextField>
             <TextField
+              select
+              label='Document type'
+              value={modal.docType}
+              onChange={(event) => setModal((m) => ({ ...m, docType: event.target.value }))}
+              onKeyDown={focusNextInputOnEnter}
+              size='small'
+            >
+              <MenuItem value='INVOICE'>Invoice</MenuItem>
+              <MenuItem value='PROFORMA'>Proforma invoice</MenuItem>
+            </TextField>
+            <TextField
               label={modal.method === 'email' ? 'Email address' : 'WhatsApp number'}
               value={modal.contact}
               onChange={(event) => setModal((m) => ({ ...m, contact: event.target.value }))}
@@ -357,6 +480,20 @@ export default function ServiceHistory () {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Menu
+        anchorEl={actionMenu.anchorEl}
+        open={Boolean(actionMenu.anchorEl)}
+        onClose={closeMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <MenuItem onClick={() => handleMenuSelect('INVOICE')}>
+          {actionMenu.action === 'share' ? 'Share invoice to portal' : actionMenu.action === 'send' ? 'Send invoice' : 'Download invoice PDF'}
+        </MenuItem>
+        <MenuItem onClick={() => handleMenuSelect('PROFORMA')}>
+          {actionMenu.action === 'share' ? 'Share proforma to portal' : actionMenu.action === 'send' ? 'Send proforma invoice' : 'Download proforma PDF'}
+        </MenuItem>
+      </Menu>
     </Box>
   )
 }
