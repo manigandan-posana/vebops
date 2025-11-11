@@ -10,6 +10,7 @@ import React, { useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useGetCompanyQuery } from '../../features/office/officeApi'
 import { displayDocNumber } from '../../utils/docNumbers'
+import { buildServiceLineDescriptions } from '../../utils/serviceLineDescriptions'
 
 // GST state codes mapping. Keys are lower‑cased state names (spaces normalized) and values are
 // two‑digit GST codes. Used to display the state code next to the state in billing/shipping
@@ -124,27 +125,6 @@ export default function Preview () {
   // items and "Installation of <item>" for lines whose name contains the word
   // "installation" (case‑insensitive). An "Installation only" service type prefixes
   // all items with "Installation of".  All other service types return an empty string.
-  const getDescription = (item) => {
-    const explicit = String(item?.description || '').trim()
-    if (explicit) return explicit
-    const itemName = item?.name
-    const st = String(meta.serviceType || '').toLowerCase()
-    const name = String(itemName || '').trim()
-    if (!name) return ''
-    if (st.includes('installation only')) {
-      return `Installation of ${name}`
-    }
-    if (st.includes('supply with installation')) {
-      if (/installation/i.test(name)) {
-        return `Installation of ${name}`
-      }
-      return `Supply of ${name}`
-    }
-    if (st.includes('supply')) {
-      return `Supply of ${name}`
-    }
-    return ''
-  }
   // Normalise the company data. The backend returns addressLine1/addressLine2 and logoDataUrl
   // but the preview expects addressLines and logo fields. Construct a derived object
   // that flattens address lines into an array and maps logoDataUrl to logo. If both
@@ -305,6 +285,7 @@ export default function Preview () {
           <table className='w-full border-t border-b border-slate-200 text-[13px]'>
             <thead className='bg-[#f7f9ff] text-slate-700'>
               <tr>
+                <Th className='text-center w-[56px]'>S.No</Th>
                 {/* Description column */}
                 <Th className='text-left pl-3'>Item Description</Th>
                 <Th>HSN/SAC</Th>
@@ -321,12 +302,23 @@ export default function Preview () {
                 const rate = Number(it.basePrice) || 0
                 // Compute line after discount; discount is still applied internally
                 const line = Math.round(rate * qty * (1 - disc / 100) * 100) / 100
-                const desc = getDescription(it)
+                const descriptionLines = buildServiceLineDescriptions(meta.serviceType, it)
+                const itemCode = it.code || it.itemCode
                 return (
                   <tr key={idx} className='border-b border-slate-200'>
+                    <Td className='text-center font-semibold text-slate-700'>{idx + 1}</Td>
                     <Td className='text-left pl-3'>
-                      <div>{it.name || '—'}</div>
-                      {desc && <div className='mt-0.5 text-xs text-slate-500'>{desc}</div>}
+                      <div className='font-medium text-slate-900'>{it.name || it.itemName || '—'}</div>
+                      {itemCode && (
+                        <div className='mt-0.5 text-[11px] uppercase tracking-wide text-slate-500'>Code: {itemCode}</div>
+                      )}
+                      {descriptionLines.length > 0 && (
+                        <div className='mt-0.5 space-y-0.5 text-[11px] leading-relaxed text-slate-500'>
+                          {descriptionLines.map((line, lineIdx) => (
+                            <div key={lineIdx}>{line}</div>
+                          ))}
+                        </div>
+                      )}
                     </Td>
                     <Td className='text-center'>{it.hsnSac}</Td>
                     <Td className='text-center'>{qty}</Td>

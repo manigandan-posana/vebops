@@ -41,6 +41,7 @@ import {
 } from '../../features/office/officeApi'
 import { normalizeDocNumber } from '../../utils/docNumbers'
 import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
+import { ITEM_KINDS, computeChargesDescription } from '../../utils/serviceLineDescriptions'
 
 const SERVICE_TYPES = [
   'Installation only',
@@ -64,30 +65,17 @@ const fmtINR = (n) =>
 
 const safeNum = (v, fallback = 0) => (Number.isFinite(+v) ? +v : fallback)
 
-const ITEM_KINDS = {
-  SUPPLY: 'SUPPLY',
-  INSTALLATION: 'INSTALLATION',
-  TRANSPORT: 'TRANSPORT',
-  CUSTOM: 'CUSTOM'
-}
-
-const computeChargesDescription = (serviceType, label, kind = ITEM_KINDS.SUPPLY) => {
-  const name = String(label || '').trim()
-  if (!name) return ''
-  if (kind === ITEM_KINDS.TRANSPORT) return 'Transportation charges'
-  if (kind === ITEM_KINDS.INSTALLATION) return `Installation charges for ${name}`
-  const st = String(serviceType || '').toLowerCase()
-  if (st.includes('installation only')) return `Installation charges for ${name}`
-  if (st.includes('supply with installation')) {
-    if (/installation/i.test(name)) return `Installation charges for ${name}`
-    return `Supply charges for ${name}`
-  }
-  if (st.includes('supply')) return `Supply charges for ${name}`
-  return name
-}
-
 const NumberField = ({ value, onChange, min, max, inputProps, onBlur, ...props }) => {
   const handleChange = (event) => {
+    const raw = event.target.value
+    const sanitized = raw.replace(/[^0-9.]/g, '')
+    const parts = sanitized.split('.')
+    const normalised = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : sanitized
+    onChange?.(normalised)
+  }
+
+  const handleBlur = (event) => {
+    onBlur?.(event)
     const raw = event.target.value
     const sanitized = raw.replace(/[^0-9.]/g, '')
     const parts = sanitized.split('.')

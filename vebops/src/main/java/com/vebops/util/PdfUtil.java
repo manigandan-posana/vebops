@@ -19,6 +19,7 @@ import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public class PdfUtil {
 
@@ -934,6 +935,105 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
         return out;
     }
 
+    private static final Pattern DESCRIPTION_SPLIT = Pattern.compile("\\r?\\n|[;|]|,(?!\\s*\\d)");
+
+    private static String normalise(Object value) {
+        if (value == null) return "";
+        return value.toString().replaceAll("\\s+", " ").trim();
+    }
+
+    private static String firstNonEmptyString(Object... values) {
+        if (values == null) return "";
+        for (Object value : values) {
+            String s = normalise(value);
+            if (!s.isEmpty()) {
+                return s;
+            }
+        }
+        return "";
+    }
+
+    private static String cleanItemLabel(Object raw) {
+        String label = normalise(raw);
+        if (label.isEmpty()) return "";
+        return normalise(label.replaceFirst("(?i)^installation\\s*[-–]\\s*", ""));
+    }
+
+    private static String inferItemKind(java.util.Map<String, Object> item, String baseLabel) {
+        if (item == null) return "SUPPLY";
+        for (Object candidate : new Object[]{ item.get("kind"), item.get("type"), item.get("lineKind") }) {
+            String value = normalise(candidate).toUpperCase();
+            if ("SUPPLY".equals(value) || "INSTALLATION".equals(value) || "TRANSPORT".equals(value)) {
+                return value;
+            }
+        }
+        String combinedName = (firstNonEmptyString(item.get("name"), item.get("itemName"), item.get("label"))
+            + " " + normalise(baseLabel)).toLowerCase();
+        if (combinedName.contains("transport") || combinedName.contains("freight")
+            || combinedName.contains("delivery") || combinedName.contains("logistic")) {
+            return "TRANSPORT";
+        }
+        if (combinedName.contains("installation") || combinedName.contains("erection")
+            || combinedName.contains("commissioning")) {
+            return "INSTALLATION";
+        }
+        return "SUPPLY";
+    }
+
+    private static String computeServiceChargeDescription(String serviceType, String label, String kind) {
+        String name = cleanItemLabel(label);
+        if (name.isEmpty()) return "";
+        if ("TRANSPORT".equals(kind)) return "Transportation charges";
+        if ("INSTALLATION".equals(kind)) return "Installation charges for " + name;
+        String st = normalise(serviceType).toLowerCase();
+        if (st.contains("installation only")) return "Installation charges for " + name;
+        if (st.contains("supply with installation")) {
+            if (name.toLowerCase().contains("installation")) {
+                return "Installation charges for " + name;
+            }
+            return "Supply charges for " + name;
+        }
+        if (st.contains("supply")) return "Supply charges for " + name;
+        return name;
+    }
+
+    private static java.util.List<String> splitDescriptionSegments(Object raw) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (raw == null) return parts;
+        String text = raw.toString();
+        if (text == null || text.isBlank()) return parts;
+        String[] tokens = DESCRIPTION_SPLIT.split(text);
+        for (String token : tokens) {
+            String cleaned = normalise(token);
+            if (!cleaned.isEmpty()) parts.add(cleaned);
+        }
+        return parts;
+    }
+
+    private static void addLine(java.util.List<String> target, java.util.Set<String> seen, String value) {
+        String cleaned = normalise(value);
+        if (cleaned.isEmpty()) return;
+        String key = cleaned.toLowerCase();
+        if (seen.add(key)) {
+            target.add(cleaned);
+        }
+    }
+
+    private static java.util.List<String> buildServiceLineDescriptions(String serviceType, java.util.Map<String, Object> item) {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        if (item == null) return lines;
+        String label = firstNonEmptyString(item.get("name"), item.get("itemName"));
+        String kind = inferItemKind(item, label);
+        addLine(lines, seen, computeServiceChargeDescription(serviceType, label, kind));
+        for (Object field : new Object[]{ item.get("description"), item.get("details"), item.get("itemDescription"), item.get("notes") }) {
+            for (String part : splitDescriptionSegments(field)) {
+                addLine(lines, seen, part);
+            }
+        }
+        return lines;
+    }
+
     /**
      * Mapping of Indian state names to their respective GST state codes. The keys are lower‑cased
      * state names (with whitespace normalized) and the values are two‑digit codes. This map
@@ -1141,12 +1241,15 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
             // Build item rows and compute totals
             java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
             StringBuilder itemsRows = new StringBuilder();
+            int lineNumber = 0;
             if (items != null) {
                 for (java.util.Map<String, Object> it : items) {
                     if (it == null) continue;
-                    String itemName = it.get("name") != null ? String.valueOf(it.get("name")) : "";
-                    String customDescription = it.get("description") != null ? String.valueOf(it.get("description")) : "";
-                    String hsn = it.get("hsnSac") != null ? String.valueOf(it.get("hsnSac")) : "";
+                    lineNumber++;
+                    String itemName = firstNonEmptyString(it.get("name"), it.get("itemName"));
+                    if (itemName.isBlank()) itemName = "—";
+                    String itemCode = firstNonEmptyString(it.get("code"), it.get("itemCode"));
+                    String hsn = firstNonEmptyString(it.get("hsnSac"), it.get("hsn"), it.get("sac"));
                     java.math.BigDecimal rate = java.math.BigDecimal.ZERO;
                     java.math.BigDecimal qty = java.math.BigDecimal.ONE;
                     java.math.BigDecimal disc = java.math.BigDecimal.ZERO;
@@ -1160,44 +1263,27 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
                     java.math.BigDecimal line = rate.multiply(qty);
                     java.math.BigDecimal discounted = line.multiply(java.math.BigDecimal.ONE.subtract(disc.divide(new java.math.BigDecimal("100"), java.math.MathContext.DECIMAL128)));
                     subtotal = subtotal.add(discounted);
+                    java.util.List<String> detailLines = buildServiceLineDescriptions(serviceType, it);
                     itemsRows.append("<tr>");
-                    // Description column: include the item name and a secondary description based on service type
-                    String rowDesc = "";
-                    String stLower = serviceType != null ? serviceType.toLowerCase() : "";
-                    if (customDescription != null && !customDescription.isBlank()) {
-                        rowDesc = customDescription;
-                    } else if (itemName != null && !itemName.isBlank()) {
-                        if (stLower.contains("installation only")) {
-                            rowDesc = "Installation of " + itemName;
-                        } else if (stLower.contains("supply with installation")) {
-                            if (itemName.toLowerCase().contains("installation")) {
-                                rowDesc = "Installation of " + itemName;
-                            } else {
-                                rowDesc = "Supply of " + itemName;
-                            }
-                        } else if (stLower.contains("supply")) {
-                            rowDesc = "Supply of " + itemName;
-                        }
-                    }
+                    itemsRows.append("<td class='text-center serial-col'>" + lineNumber + "</td>");
                     itemsRows.append("<td>");
                     itemsRows.append("<div class='item-name'>" + escapeHtml(itemName) + "</div>");
-                    if (rowDesc != null && !rowDesc.isBlank()) {
-                        itemsRows.append("<div class='item-sub'>" + escapeHtml(rowDesc) + "</div>");
+                    if (!itemCode.isBlank()) {
+                        itemsRows.append("<div class='item-code'>Code: " + escapeHtml(itemCode) + "</div>");
+                    }
+                    for (String descLine : detailLines) {
+                        itemsRows.append("<div class='item-sub'>" + escapeHtml(descLine) + "</div>");
                     }
                     itemsRows.append("</td>");
-                    // HSN/SAC
                     itemsRows.append("<td class='text-center'>" + escapeHtml(hsn) + "</td>");
-                    // Qty
                     itemsRows.append("<td class='text-center'>" + qty.stripTrailingZeros().toPlainString() + "</td>");
-                    // Rate (unit price)
                     itemsRows.append("<td class='text-right'>" + money(rate) + "</td>");
-                    // Amount (after discount)
                     itemsRows.append("<td class='text-right'>" + money(discounted) + "</td>");
                     itemsRows.append("</tr>");
                 }
             }
             if (itemsRows.length() == 0) {
-                itemsRows.append("<tr class='empty'><td colspan='5'>No line items recorded</td></tr>");
+                itemsRows.append("<tr class='empty'><td colspan='6'>No line items recorded</td></tr>");
             }
             // Transport and taxes
             java.math.BigDecimal transport = java.math.BigDecimal.ZERO;
@@ -1294,6 +1380,7 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
             html.append(".meta-value{font-size:13px;font-weight:500;color:#0f172a;}");
             html.append("table.items{width:100%;border-collapse:collapse;}");
             html.append("table.items thead th{background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;padding:12px;border-bottom:1px solid #dbeafe;text-align:left;}");
+            html.append("table.items thead th.serial-col{text-align:center;width:48px;}");
             html.append("table.items thead th.text-center{text-align:center;}");
             html.append("table.items thead th.text-right{text-align:right;}");
             html.append("table.items tbody td{padding:12px;font-size:12px;color:#0f172a;border-bottom:1px solid #e2e8f0;}");
@@ -1302,6 +1389,8 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
             html.append("table.items tbody td.text-center{text-align:center;}");
             html.append("table.items tbody tr.empty td{text-align:center;color:#64748b;font-style:italic;}");
             html.append(".item-name{font-weight:600;}");
+            html.append("table.items tbody td.serial-col{text-align:center;font-weight:600;color:#1e293b;}");
+            html.append(".item-code{margin-top:4px;font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;}");
             html.append(".item-sub{margin-top:4px;font-size:11px;color:#64748b;}");
             html.append(".totals-wrap{display:flex;justify-content:flex-end;}");
             html.append(".totals-card{width:320px;background:linear-gradient(140deg,#0f172a,#1e293b);color:#fff;border-radius:24px;padding:26px;box-shadow:0 22px 55px rgba(15,23,42,0.38);}");
@@ -1389,6 +1478,7 @@ private static String taxSplitLabel(com.vebops.dto.ProposalPdfRequest cfg, java.
             html.append("<div class='section'>");
             html.append("<table class='items'>");
             html.append("<thead><tr>");
+            html.append("<th class='serial-col'>S.No</th>");
             html.append("<th>Item Description</th>");
             html.append("<th class='text-center'>HSN/SAC</th>");
             html.append("<th class='text-center'>Qty</th>");

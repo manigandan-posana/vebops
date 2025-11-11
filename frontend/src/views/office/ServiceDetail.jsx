@@ -12,6 +12,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { IndianRupee, Send, Share2, FileDown } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
 import { displayDocNumber } from '../../utils/docNumbers'
+import { buildServiceLineDescriptions } from '../../utils/serviceLineDescriptions'
 // Import the getService hook rather than the paginated getServices hook. This
 // endpoint fetches a single service by ID and returns the raw Service
 // object (with metaJson/itemsJson/totalsJson strings). See officeApi.js.
@@ -357,6 +358,7 @@ export default function ServiceDetail () {
             <table className='min-w-full divide-y divide-slate-200'>
               <thead className='bg-slate-50'>
                 <tr>
+                  <th className='px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500'>#</th>
                   <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>Description</th>
                   <th className='px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'>HSN/SAC</th>
                   <th className='px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500'>Base</th>
@@ -368,7 +370,7 @@ export default function ServiceDetail () {
               <tbody className='divide-y divide-slate-100 bg-white'>
                 {(!items || items.length === 0) && (
                   <tr>
-                    <td colSpan={6} className='px-3 py-6 text-center text-sm text-slate-500'>No items recorded.</td>
+                    <td colSpan={7} className='px-3 py-6 text-center text-sm text-slate-500'>No items recorded.</td>
                   </tr>
                 )}
                 {items && items.map((it, idx) => {
@@ -379,16 +381,21 @@ export default function ServiceDetail () {
                   const line = explicitLine !== null ? explicitLine : Math.round(base * qty * (1 - disc / 100))
                   const itemName = firstNonEmpty(it.name, it.itemName) || '—'
                   const itemCode = firstNonEmpty(it.code, it.itemCode)
-                  const itemDescription = describeLineItem(meta.serviceType, it)
+                  const descriptionLines = buildServiceLineDescriptions(meta.serviceType, it)
                   return (
                     <tr key={idx} className='hover:bg-slate-50'>
+                      <td className='px-3 py-2 text-sm font-semibold text-slate-700 text-center align-top'>{idx + 1}</td>
                       <td className='px-3 py-2 text-sm text-slate-900'>
                         <div>{itemName}</div>
                         {itemCode && (
                           <div className='mt-1 text-xs text-slate-500'>{itemCode}</div>
                         )}
-                        {itemDescription && (
-                          <div className='mt-1 text-xs text-slate-500'>{itemDescription}</div>
+                        {descriptionLines.length > 0 && (
+                          <div className='mt-1 space-y-1 text-xs text-slate-500'>
+                            {descriptionLines.map((line, lineIdx) => (
+                              <div key={lineIdx}>{line}</div>
+                            ))}
+                          </div>
                         )}
                       </td>
                       <td className='px-3 py-2 text-sm text-slate-700'>{firstNonEmpty(it.hsnSac, it.hsn, it.sac)}</td>
