@@ -77,15 +77,6 @@ const NumberField = ({ value, onChange, min, max, inputProps, onBlur, ...props }
   const handleBlur = (event) => {
     onBlur?.(event)
     const raw = event.target.value
-    const sanitized = raw.replace(/[^0-9.]/g, '')
-    const parts = sanitized.split('.')
-    const normalised = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : sanitized
-    onChange?.(normalised)
-  }
-
-  const handleBlur = (event) => {
-    onBlur?.(event)
-    const raw = event.target.value
     if (raw === '') {
       if (typeof min === 'number') onChange?.(min)
       return

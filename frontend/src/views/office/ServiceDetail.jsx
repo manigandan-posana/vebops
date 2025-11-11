@@ -175,12 +175,10 @@ export default function ServiceDetail () {
     )
   }
 
-  const meta = useMemo(() => parseJson(service?.metaJson, {}), [service?.metaJson])
-  const items = useMemo(() => {
-    const parsed = parseJson(service?.itemsJson, [])
-    return Array.isArray(parsed) ? parsed : []
-  }, [service?.itemsJson])
-  const totals = useMemo(() => parseJson(service?.totalsJson, {}), [service?.totalsJson])
+  const meta = parseJson(service?.metaJson, {})
+  const parsedItems = parseJson(service?.itemsJson, [])
+  const items = Array.isArray(parsedItems) ? parsedItems : []
+  const totals = parseJson(service?.totalsJson, {})
 
   const invoiceNumber = displayDocNumber(firstNonEmpty(
     meta.invoiceNo,
