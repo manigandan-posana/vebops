@@ -476,6 +476,7 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         Long tid = tenant();
         Proposal p = proposalRepo.findByTenantIdAndId(tid, id)
                 .orElseThrow(() -> new NotFoundException("Proposal not found"));
+        hydrateProposal(p);
         List<ProposalItem> items = proposalItemRepo.findByTenantIdAndProposal_Id(tid, id);
         if (p.getCustomer() != null) {
             p.getCustomer().getName();

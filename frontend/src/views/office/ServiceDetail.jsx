@@ -86,9 +86,23 @@ const formatServiceType = (value) => {
     .replace(/(^|\s)\w/g, (match) => match.toUpperCase())
 }
 
-const safeNumber = (value, fallback = 0) => {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : fallback
+const parseAmount = (value) => {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'object') {
+    if ('value' in value) return parseAmount(value.value)
+    if ('amount' in value) return parseAmount(value.amount)
+    if ('total' in value) return parseAmount(value.total)
+    if ('grandTotal' in value) return parseAmount(value.grandTotal)
+    return null
+  }
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[^0-9.-]/g, '')
+    if (!cleaned) return null
+    const num = Number(cleaned)
+    return Number.isFinite(num) ? num : null
+  }
+  return null
 }
 
 // Local helper to format currency in Indian Rupees.
@@ -268,7 +282,85 @@ export default function ServiceDetail () {
   const sgstAmountValue = firstNonEmpty(totals.sgst, totals.sgstAmount)
   const igstAmountValue = firstNonEmpty(totals.igst, totals.igstAmount)
   const grandTotalValue = firstNonEmpty(totals.grand, totals.total, totals.grandTotal, totals.netTotal)
-  const hasSplitTax = cgstRateValue !== null && cgstRateValue !== undefined
+
+  const subtotalAmount = parseAmount(subtotalValue)
+  const discountAmount = parseAmount(discountValue)
+  const transportAmount = parseAmount(transportValue)
+  const cgstRate = parseAmount(cgstRateValue)
+  const sgstRate = parseAmount(sgstRateValue)
+  const igstRate = parseAmount(igstRateValue)
+  let cgstAmount = parseAmount(cgstAmountValue)
+  let sgstAmount = parseAmount(sgstAmountValue)
+  let igstAmount = parseAmount(igstAmountValue)
+  let grandTotalAmount = parseAmount(grandTotalValue)
+
+  const normalisedItems = items.map((it) => {
+    const qty = parseAmount(firstNonEmpty(it.qty, it.quantity, it.qtyOrdered))
+    const base = parseAmount(firstNonEmpty(it.basePrice, it.unitPrice, it.price, it.rate))
+    const preDiscount = (base ?? 0) * (qty ?? 0)
+    const discountPercent = parseAmount(firstNonEmpty(it.discount, it.discountPercent))
+    let discountComponent = discountPercent !== null ? preDiscount * (discountPercent / 100) : null
+    const explicitLine = parseAmount(firstNonEmpty(it.lineTotal, it.total, it.amount))
+    let lineTotal = explicitLine
+    if (lineTotal === null) {
+      const tentative = preDiscount - (discountComponent ?? 0)
+      lineTotal = Number.isFinite(tentative) ? tentative : null
+    }
+    if (discountComponent === null && lineTotal !== null) {
+      const diff = preDiscount - lineTotal
+      if (Number.isFinite(diff) && diff > 0) discountComponent = diff
+    }
+
+    const taxRate = parseAmount(firstNonEmpty(it.taxRate, it.tax_percent, it.gstRate, it.igstRate))
+    const explicitTax = parseAmount(firstNonEmpty(it.taxAmount, it.tax, it.gstAmount, it.igstAmount))
+    let taxAmount = explicitTax
+    if (taxAmount === null && taxRate !== null && lineTotal !== null) {
+      const computed = lineTotal * (taxRate / 100)
+      taxAmount = Number.isFinite(computed) ? computed : null
+    }
+
+    const descriptionLines = buildServiceLineDescriptions(meta.serviceType, it)
+    const itemName = firstNonEmpty(it.name, it.itemName) || '—'
+    const itemCode = firstNonEmpty(it.code, it.itemCode)
+    const hsn = firstNonEmpty(it.hsnSac, it.hsn, it.sac)
+
+    return {
+      original: it,
+      qty,
+      base,
+      discountPercent,
+      preDiscount,
+      discountComponent,
+      lineTotal,
+      taxAmount,
+      descriptionLines,
+      itemName,
+      itemCode,
+      hsn
+    }
+  })
+
+  const fallbackPreDiscount = normalisedItems.reduce((sum, row) => sum + (row.preDiscount ?? row.lineTotal ?? 0), 0)
+  const fallbackDiscount = normalisedItems.reduce((sum, row) => sum + (row.discountComponent ?? Math.max(0, (row.preDiscount ?? 0) - (row.lineTotal ?? 0))), 0)
+  const fallbackTax = normalisedItems.reduce((sum, row) => sum + (row.taxAmount ?? 0), 0)
+
+  const effectiveSubtotal = subtotalAmount ?? fallbackPreDiscount
+  const effectiveDiscount = discountAmount ?? fallbackDiscount
+  const effectiveTransport = transportAmount ?? 0
+
+  if ((cgstAmount ?? 0) === 0 && (sgstAmount ?? 0) === 0 && (igstAmount ?? null) === null && fallbackTax > 0) {
+    igstAmount = fallbackTax
+  }
+
+  const hasSplitTax = (cgstAmount ?? 0) > 0 || (sgstAmount ?? 0) > 0 || (cgstRate ?? null) !== null || (sgstRate ?? null) !== null
+  if (!hasSplitTax && (igstAmount ?? 0) === 0 && fallbackTax > 0) {
+    igstAmount = fallbackTax
+  }
+
+  const totalTax = (cgstAmount ?? 0) + (sgstAmount ?? 0) + (igstAmount ?? 0)
+  if (grandTotalAmount === null) {
+    grandTotalAmount = effectiveSubtotal - effectiveDiscount + effectiveTransport + totalTax
+  }
 
   const proposalId = meta?.proposalId || meta?.proposalID || null
   const proposalStatus = meta?.proposalStatus || null
@@ -498,7 +590,7 @@ export default function ServiceDetail () {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(!items || items.length === 0) && (
+                    {normalisedItems.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={7} align='center'>
                           <Typography variant='body2' color='text.secondary'>
@@ -507,59 +599,49 @@ export default function ServiceDetail () {
                         </TableCell>
                       </TableRow>
                     )}
-                    {items && items.map((it, idx) => {
-                      const qty = safeNumber(firstNonEmpty(it.qty, it.quantity, it.qtyOrdered), 0)
-                      const base = safeNumber(firstNonEmpty(it.basePrice, it.unitPrice, it.price, it.rate), 0)
-                      const disc = safeNumber(firstNonEmpty(it.discount, it.discountPercent), 0)
-                      const explicitLine = safeNumber(firstNonEmpty(it.lineTotal, it.total, it.amount), null)
-                      const line = explicitLine !== null ? explicitLine : Math.round(base * qty * (1 - disc / 100))
-                      const itemName = firstNonEmpty(it.name, it.itemName) || '—'
-                      const itemCode = firstNonEmpty(it.code, it.itemCode)
-                      const descriptionLines = buildServiceLineDescriptions(meta.serviceType, it)
-                      return (
-                        <TableRow key={idx} hover>
-                          <TableCell align='center'>
-                            <Typography variant='body2' fontWeight={600}>{idx + 1}</Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Stack spacing={0.75}>
-                              <Typography variant='subtitle2' color='text.primary'>
-                                {itemName}
+                    {normalisedItems.map((row, idx) => (
+                      <TableRow key={idx} hover>
+                        <TableCell align='center'>
+                          <Typography variant='body2' fontWeight={600}>{idx + 1}</Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Stack spacing={0.75}>
+                            <Typography variant='subtitle2' color='text.primary'>
+                              {row.itemName}
+                            </Typography>
+                            {row.itemCode && (
+                              <Typography variant='caption' color='text.secondary'>
+                                {row.itemCode}
                               </Typography>
-                              {itemCode && (
-                                <Typography variant='caption' color='text.secondary'>
-                                  {itemCode}
-                                </Typography>
-                              )}
-                              {descriptionLines.length > 0 && (
-                                <Stack spacing={0.5}>
-                                  {descriptionLines.map((line, lineIdx) => (
-                                    <Typography key={lineIdx} variant='caption' color='text.secondary'>
-                                      {line}
-                                    </Typography>
-                                  ))}
-                                </Stack>
-                              )}
-                            </Stack>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant='body2'>{firstNonEmpty(it.hsnSac, it.hsn, it.sac) || '—'}</Typography>
-                          </TableCell>
-                          <TableCell align='right'>
-                            <Typography variant='body2' fontWeight={600}>{fmtINR(base)}</Typography>
-                          </TableCell>
-                          <TableCell align='right'>
-                            <Typography variant='body2'>{qty || '—'}</Typography>
-                          </TableCell>
-                          <TableCell align='right'>
-                            <Typography variant='body2'>{disc || '—'}</Typography>
-                          </TableCell>
-                          <TableCell align='right'>
-                            <Typography variant='body2' fontWeight={600}>{fmtINR(line)}</Typography>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
+                            )}
+                            {row.descriptionLines.length > 0 && (
+                              <Stack spacing={0.5}>
+                                {row.descriptionLines.map((line, lineIdx) => (
+                                  <Typography key={lineIdx} variant='caption' color='text.secondary'>
+                                    {line}
+                                  </Typography>
+                                ))}
+                              </Stack>
+                            )}
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant='body2'>{row.hsn || '—'}</Typography>
+                        </TableCell>
+                        <TableCell align='right'>
+                          <Typography variant='body2' fontWeight={600}>{fmtINR(row.base ?? 0)}</Typography>
+                        </TableCell>
+                        <TableCell align='right'>
+                          <Typography variant='body2'>{row.qty ?? '—'}</Typography>
+                        </TableCell>
+                        <TableCell align='right'>
+                          <Typography variant='body2'>{row.discountPercent ?? '—'}</Typography>
+                        </TableCell>
+                        <TableCell align='right'>
+                          <Typography variant='body2' fontWeight={600}>{fmtINR(row.lineTotal ?? 0)}</Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -569,31 +651,31 @@ export default function ServiceDetail () {
               <Stack spacing={1.5}>
                 <Stack direction='row' justifyContent='space-between'>
                   <Typography variant='body2'>Subtotal</Typography>
-                  <Typography variant='body2' fontWeight={600}>{fmtINR(subtotalValue)}</Typography>
+                  <Typography variant='body2' fontWeight={600}>{fmtINR(effectiveSubtotal)}</Typography>
                 </Stack>
                 <Stack direction='row' justifyContent='space-between'>
                   <Typography variant='body2'>Discount savings</Typography>
-                  <Typography variant='body2' fontWeight={600}>{fmtINR(discountValue)}</Typography>
+                  <Typography variant='body2' fontWeight={600}>{fmtINR(effectiveDiscount)}</Typography>
                 </Stack>
                 <Stack direction='row' justifyContent='space-between'>
                   <Typography variant='body2'>Transport</Typography>
-                  <Typography variant='body2' fontWeight={600}>{fmtINR(transportValue)}</Typography>
+                  <Typography variant='body2' fontWeight={600}>{fmtINR(effectiveTransport)}</Typography>
                 </Stack>
                 {hasSplitTax ? (
                   <>
                     <Stack direction='row' justifyContent='space-between'>
-                      <Typography variant='body2'>CGST {cgstRateValue ?? 0}%</Typography>
-                      <Typography variant='body2' fontWeight={600}>{fmtINR(cgstAmountValue)}</Typography>
+                      <Typography variant='body2'>CGST {cgstRate ?? 0}%</Typography>
+                      <Typography variant='body2' fontWeight={600}>{fmtINR(cgstAmount ?? 0)}</Typography>
                     </Stack>
                     <Stack direction='row' justifyContent='space-between'>
-                      <Typography variant='body2'>SGST {sgstRateValue ?? 0}%</Typography>
-                      <Typography variant='body2' fontWeight={600}>{fmtINR(sgstAmountValue)}</Typography>
+                      <Typography variant='body2'>SGST {sgstRate ?? 0}%</Typography>
+                      <Typography variant='body2' fontWeight={600}>{fmtINR(sgstAmount ?? 0)}</Typography>
                     </Stack>
                   </>
                 ) : (
                   <Stack direction='row' justifyContent='space-between'>
-                    <Typography variant='body2'>IGST {igstRateValue ?? 0}%</Typography>
-                    <Typography variant='body2' fontWeight={600}>{fmtINR(igstAmountValue)}</Typography>
+                    <Typography variant='body2'>IGST {igstRate ?? 0}%</Typography>
+                    <Typography variant='body2' fontWeight={600}>{fmtINR(igstAmount ?? 0)}</Typography>
                   </Stack>
                 )}
                 <Divider sx={{ my: 1.5 }} />
@@ -601,7 +683,7 @@ export default function ServiceDetail () {
                   <Typography variant='h6' fontWeight={700}>Total</Typography>
                   <Stack direction='row' spacing={0.5} alignItems='center'>
                     <IndianRupee size={18} />
-                    <Typography variant='h6' fontWeight={700}>{fmtINR(grandTotalValue)}</Typography>
+                    <Typography variant='h6' fontWeight={700}>{fmtINR(grandTotalAmount)}</Typography>
                   </Stack>
                 </Stack>
               </Stack>
