@@ -58,6 +58,23 @@ const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
     .format(Number.isFinite(+n) ? +n : 0)
 
+const describeLineItem = (serviceType, item) => {
+  if (!item) return ''
+  const explicit = firstNonEmpty(item.description, item.details, item.itemDescription)
+  const explicitStr = String(explicit || '').trim()
+  if (explicitStr) return explicitStr
+  const name = String(firstNonEmpty(item.name, item.itemName) || '').trim()
+  if (!name) return ''
+  const st = String(serviceType || '').toLowerCase()
+  if (st.includes('installation only')) return `Installation charges for ${name}`
+  if (st.includes('supply with installation')) {
+    if (/installation/i.test(name)) return `Installation charges for ${name}`
+    return `Supply charges for ${name}`
+  }
+  if (st.includes('supply')) return `Supply charges for ${name}`
+  return ''
+}
+
 // Simple container for labelled rows
 const LabeledRow = ({ label, value }) => (
   <div className='flex flex-col gap-0.5'>
