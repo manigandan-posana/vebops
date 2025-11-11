@@ -35,6 +35,7 @@ import {
   useListProposalDocumentsQuery,
   useListProposalsQuery
 } from '../../features/office/officeApi'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const fmtINR = (n) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -42,36 +43,6 @@ const fmtINR = (n) =>
 
 const STATUSES = ['ALL', 'DRAFT', 'SENT', 'APPROVED', 'REJECTED']
 
-const shouldFocusOnEnter = (el) => {
-  if (typeof window === 'undefined') return false
-  if (!el) return false
-  const style = window.getComputedStyle(el)
-  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
-}
-
-const handleEnterNavigation = (event) => {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  const target = event.currentTarget
-  const form = target?.form || target?.closest('form')
-  if (!form) return
-  event.preventDefault()
-  const focusables = Array.from(form.querySelectorAll('input, select, textarea, button')).filter((el) => shouldFocusOnEnter(el))
-  const idx = focusables.indexOf(target)
-  if (idx >= 0 && idx < focusables.length - 1) {
-    const next = focusables[idx + 1]
-    next.focus()
-    if (typeof next.select === 'function') next.select()
-  } else {
-    const submit = form.querySelector('button[type="submit"], input[type="submit"]')
-    if (submit) {
-      submit.click()
-    } else if (typeof form.requestSubmit === 'function') {
-      form.requestSubmit()
-    } else {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-    }
-  }
-}
 
 const statusColor = (status) => {
   const map = {
@@ -198,7 +169,7 @@ export default function ProposalHistory () {
                     label='Status'
                     value={status}
                     onChange={(event) => setStatus(event.target.value)}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   >
@@ -211,7 +182,7 @@ export default function ProposalHistory () {
                   <TextField
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     placeholder='Search by proposal, customer or PO number'
                     size='small'
                     fullWidth
@@ -230,7 +201,7 @@ export default function ProposalHistory () {
                     label='Rows'
                     value={pageSize}
                     onChange={(event) => setPageSize(Number(event.target.value))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     fullWidth
                   >
