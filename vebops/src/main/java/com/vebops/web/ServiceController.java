@@ -1,6 +1,7 @@
 package com.vebops.web;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vebops.context.TenantContext;
 import com.vebops.domain.Customer;
@@ -12,22 +13,26 @@ import com.vebops.domain.enums.DocumentKind;
 import com.vebops.domain.enums.ProposalStatus;
 import com.vebops.repository.ServiceRepository;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Base64;
-import java.util.List;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.HttpStatus;
 import com.vebops.service.FileStorageService;
 
 
@@ -41,6 +46,9 @@ import com.vebops.service.FileStorageService;
 @RestController
 @RequestMapping("/office/services")
 public class ServiceController {
+
+    private static final Logger log = LoggerFactory.getLogger(ServiceController.class);
+    private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
 
     private final ServiceRepository repository;
     private final ObjectMapper objectMapper;
@@ -75,6 +83,321 @@ public class ServiceController {
         this.mailSender = mailSender;
         this.emailService = emailService;
         this.fileStorage = fileStorage;
+    }
+
+    private void normaliseServicePayload(Service service) {
+        if (service == null) {
+            return;
+        }
+
+        Map<String, Object> meta = safeReadMap(service.getMetaJson());
+        List<Map<String, Object>> items = safeReadItems(service.getItemsJson());
+        Map<String, Object> totals = safeReadMap(service.getTotalsJson());
+
+        boolean shouldPersist = false;
+        boolean totalsChanged = false;
+
+        String contact = firstText(meta,
+                "buyerContact", "contact", "mobile", "phone", "buyerMobile", "customerMobile", "customerContact");
+        if (isBlank(service.getBuyerContact()) && !isBlank(contact)) {
+            service.setBuyerContact(contact);
+            shouldPersist = true;
+        }
+
+        String email = firstText(meta, "buyerEmail", "email", "contactEmail", "customerEmail");
+        if (isBlank(service.getBuyerEmail()) && !isBlank(email)) {
+            service.setBuyerEmail(email);
+            shouldPersist = true;
+        }
+
+        if (!items.isEmpty()) {
+            BigDecimal subtotal = BigDecimal.ZERO;
+            BigDecimal discount = BigDecimal.ZERO;
+            BigDecimal tax = BigDecimal.ZERO;
+
+            for (Map<String, Object> line : items) {
+                BigDecimal qty = number(firstValue(line, "qty", "quantity", "qtyOrdered", "qtyOrderedUnits"));
+                BigDecimal unit = number(firstValue(line, "unitPrice", "price", "rate", "basePrice"));
+                BigDecimal explicitLine = number(firstValue(line, "lineTotal", "total", "amount", "lineAmount"));
+                BigDecimal explicitPre = number(firstValue(line, "preDiscount", "gross", "grossAmount", "beforeDiscount"));
+                BigDecimal discountAmount = number(firstValue(line,
+                        "discountAmount", "discountValue", "discountComponent"));
+                BigDecimal discountPercent = number(firstValue(line,
+                        "discountPercent", "discountRate", "discount"));
+
+                BigDecimal preDiscount = explicitPre;
+                if (preDiscount == null && qty != null && unit != null) {
+                    preDiscount = unit.multiply(qty);
+                }
+                if (preDiscount == null && explicitLine != null && discountAmount != null) {
+                    preDiscount = explicitLine.add(discountAmount);
+                }
+                if (preDiscount == null) {
+                    preDiscount = explicitLine;
+                }
+
+                if (discountAmount == null && discountPercent != null && preDiscount != null) {
+                    discountAmount = preDiscount.multiply(discountPercent).divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
+                }
+                if (discountAmount == null && preDiscount != null && explicitLine != null) {
+                    BigDecimal diff = preDiscount.subtract(explicitLine);
+                    if (diff.compareTo(BigDecimal.ZERO) > 0) {
+                        discountAmount = diff;
+                    }
+                }
+
+                BigDecimal lineTotal = explicitLine;
+                if (lineTotal == null && preDiscount != null) {
+                    BigDecimal less = discountAmount != null ? discountAmount : BigDecimal.ZERO;
+                    lineTotal = preDiscount.subtract(less);
+                }
+
+                BigDecimal taxRate = number(firstValue(line, "taxRate", "tax_percent", "gstRate", "igstRate"));
+                BigDecimal taxAmount = number(firstValue(line, "taxAmount", "tax", "gstAmount", "igstAmount"));
+                if (taxAmount == null && taxRate != null && lineTotal != null) {
+                    taxAmount = lineTotal.multiply(taxRate).divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
+                }
+
+                if (preDiscount != null) {
+                    subtotal = subtotal.add(preDiscount);
+                } else if (lineTotal != null && discountAmount != null) {
+                    subtotal = subtotal.add(lineTotal.add(discountAmount));
+                } else if (lineTotal != null) {
+                    subtotal = subtotal.add(lineTotal);
+                }
+
+                if (discountAmount != null) {
+                    discount = discount.add(discountAmount);
+                }
+                if (taxAmount != null) {
+                    tax = tax.add(taxAmount);
+                }
+            }
+
+            BigDecimal existingSubtotal = number(firstValue(totals,
+                    "subtotal", "subTotal", "beforeTax", "totalBeforeTax"));
+            BigDecimal existingDiscount = number(firstValue(totals,
+                    "discount", "discountAmount", "discountValue", "discountSavings"));
+            BigDecimal existingTransport = number(firstValue(totals,
+                    "transport", "transportation", "freight", "deliveryCharge"));
+            BigDecimal cgstAmount = number(firstValue(totals, "cgst", "cgstAmount"));
+            BigDecimal sgstAmount = number(firstValue(totals, "sgst", "sgstAmount"));
+            BigDecimal igstAmount = number(firstValue(totals, "igst", "igstAmount"));
+            BigDecimal totalTaxField = number(firstValue(totals, "tax", "totalTax", "gstTotal"));
+
+            if (shouldReplace(existingSubtotal, subtotal)) {
+                totals.put("subtotal", scale(subtotal));
+                totalsChanged = true;
+            }
+
+            BigDecimal discountToPersist = discount != null ? discount : BigDecimal.ZERO;
+            if (existingDiscount == null || shouldReplace(existingDiscount, discountToPersist)) {
+                totals.put("discount", scale(discountToPersist));
+                totalsChanged = true;
+            }
+
+            BigDecimal transport = existingTransport;
+            if (transport == null) {
+                transport = number(firstValue(meta, "transport", "transportation", "freight", "deliveryCharge"));
+                if (transport != null) {
+                    totals.put("transport", scale(transport));
+                    totalsChanged = true;
+                }
+            }
+            if (transport == null) {
+                transport = BigDecimal.ZERO;
+            }
+
+            if (totalTaxField == null && tax != null) {
+                totals.put("tax", scale(tax));
+                totalTaxField = tax;
+                totalsChanged = true;
+            }
+
+            boolean hasSplitTax = (cgstAmount != null && cgstAmount.compareTo(BigDecimal.ZERO) > 0)
+                    || (sgstAmount != null && sgstAmount.compareTo(BigDecimal.ZERO) > 0)
+                    || (igstAmount != null && igstAmount.compareTo(BigDecimal.ZERO) > 0);
+
+            if (!hasSplitTax && tax != null && tax.compareTo(BigDecimal.ZERO) > 0
+                    && (igstAmount == null || igstAmount.compareTo(BigDecimal.ZERO) <= 0)) {
+                igstAmount = tax;
+                totals.put("igst", scale(tax));
+                totalsChanged = true;
+            }
+
+            BigDecimal taxForGrand = BigDecimal.ZERO;
+            if (cgstAmount != null) {
+                taxForGrand = taxForGrand.add(cgstAmount);
+            }
+            if (sgstAmount != null) {
+                taxForGrand = taxForGrand.add(sgstAmount);
+            }
+            if (igstAmount != null) {
+                taxForGrand = taxForGrand.add(igstAmount);
+            }
+            if (taxForGrand.compareTo(BigDecimal.ZERO) == 0 && totalTaxField != null) {
+                taxForGrand = taxForGrand.add(totalTaxField);
+            }
+            if (taxForGrand.compareTo(BigDecimal.ZERO) == 0 && tax != null) {
+                taxForGrand = taxForGrand.add(tax);
+            }
+
+            BigDecimal effectiveDiscount = discountToPersist;
+            BigDecimal computedGrand = subtotal.subtract(effectiveDiscount).add(transport).add(taxForGrand);
+            BigDecimal existingGrand = number(firstValue(totals,
+                    "grandTotal", "grand", "total", "netTotal"));
+
+            if (shouldReplace(existingGrand, computedGrand)) {
+                BigDecimal scaled = scale(computedGrand);
+                totals.put("grandTotal", scaled);
+                totals.put("total", scaled);
+                totals.put("grand", scaled);
+                totalsChanged = true;
+            }
+        }
+
+        if (totalsChanged) {
+            try {
+                String serialised = objectMapper.writeValueAsString(totals);
+                if (!serialised.equals(service.getTotalsJson())) {
+                    service.setTotalsJson(serialised);
+                    shouldPersist = true;
+                }
+            } catch (JsonProcessingException e) {
+                log.debug("Failed to serialise totals for service {}: {}", service.getId(), e.getMessage());
+            }
+        }
+
+        if (shouldPersist) {
+            try {
+                repository.save(service);
+            } catch (Exception e) {
+                log.debug("Failed to persist normalised service {}: {}", service.getId(), e.getMessage());
+            }
+        }
+    }
+
+    private Map<String, Object> safeReadMap(String json) {
+        if (json == null || json.isBlank()) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            Map<String, Object> parsed = objectMapper.readValue(json, new TypeReference<LinkedHashMap<String, Object>>() {});
+            return parsed != null ? parsed : new LinkedHashMap<>();
+        } catch (Exception e) {
+            log.debug("Failed to parse service map payload: {}", e.getMessage());
+            return new LinkedHashMap<>();
+        }
+    }
+
+    private List<Map<String, Object>> safeReadItems(String json) {
+        if (json == null || json.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            List<Map<String, Object>> parsed = objectMapper.readValue(json, new TypeReference<List<Map<String, Object>>>() {});
+            return parsed != null ? parsed : Collections.emptyList();
+        } catch (Exception e) {
+            log.debug("Failed to parse service items payload: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private Object firstValue(Map<String, Object> map, String... keys) {
+        if (map == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (key == null) continue;
+            Object value = map.get(key);
+            if (value == null) {
+                continue;
+            }
+            if (value instanceof String str && str.trim().isEmpty()) {
+                continue;
+            }
+            return value;
+        }
+        return null;
+    }
+
+    private BigDecimal number(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (value instanceof Number num) {
+            return new BigDecimal(num.toString());
+        }
+        if (value instanceof String str) {
+            String cleaned = str.trim();
+            if (cleaned.isEmpty()) {
+                return null;
+            }
+            cleaned = cleaned.replaceAll("[^0-9.+-]", "");
+            if (cleaned.isEmpty() || cleaned.equals("+") || cleaned.equals("-") || cleaned.equals(".")) {
+                return null;
+            }
+            try {
+                return new BigDecimal(cleaned);
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private String firstText(Map<String, Object> map, String... keys) {
+        if (map == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (key == null) continue;
+            Object value = map.get(key);
+            String str = coerceString(value);
+            if (!isBlank(str)) {
+                return str;
+            }
+        }
+        return null;
+    }
+
+    private String coerceString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String str) {
+            return str.trim();
+        }
+        if (value instanceof Number num) {
+            BigDecimal bd = new BigDecimal(num.toString());
+            return bd.stripTrailingZeros().toPlainString();
+        }
+        return value.toString().trim();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private BigDecimal scale(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private boolean shouldReplace(BigDecimal existing, BigDecimal computed) {
+        if (computed == null) {
+            return false;
+        }
+        if (existing == null) {
+            return true;
+        }
+        BigDecimal diff = existing.subtract(computed).abs();
+        return diff.compareTo(BigDecimal.valueOf(0.5)) > 0;
     }
 
     /**
@@ -119,6 +442,7 @@ public class ServiceController {
         } else {
             result = repository.findByTenantId(tenantId, pageable);
         }
+        result.forEach(this::normaliseServicePayload);
         return ResponseEntity.ok(result);
     }
 
@@ -143,6 +467,7 @@ public class ServiceController {
             // Do not leak existence of other tenants' data
             return ResponseEntity.notFound().build();
         }
+        normaliseServicePayload(svc);
         return ResponseEntity.ok(svc);
     }
 
