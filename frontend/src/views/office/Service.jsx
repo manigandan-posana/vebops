@@ -40,6 +40,8 @@ import {
   useGetKitsQuery
 } from '../../features/office/officeApi'
 import { normalizeDocNumber } from '../../utils/docNumbers'
+import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
+import { ITEM_KINDS, computeChargesDescription } from '../../utils/serviceLineDescriptions'
 
 const SERVICE_TYPES = [
   'Installation only',
@@ -63,66 +65,41 @@ const fmtINR = (n) =>
 
 const safeNum = (v, fallback = 0) => (Number.isFinite(+v) ? +v : fallback)
 
-const shouldFocusOnEnter = (el) => {
-  if (typeof window === 'undefined' || !el) return false
-  const style = window.getComputedStyle(el)
-  return style.display !== 'none' && style.visibility !== 'hidden' && !el.disabled && !el.readOnly
-}
-
-const handleEnterNavigation = (event) => {
-  if (event.key !== 'Enter' || event.shiftKey) return
-  const target = event.currentTarget
-  const form = target?.form || target?.closest('form')
-  if (!form) return
-  event.preventDefault()
-  const focusables = Array.from(
-    form.querySelectorAll('input:not([type="hidden"]), select, textarea, button')
-  ).filter((el) => shouldFocusOnEnter(el))
-  const idx = focusables.indexOf(target)
-  if (idx >= 0 && idx < focusables.length - 1) {
-    focusables[idx + 1].focus()
-    if (typeof focusables[idx + 1].select === 'function') {
-      focusables[idx + 1].select()
-    }
-    return
-  }
-
-  const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]')
-  if (submitBtn) {
-    submitBtn.click()
-  } else if (typeof form.requestSubmit === 'function') {
-    form.requestSubmit()
-  } else {
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-  }
-}
-
-const NumberField = ({ value, onChange, min, max, step = 1, ...props }) => {
+const NumberField = ({ value, onChange, min, max, inputProps, onBlur, ...props }) => {
   const handleChange = (event) => {
     const raw = event.target.value
+    const sanitized = raw.replace(/[^0-9.]/g, '')
+    const parts = sanitized.split('.')
+    const normalised = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : sanitized
+    onChange?.(normalised)
+  }
+
+  const handleBlur = (event) => {
+    onBlur?.(event)
+    const raw = event.target.value
     if (raw === '') {
-      onChange?.('')
+      if (typeof min === 'number') onChange?.(min)
       return
     }
-    const next = Number(raw)
-    if (Number.isFinite(next)) {
-      let computed = next
-      if (typeof min === 'number') computed = Math.max(min, computed)
-      if (typeof max === 'number') computed = Math.min(max, computed)
-      onChange?.(computed)
-    }
+    let numeric = Number(raw)
+    if (!Number.isFinite(numeric)) numeric = typeof min === 'number' ? min : 0
+    if (typeof min === 'number' && numeric < min) numeric = min
+    if (typeof max === 'number' && numeric > max) numeric = max
+    onChange?.(Number.isInteger(numeric) ? numeric : Number(numeric.toFixed(2)))
   }
 
   return (
     <TextField
-      type='number'
+      type='text'
       variant='outlined'
       size='small'
       value={value === null || value === undefined ? '' : value}
       onChange={handleChange}
-      inputProps={{ min, max, step, style: { textAlign: 'right' } }}
+      onBlur={handleBlur}
+      inputMode='decimal'
+      inputProps={{ inputMode: 'decimal', pattern: '[0-9.]*', style: { textAlign: 'right' }, ...inputProps }}
       onWheel={(e) => e.currentTarget.blur()}
-      onKeyDown={handleEnterNavigation}
+      onKeyDown={focusNextInputOnEnter}
       fullWidth
       {...props}
     />
@@ -173,7 +150,7 @@ const KitCatalogue = ({ kits, onAdd, pageSize: initialPageSize = 20 }) => {
         <TextField
           value={q}
           onChange={(event) => setQ(event.target.value)}
-          onKeyDown={handleEnterNavigation}
+          onKeyDown={focusNextInputOnEnter}
           placeholder='Search kits by code or name'
           size='small'
           fullWidth
@@ -191,7 +168,7 @@ const KitCatalogue = ({ kits, onAdd, pageSize: initialPageSize = 20 }) => {
           size='small'
           value={pageSize}
           onChange={(event) => setPageSize(Number(event.target.value))}
-          onKeyDown={handleEnterNavigation}
+          onKeyDown={focusNextInputOnEnter}
           sx={{ minWidth: 120 }}
         >
           {[10, 20, 50, 100].map((n) => (
@@ -329,7 +306,9 @@ export default function Service () {
     code: k.code || k.id,
     name: k.name,
     hsnSac: k.hsnSac || '854690',
-    basePrice: safeNum(k.price, 0)
+    basePrice: safeNum(k.price, 0),
+    description: k.description || '',
+    serviceType: k.serviceType || ''
   })), [kitsData])
 
   const addBlank = () => {
@@ -342,7 +321,10 @@ export default function Service () {
         hsnSac: '',
         basePrice: 0,
         qty: 1,
-        discount: ''
+        discount: '',
+        description: '',
+        autoDescription: false,
+        kind: ITEM_KINDS.CUSTOM
       }
     ]))
   }
@@ -357,7 +339,10 @@ export default function Service () {
         hsnSac: '995461',
         basePrice: 0,
         qty: 1,
-        discount: ''
+        discount: '',
+        description: computeChargesDescription(meta.serviceType, 'Installation Charges', ITEM_KINDS.INSTALLATION),
+        autoDescription: true,
+        kind: ITEM_KINDS.INSTALLATION
       }
     ]))
   }
@@ -372,7 +357,10 @@ export default function Service () {
         hsnSac: '995461',
         basePrice: 0,
         qty: 1,
-        discount: ''
+        discount: '',
+        description: 'Transportation charges',
+        autoDescription: false,
+        kind: ITEM_KINDS.TRANSPORT
       }
     ]))
   }
@@ -385,30 +373,101 @@ export default function Service () {
         clone[existingIdx] = { ...clone[existingIdx], qty: safeNum(clone[existingIdx].qty, 0) + 1 }
         return clone
       }
-      return [
-        ...prev,
-        {
-          key: `${kit.code}-${Date.now()}`,
-          code: kit.code,
-          name: kit.name,
-          basePrice: safeNum(kit.basePrice, 0),
+      const normalisedType = String(kit.serviceType || '').toUpperCase()
+      const kitKind = normalisedType.includes('INSTALL') ? ITEM_KINDS.INSTALLATION : ITEM_KINDS.SUPPLY
+      const supplyLine = {
+        key: `${kit.code}-${Date.now()}`,
+        code: kit.code,
+        name: kit.name,
+        basePrice: safeNum(kit.basePrice, 0),
+        qty: 1,
+        discount: '',
+        hsnSac: kit.hsnSac || '854690',
+        description: kit.description || computeChargesDescription(meta.serviceType, kit.name, kitKind),
+        autoDescription: !kit.description,
+        kind: kitKind,
+        linkedKit: kit.code
+      }
+      const shouldAddInstall = kitKind === ITEM_KINDS.SUPPLY && String(meta.serviceType || '').toLowerCase().includes('supply with installation')
+      const next = [...prev, supplyLine]
+      if (shouldAddInstall) {
+        next.push({
+          key: `inst-${kit.code}-${Date.now()}`,
+          code: '',
+          name: `Installation - ${kit.name}`,
+          hsnSac: '995461',
+          basePrice: 0,
           qty: 1,
           discount: '',
-          hsnSac: kit.hsnSac || '854690'
-        }
-      ]
+          description: computeChargesDescription(meta.serviceType, kit.name, ITEM_KINDS.INSTALLATION),
+          autoDescription: true,
+          kind: ITEM_KINDS.INSTALLATION,
+          linkedKit: kit.code
+        })
+      }
+      return next
     })
   }
 
   const updateItem = (idx, patch) => {
     setItems((prev) => {
       const copy = [...prev]
-      copy[idx] = { ...copy[idx], ...patch }
+      const current = copy[idx] || {}
+      const next = { ...current, ...patch }
+      if (Object.prototype.hasOwnProperty.call(patch, 'description')) {
+        next.autoDescription = false
+      } else if (Object.prototype.hasOwnProperty.call(patch, 'name') && current.autoDescription) {
+        next.description = computeChargesDescription(meta.serviceType, patch.name, current.kind || ITEM_KINDS.SUPPLY)
+      }
+      copy[idx] = next
       return copy
     })
   }
 
   const removeItem = (idx) => setItems((prev) => prev.filter((_, index) => index !== idx))
+
+  useEffect(() => {
+    setItems((prev) => {
+      let changed = false
+      const installFor = new Set(
+        prev
+          .filter((it) => it && it.kind === ITEM_KINDS.INSTALLATION && it.linkedKit)
+          .map((it) => it.linkedKit)
+      )
+      const next = prev.map((item) => {
+        if (!item || !item.autoDescription) return item
+        const targetKind = item.kind || ITEM_KINDS.SUPPLY
+        const updated = computeChargesDescription(meta.serviceType, item.name, targetKind)
+        if (updated === item.description) return item
+        changed = true
+        return { ...item, description: updated }
+      })
+      const shouldAttach = String(meta.serviceType || '').toLowerCase().includes('supply with installation')
+      if (shouldAttach) {
+        prev.forEach((item) => {
+          if (!item) return
+          if (item.kind === ITEM_KINDS.SUPPLY && item.linkedKit && !installFor.has(item.linkedKit)) {
+            installFor.add(item.linkedKit)
+            changed = true
+            next.push({
+              key: `inst-${item.linkedKit}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              code: '',
+              name: `Installation - ${item.name || item.linkedKit}`,
+              hsnSac: '995461',
+              basePrice: 0,
+              qty: 1,
+              discount: '',
+              description: computeChargesDescription(meta.serviceType, item.name || item.linkedKit, ITEM_KINDS.INSTALLATION),
+              autoDescription: true,
+              kind: ITEM_KINDS.INSTALLATION,
+              linkedKit: item.linkedKit
+            })
+          }
+        })
+      }
+      return changed ? next : prev
+    })
+  }, [meta.serviceType])
 
   const clearAllItems = () => {
     if (!items.length) return
@@ -427,7 +486,10 @@ export default function Service () {
   const sgstRate = sameState ? 9 : 0
   const igstRate = sameState ? 0 : 18
 
-  const hasTransportLine = useMemo(() => items.some((it) => /transport/i.test(it.name || '')), [items])
+  const hasTransportLine = useMemo(
+    () => items.some((it) => (it?.kind === ITEM_KINDS.TRANSPORT) || /transport/i.test(it?.name || '')),
+    [items]
+  )
 
   const totals = useMemo(() => {
     const raw = items.reduce((acc, it) => acc + safeNum(it.basePrice, 0) * safeNum(it.qty, 0), 0)
@@ -452,11 +514,30 @@ export default function Service () {
       invoiceNo: normalizeDocNumber(meta.invoiceNo),
       pinvNo: normalizeDocNumber(meta.pinvNo)
     }
+    const cleanItems = items.map((item) => {
+      if (!item) return item
+      const { autoDescription, kind, linkedKit, ...rest } = item
+      const basePrice = safeNum(rest.basePrice, 0)
+      const qty = safeNum(rest.qty, 1) || 1
+      const discountValue = rest.discount === ''
+        ? ''
+        : Math.max(0, Math.min(100, safeNum(rest.discount, 0)))
+      return {
+        ...rest,
+        code: (rest.code || '').trim(),
+        name: (rest.name || '').trim(),
+        description: (rest.description || '').trim(),
+        hsnSac: (rest.hsnSac || '').trim(),
+        basePrice,
+        qty,
+        discount: discountValue
+      }
+    })
     return {
       buyer,
       consignee,
       meta: cleanMeta,
-      items,
+      items: cleanItems,
       totals
     }
   }
@@ -471,12 +552,17 @@ export default function Service () {
     }
   }
 
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    await handleCreateService()
+  }
+
   const filteredIdx = items
     .map((it, idx) => ({ it, idx }))
     .filter(({ it }) => {
       if (!search.trim()) return true
       const needle = search.toLowerCase()
-      return [it.code, it.name].some((value) => (value || '').toLowerCase().includes(needle))
+      return [it.code, it.name, it.description].some((value) => (value || '').toLowerCase().includes(needle))
     })
 
   const renderBuyerSuggestions = () => {
@@ -511,7 +597,7 @@ export default function Service () {
           </Button>
         </Stack>
 
-        <Stack spacing={2.5} component='form' autoComplete='off'>
+        <Stack spacing={2.5} component='form' autoComplete='off' onSubmit={handleSubmit}>
           <Section title='Buyer & Consignee'>
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
@@ -523,7 +609,7 @@ export default function Service () {
                       onChange={(event) => setBuyer((prev) => ({ ...prev, name: event.target.value }))}
                       onBlur={() => setTimeout(() => setShowBuyerSuggestions(false), 150)}
                       onFocus={() => buyerSuggestions?.length && setShowBuyerSuggestions(true)}
-                      onKeyDown={handleEnterNavigation}
+                      onKeyDown={focusNextInputOnEnter}
                       fullWidth
                       size='small'
                     />
@@ -533,14 +619,14 @@ export default function Service () {
                     label='Buyer GSTIN'
                     value={buyer.gst}
                     onChange={(event) => setBuyer((prev) => ({ ...prev, gst: event.target.value.toUpperCase() }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                   <TextField
                     label='Buyer address'
                     value={buyer.address}
                     onChange={(event) => setBuyer((prev) => ({ ...prev, address: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     multiline
                     minRows={2}
@@ -551,7 +637,7 @@ export default function Service () {
                         label='PIN'
                         value={buyer.pin}
                         onChange={(event) => setBuyer((prev) => ({ ...prev, pin: event.target.value }))}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                       />
                     </Grid>
@@ -561,7 +647,7 @@ export default function Service () {
                         label='State'
                         value={buyer.state}
                         onChange={(event) => setBuyer((prev) => ({ ...prev, state: event.target.value }))}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                       >
                         <MenuItem value=''>Select state…</MenuItem>
@@ -575,14 +661,14 @@ export default function Service () {
                     label='Buyer contact'
                     value={buyer.contact}
                     onChange={(event) => setBuyer((prev) => ({ ...prev, contact: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                   <TextField
                     label='Buyer email'
                     value={buyer.email}
                     onChange={(event) => setBuyer((prev) => ({ ...prev, email: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                 </Stack>
@@ -593,21 +679,21 @@ export default function Service () {
                     label='Consignee (Ship To) name'
                     value={consignee.name}
                     onChange={(event) => setConsignee((prev) => ({ ...prev, name: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                   <TextField
                     label='Consignee GSTIN'
                     value={consignee.gst}
                     onChange={(event) => setConsignee((prev) => ({ ...prev, gst: event.target.value.toUpperCase() }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                   />
                   <TextField
                     label='Consignee address'
                     value={consignee.address}
                     onChange={(event) => setConsignee((prev) => ({ ...prev, address: event.target.value }))}
-                    onKeyDown={handleEnterNavigation}
+                    onKeyDown={focusNextInputOnEnter}
                     size='small'
                     multiline
                     minRows={2}
@@ -618,7 +704,7 @@ export default function Service () {
                         label='PIN'
                         value={consignee.pin}
                         onChange={(event) => setConsignee((prev) => ({ ...prev, pin: event.target.value }))}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                       />
                     </Grid>
@@ -628,7 +714,7 @@ export default function Service () {
                         label='State'
                         value={consignee.state}
                         onChange={(event) => setConsignee((prev) => ({ ...prev, state: event.target.value }))}
-                        onKeyDown={handleEnterNavigation}
+                        onKeyDown={focusNextInputOnEnter}
                         size='small'
                       >
                         <MenuItem value=''>Select state…</MenuItem>
@@ -650,7 +736,7 @@ export default function Service () {
                   label='Invoice number'
                   value={meta.invoiceNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, invoiceNo: normalizeDocNumber(event.target.value) }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -661,7 +747,7 @@ export default function Service () {
                   type='date'
                   value={meta.invoiceDate}
                   onChange={(event) => setMeta((prev) => ({ ...prev, invoiceDate: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                   InputLabelProps={{ shrink: true }}
@@ -672,7 +758,7 @@ export default function Service () {
                   label='PINV number'
                   value={meta.pinvNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, pinvNo: normalizeDocNumber(event.target.value) }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -683,7 +769,7 @@ export default function Service () {
                   type='date'
                   value={meta.pinvDate}
                   onChange={(event) => setMeta((prev) => ({ ...prev, pinvDate: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                   InputLabelProps={{ shrink: true }}
@@ -694,7 +780,7 @@ export default function Service () {
                   label='Buyer order / PO / WO number'
                   value={meta.buyerOrderNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, buyerOrderNo: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -705,7 +791,7 @@ export default function Service () {
                   type='date'
                   value={meta.orderDate}
                   onChange={(event) => setMeta((prev) => ({ ...prev, orderDate: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                   InputLabelProps={{ shrink: true }}
@@ -716,7 +802,7 @@ export default function Service () {
                   label='Delivery challan number'
                   value={meta.dcNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, dcNo: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -726,7 +812,7 @@ export default function Service () {
                   label='Work completion certificate number'
                   value={meta.wcNo}
                   onChange={(event) => setMeta((prev) => ({ ...prev, wcNo: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -737,7 +823,7 @@ export default function Service () {
                   label='Service type'
                   value={meta.serviceType}
                   onChange={(event) => setMeta((prev) => ({ ...prev, serviceType: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 >
@@ -752,7 +838,7 @@ export default function Service () {
                   label='Narration / remarks'
                   value={meta.narration}
                   onChange={(event) => setMeta((prev) => ({ ...prev, narration: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                 />
@@ -762,7 +848,7 @@ export default function Service () {
                   label='Terms & conditions (one per line)'
                   value={meta.terms}
                   onChange={(event) => setMeta((prev) => ({ ...prev, terms: event.target.value }))}
-                  onKeyDown={handleEnterNavigation}
+                  onKeyDown={focusNextInputOnEnter}
                   size='small'
                   fullWidth
                   multiline
@@ -791,7 +877,7 @@ export default function Service () {
               <TextField
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={handleEnterNavigation}
+                onKeyDown={focusNextInputOnEnter}
                 placeholder='Filter lines by code or description'
                 size='small'
                 InputProps={{
@@ -807,6 +893,7 @@ export default function Service () {
                 <Table size='small'>
                   <TableHead>
                     <TableRow>
+                      <TableCell width='24%'>Item</TableCell>
                       <TableCell>Description</TableCell>
                       <TableCell width='12%'>HSN / SAC</TableCell>
                       <TableCell align='right' width='12%'>Base (₹)</TableCell>
@@ -819,7 +906,7 @@ export default function Service () {
                   <TableBody>
                     {filteredIdx.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={7} align='center'>
+                        <TableCell colSpan={8} align='center'>
                           <Typography variant='body2' color='text.secondary'>No lines yet. Add one from the actions above.</Typography>
                         </TableCell>
                       </TableRow>
@@ -828,6 +915,8 @@ export default function Service () {
                       const qty = safeNum(it.qty, 0)
                       const disc = safeNum(it.discount, 0)
                       const lineTotal = Math.round(safeNum(it.basePrice, 0) * qty * (1 - disc / 100))
+                      const lineKind = it.kind || (it.linkedKit && /install/i.test(it.name || '') ? ITEM_KINDS.INSTALLATION : ITEM_KINDS.SUPPLY)
+                      const descriptionPlaceholder = computeChargesDescription(meta.serviceType, it.name, lineKind)
                       return (
                         <TableRow hover key={it.key}>
                           <TableCell>
@@ -836,7 +925,7 @@ export default function Service () {
                                 size='small'
                                 value={it.name}
                                 onChange={(event) => updateItem(idx, { name: event.target.value })}
-                                onKeyDown={handleEnterNavigation}
+                                onKeyDown={focusNextInputOnEnter}
                                 placeholder='Service / goods name'
                                 fullWidth
                               />
@@ -844,7 +933,7 @@ export default function Service () {
                                 size='small'
                                 value={it.code}
                                 onChange={(event) => updateItem(idx, { code: event.target.value })}
-                                onKeyDown={handleEnterNavigation}
+                                onKeyDown={focusNextInputOnEnter}
                                 placeholder='Code (optional)'
                                 sx={{ maxWidth: 180 }}
                               />
@@ -853,9 +942,21 @@ export default function Service () {
                           <TableCell>
                             <TextField
                               size='small'
+                              value={it.description || ''}
+                              onChange={(event) => updateItem(idx, { description: event.target.value })}
+                              onKeyDown={focusNextInputOnEnter}
+                              placeholder={descriptionPlaceholder || 'Add a description…'}
+                              fullWidth
+                              multiline
+                              minRows={2}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              size='small'
                               value={it.hsnSac}
                               onChange={(event) => updateItem(idx, { hsnSac: event.target.value })}
-                              onKeyDown={handleEnterNavigation}
+                              onKeyDown={focusNextInputOnEnter}
                               placeholder='995461'
                               fullWidth
                             />
@@ -915,16 +1016,24 @@ export default function Service () {
 
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
-                  <TextField
+                  <NumberField
                     label='Transportation charges (₹)'
                     value={hasTransportLine ? 0 : transport}
-                    onChange={(event) => setTransport(Number(event.target.value) || 0)}
-                    onKeyDown={handleEnterNavigation}
+                    onChange={(value) => {
+                      if (hasTransportLine) return
+                      if (value === '') {
+                        setTransport(0)
+                        return
+                      }
+                      const numeric = Number(value)
+                      setTransport(Number.isFinite(numeric) ? Math.max(0, numeric) : 0)
+                    }}
                     disabled={hasTransportLine}
                     size='small'
-                    type='number'
+                    inputProps={{ style: { textAlign: 'right' } }}
+                    InputProps={{ endAdornment: <InputAdornment position='end'>₹</InputAdornment> }}
+                    min={0}
                     fullWidth
-                    InputProps={{ inputProps: { min: 0, step: 100 }, endAdornment: <InputAdornment position='end'>₹</InputAdornment> }}
                   />
                   {hasTransportLine && (
                     <Typography variant='caption' color='text.secondary'>A transport line already exists – this field is disabled.</Typography>
@@ -987,7 +1096,6 @@ export default function Service () {
                   variant='contained'
                   color='success'
                   disabled={creating}
-                  onClick={handleCreateService}
                 >
                   {creating ? 'Creating…' : 'Create service'}
                 </Button>
