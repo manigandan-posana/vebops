@@ -425,7 +425,7 @@ export default function ServiceHistory () {
                                 </IconButton>
                               </span>
                             </Tooltip>
-                            <Button component={Link} to={`/office/services/${srv.id}`} size='small' variant='outlined'>Open</Button>
+                            <Button component={Link} to={`/office/service/${srv.id}`} size='small' variant='outlined'>Open</Button>
                           </Stack>
                         </TableCell>
                       </TableRow>
