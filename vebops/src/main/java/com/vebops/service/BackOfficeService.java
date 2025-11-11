@@ -2,6 +2,8 @@ package com.vebops.service;
 
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -654,6 +656,58 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         if (p.getApprovedBy() != null) {
             p.getApprovedBy().getDisplayName();
         }
+
+        boolean needsSubtotal = isMissingOrZero(p.getSubtotal());
+        boolean needsTax = p.getTax() == null;
+        boolean needsTotal = isMissingOrZero(p.getTotal());
+
+        if (needsSubtotal || needsTax || needsTotal) {
+            List<ProposalItem> lines = proposalItemRepo.findByTenantIdAndProposal_Id(p.getTenantId(), p.getId());
+            if (!lines.isEmpty()) {
+                BigDecimal subtotal = BigDecimal.ZERO;
+                BigDecimal tax = BigDecimal.ZERO;
+                for (ProposalItem line : lines) {
+                    if (line.getAmount() != null) {
+                        subtotal = subtotal.add(line.getAmount());
+                    }
+                    BigDecimal lineTax = null;
+                    if (line.getTaxAmount() != null) {
+                        lineTax = line.getTaxAmount();
+                    } else if (line.getTaxRate() != null && line.getAmount() != null) {
+                        lineTax = line.getAmount()
+                                .multiply(line.getTaxRate())
+                                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    }
+                    if (lineTax != null) {
+                        tax = tax.add(lineTax);
+                    }
+                }
+
+                BigDecimal total = subtotal.add(tax);
+                boolean updated = false;
+
+                if (needsSubtotal && subtotal.compareTo(BigDecimal.ZERO) > 0) {
+                    p.setSubtotal(subtotal);
+                    updated = true;
+                }
+                if (needsTax && (tax.compareTo(BigDecimal.ZERO) > 0 || subtotal.compareTo(BigDecimal.ZERO) > 0)) {
+                    p.setTax(tax);
+                    updated = true;
+                }
+                if (needsTotal && total.compareTo(BigDecimal.ZERO) > 0) {
+                    p.setTotal(total);
+                    updated = true;
+                }
+
+                if (updated) {
+                    proposalRepo.save(p);
+                }
+            }
+        }
+    }
+
+    private boolean isMissingOrZero(BigDecimal value) {
+        return value == null || value.compareTo(BigDecimal.ZERO) <= 0;
     }
 
     private void hydrateServiceRequest(ServiceRequest sr) {
