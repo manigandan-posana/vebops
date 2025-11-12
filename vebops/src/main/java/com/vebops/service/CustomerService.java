@@ -335,8 +335,6 @@ public class CustomerService {
             sr.getDescription();
             sr.getServiceType();
             sr.getSiteAddress();
-            sr.getServiceLocation();
-            sr.getSiteLocation();
             if (sr.getCustomer() != null) {
                 sr.getCustomer().getId();
                 sr.getCustomer().getName();
@@ -414,8 +412,6 @@ public class CustomerService {
         ServiceRequest sr = wo.getServiceRequest();
         String[] candidates = new String[] {
                 sr != null ? sr.getSiteAddress() : null,
-                sr != null ? sr.getServiceLocation() : null,
-                sr != null ? sr.getSiteLocation() : null,
                 (sr != null && sr.getCustomer() != null) ? sr.getCustomer().getAddress() : null
         };
         for (String candidate : candidates) {

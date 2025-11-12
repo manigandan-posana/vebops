@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import com.vebops.context.TenantContext;
 import com.vebops.domain.FieldEngineer;
 import com.vebops.domain.KitItem;
-import com.vebops.domain.Service;
 import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderProgress;
@@ -303,7 +302,7 @@ public class FeService {
             }
         }
 
-        Service linkedService = resolveLinkedService(tid, srId, wo.getId());
+        com.vebops.domain.Service linkedService = resolveLinkedService(tid, srId, wo.getId());
         BuyerSummary buyerSummary = deriveBuyerSummary(sr, linkedService);
         ConsigneeSummary consigneeSummary = deriveConsigneeSummary(linkedService);
         if (siteAddress == null && linkedService != null) {
@@ -386,7 +385,7 @@ public class FeService {
         ));
     }
 
-    private BuyerSummary deriveBuyerSummary(ServiceRequest sr, Service svc) {
+    private BuyerSummary deriveBuyerSummary(ServiceRequest sr, com.vebops.domain.Service svc) {
         if (svc != null) {
             String name = trimToNull(svc.getBuyerName());
             String gst = trimToNull(svc.getBuyerGst());
@@ -416,7 +415,7 @@ public class FeService {
         return null;
     }
 
-    private ConsigneeSummary deriveConsigneeSummary(Service svc) {
+    private ConsigneeSummary deriveConsigneeSummary(com.vebops.domain.Service svc) {
         if (svc == null) {
             return null;
         }
@@ -499,14 +498,14 @@ public class FeService {
         );
     }
 
-    private Service resolveLinkedService(Long tenantId, Long srId, Long woId) {
+    private com.vebops.domain.Service resolveLinkedService(Long tenantId, Long srId, Long woId) {
         if (tenantId == null) {
             return null;
         }
-        List<Service> candidates = serviceRepo.findTop50ByTenantIdOrderByCreatedAtDesc(tenantId);
-        Service srMatch = null;
-        Service woMatch = null;
-        for (Service svc : candidates) {
+        List<com.vebops.domain.Service> candidates = serviceRepo.findTop50ByTenantIdOrderByCreatedAtDesc(tenantId);
+        com.vebops.domain.Service srMatch = null;
+        com.vebops.domain.Service woMatch = null;
+        for (com.vebops.domain.Service svc : candidates) {
             if (svc == null) {
                 continue;
             }

@@ -687,7 +687,6 @@ public class PdfUtil {
     }
     String[] candidates = {
       sr.getSiteAddress(),
-      sr.getServiceLocation(),
       sr.getDescription()
     };
     for (String candidate : candidates) {

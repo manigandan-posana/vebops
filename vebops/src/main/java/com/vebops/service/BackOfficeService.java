@@ -89,6 +89,7 @@ import com.vebops.repository.WorkOrderProgressRepository;
 import com.vebops.repository.WorkOrderProgressAttachmentRepository;
 import com.vebops.repository.WorkOrderQueryRepository;
 import com.vebops.repository.WorkOrderRepository;
+import com.vebops.util.PdfUtil;
 
 /**
  * Service encapsulating all back office operations originally defined in
@@ -863,7 +864,7 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
 
     public ResponseEntity<byte[]> completionReport(Long workOrderId) {
         Long tid = tenant();
-        WorkOrder wo = woRepo.findById(workOrderId)
+        WorkOrder wo = workOrderRepo.findById(workOrderId)
             .orElseThrow(() -> new NotFoundException("Work order not found"));
         if (!tid.equals(wo.getTenantId())) {
             throw new BusinessException("Cross-tenant access");
