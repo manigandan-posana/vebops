@@ -159,6 +159,19 @@ export default function ServiceDetail () {
   const [modal, setModal] = useState({ open: false, serviceId: null, method: 'email', contact: '', docType: 'INVOICE' })
   const [sharingDocType, setSharingDocType] = useState(null)
 
+  const statusChip = useMemo(() => {
+    if (!workOrder?.status) return null
+    const label = String(workOrder.status).replace(/_/g, ' ').toLowerCase()
+    const text = label.replace(/(^|\s)\w/g, (m) => m.toUpperCase())
+    let color = 'default'
+    const upper = String(workOrder.status).toUpperCase()
+    if (upper === 'COMPLETED') color = 'success'
+    else if (upper === 'IN_PROGRESS') color = 'primary'
+    else if (upper === 'ASSIGNED') color = 'info'
+    else if (upper === 'ON_HOLD') color = 'error'
+    return <Chip label={text} size='small' color={color} variant={color === 'default' ? 'outlined' : 'filled'} />
+  }, [workOrder?.status])
+
   const openSendModal = (docType = 'INVOICE') => {
     const contact = service?.buyerContact || service?.buyerEmail || ''
     setModal({ open: true, serviceId: service?.id || Number(id), method: 'email', contact, docType })
@@ -366,19 +379,6 @@ export default function ServiceDetail () {
   }
 
   const totalTax = (cgstAmount ?? 0) + (sgstAmount ?? 0) + (igstAmount ?? 0)
-
-  const statusChip = useMemo(() => {
-    if (!workOrder?.status) return null
-    const label = String(workOrder.status).replace(/_/g, ' ').toLowerCase()
-    const text = label.replace(/(^|\s)\w/g, (m) => m.toUpperCase())
-    let color = 'default'
-    const upper = String(workOrder.status).toUpperCase()
-    if (upper === 'COMPLETED') color = 'success'
-    else if (upper === 'IN_PROGRESS') color = 'primary'
-    else if (upper === 'ASSIGNED') color = 'info'
-    else if (upper === 'ON_HOLD') color = 'error'
-    return <Chip label={text} size='small' color={color} variant={color === 'default' ? 'outlined' : 'filled'} />
-  }, [workOrder?.status])
 
   const progressStatusColor = (status) => {
     const upper = String(status || '').toUpperCase()

@@ -199,7 +199,15 @@ export const officeApi = baseApi.injectEndpoints({
           method: 'POST',
           headers: { 'Idempotency-Key': `sr-${id}` }, // ✅ harmless if backend ignores; great if it supports
         })
-        if (res.error) return { error: res.error }
+        if (res.error) {
+          const status = res.error.status
+          const payload = res.error.data
+          if (status === 409 && payload != null) {
+            if (typeof payload === 'number') return { data: { id: payload } }
+            if (typeof payload === 'object') return { data: payload }
+          }
+          return { error: res.error }
+        }
         const d = res.data
         // Backend may return a raw Long or a WorkOrder object.
         // Normalize to { id, wan? } to keep UI happy.

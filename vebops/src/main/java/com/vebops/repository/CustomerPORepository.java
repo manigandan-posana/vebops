@@ -8,4 +8,6 @@ import com.vebops.domain.CustomerPO;
 @Repository
 public interface CustomerPORepository extends JpaRepository<CustomerPO, Long> {
     List<CustomerPO> findByTenantIdAndProposal_Id(Long tenantId, Long proposalId);
+
+    java.util.Optional<CustomerPO> findFirstByTenantIdAndProposal_IdOrderByUploadedAtDesc(Long tenantId, Long proposalId);
 }
