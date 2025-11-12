@@ -239,6 +239,11 @@ public class BackOfficeController {
         return bo.woTimeline(id);
     }
 
+    @GetMapping(value = "/wo/{id}/completion-report.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> woCompletionReport(@PathVariable Long id) {
+        return bo.completionReport(id);
+    }
+
     @GetMapping("/wo/{woId}/progress/{progressId}/attachments/{attachmentId}")
     public ResponseEntity<byte[]> downloadProgressAttachment(@PathVariable Long woId,
                                                               @PathVariable Long progressId,

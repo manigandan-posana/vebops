@@ -12,7 +12,8 @@ import {
   useWoAssignMutation,
   useWoCompleteMutation,
   useWoTimelineQuery,
-  useLazyGetWoProgressAttachmentQuery
+  useLazyGetWoProgressAttachmentQuery,
+  useLazyGetWoCompletionReportQuery
 } from '../../features/office/officeApi'
 import { downloadBlob } from '../../utils/file'
 import {
@@ -571,6 +572,7 @@ function TimelineDialog ({ open, onClose, workOrder }) {
   const skip = !open || !woId
   const { data, isFetching, error, refetch } = useWoTimelineQuery(woId, { skip })
   const [downloadProgressAttachment, { isFetching: isDownloadingAttachment }] = useLazyGetWoProgressAttachmentQuery()
+  const [downloadCompletionReport, { isFetching: isDownloadingReport }] = useLazyGetWoCompletionReportQuery()
 
   const timelineWo = data?.workOrder || workOrder || {}
   const sr = timelineWo?.serviceRequest || workOrder?.serviceRequest || {}
@@ -616,6 +618,7 @@ function TimelineDialog ({ open, onClose, workOrder }) {
   const summaryPhotos = progressSummary?.photoCount ?? 0
   const summaryLastAt = progressSummary?.lastUpdatedAt ? formatDate(progressSummary.lastUpdatedAt) : (progress.length ? formatDate(progress[progress.length - 1]?.createdAt) : '—')
   const summaryLastStatus = progressSummary?.lastStatus ? statusLabel(progressSummary.lastStatus) : (progress.length ? statusLabel(progress[progress.length - 1]?.status) : 'Update')
+  const canDownloadReport = String(timelineWo?.status || workOrder?.status || '').toUpperCase() === 'COMPLETED'
 
   async function handleDownloadAttachment (progressId, attachment) {
     if (!woId || !progressId || !attachment?.id) return
@@ -625,6 +628,18 @@ function TimelineDialog ({ open, onClose, workOrder }) {
       downloadBlob(blob, filename)
     } catch (err) {
       toast.error(String(err?.data?.message || err?.error || 'Unable to download attachment'))
+    }
+  }
+
+  async function handleDownloadCompletionReport () {
+    if (!woId) return
+    try {
+      const blob = await downloadCompletionReport(woId).unwrap()
+      const filename = `completion-report-${timelineWo?.wan || workOrder?.wan || woId}.pdf`
+      downloadBlob(blob, filename)
+      toast.success('Downloaded')
+    } catch (err) {
+      toast.error(String(err?.data?.message || err?.error || 'Unable to download certificate'))
     }
   }
 
@@ -724,6 +739,14 @@ function TimelineDialog ({ open, onClose, workOrder }) {
         </Stack>
       </DialogContent>
       <DialogActions>
+        <Button
+          variant='outlined'
+          startIcon={<DownloadRoundedIcon fontSize='small' />}
+          onClick={handleDownloadCompletionReport}
+          disabled={!canDownloadReport || isDownloadingReport}
+        >
+          {isDownloadingReport ? 'Preparing…' : 'Completion PDF'}
+        </Button>
         <Button variant='outlined' color='inherit' onClick={() => refetch()} disabled={isFetching || skip} startIcon={<RefreshRoundedIcon fontSize='small' />}> {isFetching ? 'Refreshing…' : 'Refresh'} </Button>
         <Button variant='contained' onClick={onClose}>Close</Button>
       </DialogActions>

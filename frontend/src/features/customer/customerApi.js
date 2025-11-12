@@ -60,6 +60,51 @@ export const customerApi = baseApi.injectEndpoints({
       providesTags: ['Invoices']
     }),
 
+    /** List work orders linked to the logged-in customer */
+    getMyWorkOrders: b.query({
+      query: (params) => ({
+        url: '/customer/work-orders',
+        method: 'GET',
+        params
+      }),
+      transformResponse: (res) => normaliseArray(res),
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map((row) => ({ type: 'WorkOrders', id: row?.id })),
+              { type: 'WorkOrders', id: 'LIST' }
+            ]
+          : [{ type: 'WorkOrders', id: 'LIST' }]
+    }),
+
+    /** Fetch a single work order detail for the customer portal */
+    getCustomerWorkOrderDetail: b.query({
+      query: (id) => ({
+        url: `/customer/work-orders/${id}`,
+        method: 'GET'
+      }),
+      providesTags: (_r, _e, id) => [{ type: 'WorkOrders', id }]
+    }),
+
+    /** Download completion certificate PDF */
+    getCustomerWorkOrderCompletionReport: b.query({
+      query: (id) => ({
+        url: `/customer/work-orders/${id}/completion-report`,
+        method: 'GET',
+        headers: { Accept: 'application/pdf' },
+        responseHandler: (response) => response.blob()
+      })
+    }),
+
+    /** Download a progress attachment blob */
+    getCustomerProgressAttachment: b.query({
+      query: ({ woId, progressId, attachmentId }) => ({
+        url: `/customer/work-orders/${woId}/progress/${progressId}/attachments/${attachmentId}`,
+        method: 'GET',
+        responseHandler: (response) => response.blob()
+      })
+    }),
+
     /** List proposal documents (ownership enforced server-side) */
     getProposalDocuments: b.query({
       query: ({ id, customerId }) => {
@@ -193,11 +238,16 @@ export const {
   useUploadPOMutation,
   useGetInvoicePdfQuery,
   useGetMyInvoicesQuery,
+  useGetMyWorkOrdersQuery,
+  useGetCustomerWorkOrderDetailQuery,
+  useGetCustomerWorkOrderCompletionReportQuery,
   useGetProposalDocumentsQuery,
   useUploadPOFileMutation,
   useCustomerDownloadProposalDocumentFileMutation,
   useLazyGetInvoicePdfQuery,
   useCustomerDownloadLatestProposalPdfMutation,
+  useLazyGetCustomerWorkOrderCompletionReportQuery,
+  useLazyGetCustomerProgressAttachmentQuery,
   useApproveProposalMutation,
   useRejectProposalMutation,
 } = customerApi

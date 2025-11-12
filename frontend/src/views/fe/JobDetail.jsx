@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Toaster, toast } from 'react-hot-toast'
 import {
@@ -35,7 +35,8 @@ import Inventory2RoundedIcon from '@mui/icons-material/Inventory2Rounded'
 import {
   usePostProgressMutation,
   useLazyGetCompletionReportPdfQuery,
-  useGetWorkOrderDetailQuery
+  useGetWorkOrderDetailQuery,
+  useLazyGetProgressAttachmentQuery
 } from '../../features/fe/feApi'
 import { downloadBlob } from '../../utils/file'
 import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'

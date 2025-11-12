@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -858,6 +859,74 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
             .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename.replace("\"", "") + "\"")
             .contentType(MediaType.parseMediaType(contentType))
             .body(data);
+    }
+
+    public ResponseEntity<byte[]> completionReport(Long workOrderId) {
+        Long tid = tenant();
+        WorkOrder wo = woRepo.findById(workOrderId)
+            .orElseThrow(() -> new NotFoundException("Work order not found"));
+        if (!tid.equals(wo.getTenantId())) {
+            throw new BusinessException("Cross-tenant access");
+        }
+
+        touchWorkOrderAssociations(wo);
+
+        List<WorkOrderProgress> progress = woProgressRepo
+            .findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, workOrderId);
+        List<Long> progressIds = progress.stream()
+            .map(WorkOrderProgress::getId)
+            .filter(Objects::nonNull)
+            .toList();
+        if (!progressIds.isEmpty()) {
+            Map<Long, List<WorkOrderProgressAttachment>> attachments = progressAttachmentRepo
+                .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                .stream()
+                .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+            for (WorkOrderProgress entry : progress) {
+                List<WorkOrderProgressAttachment> att = attachments.get(entry.getId());
+                if (att != null) {
+                    att.forEach(entry::addAttachment);
+                }
+            }
+        }
+
+        byte[] pdf = PdfUtil.buildCompletionReportPdf(wo, progress);
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                "inline; filename=completion-report-" + wo.getWan() + ".pdf")
+            .contentType(MediaType.APPLICATION_PDF)
+            .body(pdf);
+    }
+
+    private void touchWorkOrderAssociations(WorkOrder wo) {
+        if (wo == null) {
+            return;
+        }
+        if (wo.getServiceRequest() != null) {
+            wo.getServiceRequest().getId();
+            wo.getServiceRequest().getSrn();
+            wo.getServiceRequest().getDescription();
+            if (wo.getServiceRequest().getCustomer() != null) {
+                wo.getServiceRequest().getCustomer().getId();
+                wo.getServiceRequest().getCustomer().getName();
+                wo.getServiceRequest().getCustomer().getEmail();
+                wo.getServiceRequest().getCustomer().getMobile();
+            }
+        }
+        if (wo.getAssignedFE() != null) {
+            wo.getAssignedFE().getId();
+            if (wo.getAssignedFE().getUser() != null) {
+                wo.getAssignedFE().getUser().getDisplayName();
+            }
+        }
+        if (wo.getAssignedTeam() != null) {
+            wo.getAssignedTeam().getId();
+            wo.getAssignedTeam().getName();
+        }
+        if (wo.getCustomerPO() != null) {
+            wo.getCustomerPO().getId();
+        }
     }
 
     private List<Map<String, Object>> summariseProgress(List<WorkOrderProgress> progress,

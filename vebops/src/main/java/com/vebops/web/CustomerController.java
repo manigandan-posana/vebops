@@ -61,6 +61,28 @@ public class CustomerController {
         return svc.myInvoices(customerId);
     }
 
+    @GetMapping("/work-orders")
+    public ResponseEntity<List<CustomerService.CustomerWorkOrderRow>> myWorkOrders(@RequestParam(required = false) Long customerId) {
+        return svc.myWorkOrders(customerId);
+    }
+
+    @GetMapping("/work-orders/{id}")
+    public ResponseEntity<CustomerService.CustomerWorkOrderDetail> workOrderDetail(@PathVariable Long id) {
+        return svc.workOrderDetail(id);
+    }
+
+    @GetMapping(value = "/work-orders/{id}/completion-report", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadCompletionReport(@PathVariable Long id) {
+        return svc.completionReport(id);
+    }
+
+    @GetMapping("/work-orders/{woId}/progress/{progressId}/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadProgressAttachment(@PathVariable Long woId,
+                                                             @PathVariable Long progressId,
+                                                             @PathVariable Long attachmentId) {
+        return svc.downloadProgressAttachment(woId, progressId, attachmentId);
+    }
+
     // MULTIPART upload for PO PDF (separate from poNumber approval endpoint)
     @PostMapping(value = "/proposals/{id}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CustomerService.ProposalDocumentRow> uploadProposalDocFile(

@@ -6,7 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.springframework.core.io.InputStreamResource;
@@ -23,22 +28,28 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.vebops.context.TenantContext;
 import com.vebops.domain.Customer;
+import com.vebops.domain.CustomerPO;
 import com.vebops.domain.Document;
 import com.vebops.domain.Invoice;
 import com.vebops.domain.InvoiceLine;
 import com.vebops.domain.Proposal;
-import com.vebops.domain.CustomerPO;
+import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrder;
+import com.vebops.domain.WorkOrderProgress;
+import com.vebops.domain.WorkOrderProgressAttachment;
 import com.vebops.domain.enums.DocumentEntityType;
 import com.vebops.domain.enums.DocumentKind;
 import com.vebops.exception.BusinessException;
 import com.vebops.exception.NotFoundException;
+import com.vebops.repository.CustomerPORepository;
 import com.vebops.repository.CustomerRepository;
 import com.vebops.repository.DocumentRepository;
 import com.vebops.repository.InvoiceLineRepository;
 import com.vebops.repository.InvoiceRepository;
 import com.vebops.repository.ProposalRepository;
-import com.vebops.repository.CustomerPORepository;
+import com.vebops.repository.WorkOrderProgressAttachmentRepository;
+import com.vebops.repository.WorkOrderProgressRepository;
+import com.vebops.repository.WorkOrderRepository;
 import com.vebops.util.PdfUtil;
 
 /**
@@ -57,13 +68,19 @@ public class CustomerService {
     private final CustomerRepository customerRepo;
     private final FileStorageService fileStorageService;
     private final CustomerPORepository customerPORepo;
+    private final WorkOrderRepository workOrderRepo;
+    private final WorkOrderProgressRepository workOrderProgressRepo;
+    private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
 
     public CustomerService(ProposalRepository proposalRepo,
                            ProposalService proposals,
                            InvoiceRepository invoiceRepo,
                            InvoiceLineRepository invLineRepo, DocumentRepository docRepo,
                            CustomerRepository customerRepo, FileStorageService fileStorageService,
-                           CustomerPORepository customerPORepo) {
+                           CustomerPORepository customerPORepo,
+                           WorkOrderRepository workOrderRepo,
+                           WorkOrderProgressRepository workOrderProgressRepo,
+                           WorkOrderProgressAttachmentRepository progressAttachmentRepo) {
         this.proposalRepo = proposalRepo;
         this.proposals = proposals;
         this.invoiceRepo = invoiceRepo;
@@ -72,6 +89,9 @@ public class CustomerService {
         this.customerRepo = customerRepo;
         this.fileStorageService = fileStorageService;
         this.customerPORepo = customerPORepo;
+        this.workOrderRepo = workOrderRepo;
+        this.workOrderProgressRepo = workOrderProgressRepo;
+        this.progressAttachmentRepo = progressAttachmentRepo;
     }
 
     private Long tenant() { return TenantContext.getTenantId(); }
@@ -166,6 +186,253 @@ public class CustomerService {
             .map(CustomerInvoiceRow::from)
             .collect(Collectors.toList());
         return ResponseEntity.ok(rows);
+    }
+
+    public ResponseEntity<List<CustomerWorkOrderRow>> myWorkOrders(Long customerId) {
+        Long tid = tenant();
+        Customer me = currentCustomerOrThrow();
+        Long cid = (customerId != null) ? customerId : me.getId();
+        if (!cid.equals(me.getId())) {
+            throw new BusinessException("You can only view your own work orders");
+        }
+        List<WorkOrder> list = workOrderRepo
+                .findByTenantIdAndServiceRequest_Customer_IdOrderByCreatedAtDesc(tid, cid);
+        List<CustomerWorkOrderRow> rows = new ArrayList<>(list.size());
+        for (WorkOrder wo : list) {
+            touchWorkOrderGraph(wo);
+            rows.add(CustomerWorkOrderRow.from(wo));
+        }
+        return ResponseEntity.ok(rows);
+    }
+
+    public ResponseEntity<CustomerWorkOrderDetail> workOrderDetail(Long workOrderId) {
+        Long tid = tenant();
+        Customer me = currentCustomerOrThrow();
+        WorkOrder wo = workOrderRepo.findById(workOrderId)
+                .orElseThrow(() -> new NotFoundException("Work order not found"));
+        if (!tid.equals(wo.getTenantId())) throw new BusinessException("Cross-tenant access");
+        ServiceRequest sr = wo.getServiceRequest();
+        if (sr == null || sr.getCustomer() == null || !Objects.equals(sr.getCustomer().getId(), me.getId())) {
+            throw new BusinessException("Not your work order");
+        }
+
+        touchWorkOrderGraph(wo);
+
+        List<WorkOrderProgress> progress = workOrderProgressRepo
+                .findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, workOrderId);
+        Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress = Map.of();
+        List<Long> progressIds = progress.stream()
+                .map(WorkOrderProgress::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (!progressIds.isEmpty()) {
+            attachmentsByProgress = progressAttachmentRepo
+                    .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                    .stream()
+                    .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                    .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+        }
+
+        List<ProgressEntry> progressEntries = new ArrayList<>(progress.size());
+        for (WorkOrderProgress entry : progress) {
+            progressEntries.add(toProgressEntry(wo.getId(), entry, attachmentsByProgress));
+        }
+
+        CustomerWorkOrderRow row = CustomerWorkOrderRow.from(wo);
+        ServiceInfoSummary service = ServiceInfoSummary.from(wo);
+        CustomerWorkOrderDetail detail = new CustomerWorkOrderDetail(row, service, progressEntries);
+        return ResponseEntity.ok(detail);
+    }
+
+    public ResponseEntity<byte[]> completionReport(Long workOrderId) {
+        Long tid = tenant();
+        Customer me = currentCustomerOrThrow();
+        WorkOrder wo = workOrderRepo.findById(workOrderId)
+                .orElseThrow(() -> new NotFoundException("Work order not found"));
+        if (!tid.equals(wo.getTenantId())) throw new BusinessException("Cross-tenant access");
+        ServiceRequest sr = wo.getServiceRequest();
+        if (sr == null || sr.getCustomer() == null || !Objects.equals(sr.getCustomer().getId(), me.getId())) {
+            throw new BusinessException("Not your work order");
+        }
+
+        touchWorkOrderGraph(wo);
+
+        List<WorkOrderProgress> progress = workOrderProgressRepo
+                .findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, workOrderId);
+        List<Long> progressIds = progress.stream()
+                .map(WorkOrderProgress::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (!progressIds.isEmpty()) {
+            Map<Long, List<WorkOrderProgressAttachment>> attachments = progressAttachmentRepo
+                    .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                    .stream()
+                    .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                    .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+            for (WorkOrderProgress p : progress) {
+                List<WorkOrderProgressAttachment> att = attachments.get(p.getId());
+                if (att != null) {
+                    att.forEach(p::addAttachment);
+                }
+            }
+        }
+
+        byte[] pdf = PdfUtil.buildCompletionReportPdf(wo, progress);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=completion-report-" + wo.getWan() + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
+
+    public ResponseEntity<byte[]> downloadProgressAttachment(Long woId, Long progressId, Long attachmentId) {
+        Long tid = tenant();
+        Customer me = currentCustomerOrThrow();
+        WorkOrderProgressAttachment attachment = progressAttachmentRepo
+                .findByTenantIdAndId(tid, attachmentId)
+                .orElseThrow(() -> new NotFoundException("Attachment not found"));
+        WorkOrderProgress progress = attachment.getProgress();
+        if (progress == null || progress.getWorkOrder() == null) {
+            throw new NotFoundException("Progress entry not found for attachment");
+        }
+        WorkOrder wo = progress.getWorkOrder();
+        if (!tid.equals(wo.getTenantId())) {
+            throw new BusinessException("Cross-tenant access");
+        }
+        if (!Objects.equals(progress.getId(), progressId) || !Objects.equals(wo.getId(), woId)) {
+            throw new BusinessException("Attachment does not belong to the requested work order");
+        }
+        ServiceRequest sr = wo.getServiceRequest();
+        if (sr == null || sr.getCustomer() == null || !Objects.equals(sr.getCustomer().getId(), me.getId())) {
+            throw new BusinessException("Not your work order");
+        }
+
+        byte[] data = attachment.getData();
+        if (data == null) {
+            data = new byte[0];
+        }
+        String filename = attachment.getFilename() != null ? attachment.getFilename() : "progress-photo";
+        String contentType = attachment.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + filename.replace("\"", "") + "\"")
+                .contentType(MediaType.parseMediaType(contentType))
+                .body(data);
+    }
+
+    private void touchWorkOrderGraph(WorkOrder wo) {
+        if (wo == null) {
+            return;
+        }
+        ServiceRequest sr = wo.getServiceRequest();
+        if (sr != null) {
+            sr.getId();
+            sr.getSrn();
+            sr.getDescription();
+            sr.getServiceType();
+            sr.getSiteAddress();
+            sr.getServiceLocation();
+            sr.getSiteLocation();
+            if (sr.getCustomer() != null) {
+                sr.getCustomer().getId();
+                sr.getCustomer().getName();
+                sr.getCustomer().getEmail();
+                sr.getCustomer().getMobile();
+                sr.getCustomer().getAddress();
+            }
+        }
+        if (wo.getCustomerPO() != null) {
+            wo.getCustomerPO().getId();
+            wo.getCustomerPO().getPoNumber();
+        }
+        if (wo.getAssignedFE() != null) {
+            wo.getAssignedFE().getId();
+            if (wo.getAssignedFE().getUser() != null) {
+                wo.getAssignedFE().getUser().getDisplayName();
+            }
+        }
+        if (wo.getAssignedTeam() != null) {
+            wo.getAssignedTeam().getId();
+            wo.getAssignedTeam().getName();
+        }
+    }
+
+    private ProgressEntry toProgressEntry(Long woId,
+                                          WorkOrderProgress progress,
+                                          Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress) {
+        if (progress == null) {
+            return null;
+        }
+        String status = progress.getStatus() != null ? progress.getStatus().name() : null;
+        ProgressUser by = null;
+        if (progress.getByFE() != null) {
+            progress.getByFE().getId();
+            String name = progress.getByFE().getUser() != null
+                    ? progress.getByFE().getUser().getDisplayName()
+                    : progress.getByFE().getName();
+            by = new ProgressUser(progress.getByFE().getId(), name);
+        }
+        List<WorkOrderProgressAttachment> attachmentList = attachmentsByProgress
+                .getOrDefault(progress.getId(), List.of());
+        List<ProgressAttachmentView> views = new ArrayList<>(attachmentList.size());
+        for (WorkOrderProgressAttachment attachment : attachmentList) {
+            views.add(toAttachmentView(woId, progress.getId(), attachment));
+        }
+        return new ProgressEntry(
+                progress.getId(),
+                status,
+                progress.getRemarks(),
+                progress.getPhotoUrl(),
+                progress.getCreatedAt(),
+                by,
+                views
+        );
+    }
+
+    private ProgressAttachmentView toAttachmentView(Long woId,
+                                                    Long progressId,
+                                                    WorkOrderProgressAttachment attachment) {
+        Long id = attachment.getId();
+        String filename = attachment.getFilename();
+        String contentType = attachment.getContentType();
+        Long size = attachment.getSize();
+        Instant uploadedAt = attachment.getUploadedAt();
+        String downloadPath = id == null
+                ? null
+                : String.format("/customer/work-orders/%d/progress/%d/attachments/%d", woId, progressId, id);
+        return new ProgressAttachmentView(id, filename, contentType, size, uploadedAt, downloadPath);
+    }
+
+    private static String resolveSiteAddressStatic(WorkOrder wo) {
+        if (wo == null) {
+            return null;
+        }
+        ServiceRequest sr = wo.getServiceRequest();
+        String[] candidates = new String[] {
+                sr != null ? sr.getSiteAddress() : null,
+                sr != null ? sr.getServiceLocation() : null,
+                sr != null ? sr.getSiteLocation() : null,
+                (sr != null && sr.getCustomer() != null) ? sr.getCustomer().getAddress() : null
+        };
+        for (String candidate : candidates) {
+            String trimmed = trimToNull(candidate);
+            if (trimmed != null) {
+                return trimmed;
+            }
+        }
+        return null;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     // Upload a PO PDF as a document under the proposal (does not change status)
@@ -287,6 +554,108 @@ public class CustomerService {
             );
         }
     }
+
+    public record CustomerWorkOrderRow(
+            Long id,
+            String wan,
+            String status,
+            Instant createdAt,
+            Instant updatedAt,
+            java.time.LocalDate startDate,
+            java.time.LocalDate dueDate,
+            Long serviceRequestId,
+            String serviceRequestNumber,
+            String serviceType,
+            String siteAddress,
+            String customerPoNumber,
+            boolean completionReportAvailable,
+            String completionReportUrl
+    ) {
+        static CustomerWorkOrderRow from(WorkOrder wo) {
+            if (wo == null) return null;
+            ServiceRequest sr = wo.getServiceRequest();
+            String status = wo.getStatus() != null ? wo.getStatus().name() : null;
+            boolean completed = "COMPLETED".equals(status);
+            String completionUrl = (completed && wo.getId() != null)
+                    ? String.format("/customer/work-orders/%d/completion-report", wo.getId())
+                    : null;
+            return new CustomerWorkOrderRow(
+                    wo.getId(),
+                    wo.getWan(),
+                    status,
+                    wo.getCreatedAt(),
+                    wo.getUpdatedAt(),
+                    wo.getStartDate(),
+                    wo.getDueDate(),
+                    sr != null ? sr.getId() : null,
+                    sr != null ? sr.getSrn() : null,
+                    sr != null && sr.getServiceType() != null ? sr.getServiceType().name() : null,
+                    resolveSiteAddressStatic(wo),
+                    wo.getCustomerPO() != null ? trimToNull(wo.getCustomerPO().getPoNumber()) : null,
+                    completed,
+                    completionUrl
+            );
+        }
+    }
+
+    public record ServiceInfoSummary(
+            Long serviceRequestId,
+            String serviceRequestNumber,
+            String serviceType,
+            String description,
+            String siteAddress,
+            String customerName,
+            String customerEmail,
+            String customerMobile,
+            String customerPoNumber
+    ) {
+        static ServiceInfoSummary from(WorkOrder wo) {
+            if (wo == null) return null;
+            ServiceRequest sr = wo.getServiceRequest();
+            Customer customer = sr != null ? sr.getCustomer() : null;
+            String customerPoNumber = wo.getCustomerPO() != null
+                    ? trimToNull(wo.getCustomerPO().getPoNumber())
+                    : null;
+            return new ServiceInfoSummary(
+                    sr != null ? sr.getId() : null,
+                    sr != null ? sr.getSrn() : null,
+                    sr != null && sr.getServiceType() != null ? sr.getServiceType().name() : null,
+                    sr != null ? sr.getDescription() : null,
+                    resolveSiteAddressStatic(wo),
+                    customer != null ? trimToNull(customer.getName()) : null,
+                    customer != null ? trimToNull(customer.getEmail()) : null,
+                    customer != null ? trimToNull(customer.getMobile()) : null,
+                    customerPoNumber
+            );
+        }
+    }
+
+    public record CustomerWorkOrderDetail(
+            CustomerWorkOrderRow workOrder,
+            ServiceInfoSummary service,
+            List<ProgressEntry> progress
+    ) { }
+
+    public record ProgressEntry(
+            Long id,
+            String status,
+            String remarks,
+            String photoUrl,
+            Instant createdAt,
+            ProgressUser by,
+            List<ProgressAttachmentView> attachments
+    ) { }
+
+    public record ProgressUser(Long id, String name) { }
+
+    public record ProgressAttachmentView(
+            Long id,
+            String filename,
+            String contentType,
+            Long size,
+            Instant uploadedAt,
+            String downloadPath
+    ) { }
 
     public record WorkOrderSummary(Long id, String wan) {
         static WorkOrderSummary from(WorkOrder wo) {

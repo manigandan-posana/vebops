@@ -663,6 +663,14 @@ export const officeApi = baseApi.injectEndpoints({
       providesTags: (_r,_e,id) => [{ type:'WorkOrders', id }]
     }),
 
+    getWoCompletionReport: b.query({
+      query: (id) => ({
+        url: `/office/wo/${id}/completion-report.pdf`,
+        method: 'GET',
+        responseHandler: (response) => response.blob()
+      })
+    }),
+
     getWoProgressAttachment: b.query({
       query: ({ woId, progressId, attachmentId }) => ({
         url: `/office/wo/${woId}/progress/${progressId}/attachments/${attachmentId}`,
@@ -923,6 +931,8 @@ export const {
   useListWOsQuery,
   useGetWOQuery,
   useWoTimelineQuery,
+  useGetWoCompletionReportQuery,
+  useLazyGetWoCompletionReportQuery,
   useWoSummaryQuery,
   useWoAssignMutation,
   useWoProgressMutation,
