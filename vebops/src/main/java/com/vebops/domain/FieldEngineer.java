@@ -32,4 +32,18 @@ public class FieldEngineer extends BaseTenantEntity {
     public void setUser(User user) { this.user = user; }
     public FEStatus getStatus() { return status; }
     public void setStatus(FEStatus status) { this.status = status; }
+
+    /**
+     * Convenience accessor used across the service layer when a direct
+     * {@link FieldEngineer} name is required. Field engineers do not store a
+     * separate name field and instead derive their display name from the linked
+     * {@link User} record. The method safely handles missing associations and
+     * returns {@code null} when no user/display name is present.
+     */
+    public String getName() {
+        if (user == null) {
+            return null;
+        }
+        return user.getDisplayName();
+    }
 }
