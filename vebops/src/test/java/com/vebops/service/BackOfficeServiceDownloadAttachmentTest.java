@@ -33,6 +33,9 @@ import com.vebops.repository.KitRepository;
 import com.vebops.repository.PasswordResetTokenRepository;
 import com.vebops.repository.ProposalItemRepository;
 import com.vebops.repository.ProposalRepository;
+import com.vebops.repository.PurchaseOrderLineRepository;
+import com.vebops.repository.PurchaseOrderRepository;
+import com.vebops.repository.ServiceRepository;
 import com.vebops.repository.ServiceRequestRepository;
 import com.vebops.repository.StockLedgerRepository;
 import com.vebops.repository.StoreRepository;
@@ -86,12 +89,15 @@ class BackOfficeServiceDownloadAttachmentTest {
                 mock(InvoiceRepository.class),
                 mock(ProposalItemRepository.class),
                 mock(CustomerPORepository.class),
+                mock(PurchaseOrderRepository.class),
+                mock(PurchaseOrderLineRepository.class),
                 mock(WorkOrderAssignmentRepository.class),
                 mock(WorkOrderProgressRepository.class),
                 attachmentRepository,
                 mock(WorkOrderQueryRepository.class),
                 mock(PasswordResetTokenRepository.class),
                 mock(ServiceRequestRepository.class),
+                mock(ServiceRepository.class),
                 mock(PortalAccountManager.class),
                 mock(InventoryService.class),
                 mock(DocumentRepository.class),
