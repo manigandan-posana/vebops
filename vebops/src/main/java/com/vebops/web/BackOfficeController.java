@@ -239,6 +239,18 @@ public class BackOfficeController {
         return bo.woTimeline(id);
     }
 
+    @GetMapping(value = "/wo/{id}/completion-report.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> woCompletionReport(@PathVariable Long id) {
+        return bo.completionReport(id);
+    }
+
+    @GetMapping("/wo/{woId}/progress/{progressId}/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadProgressAttachment(@PathVariable Long woId,
+                                                              @PathVariable Long progressId,
+                                                              @PathVariable Long attachmentId) {
+        return bo.downloadProgressAttachment(woId, progressId, attachmentId);
+    }
+
     @PostMapping("/wo/{id}/assign")
     public ResponseEntity<Void> assignFe(@PathVariable Long id, @RequestBody @Valid AssignFERequest body) {
         return bo.assignFe(id, body);
@@ -250,7 +262,7 @@ public class BackOfficeController {
     }
 
     @GetMapping("/wo/summary")
-    public ResponseEntity<Map<String, Long>> woSummary() {
+    public ResponseEntity<Map<String, Object>> woSummary() {
         return bo.woSummary();
     }
 

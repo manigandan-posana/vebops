@@ -9,12 +9,17 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -51,6 +56,7 @@ import com.vebops.domain.UserRole;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderAssignment;
 import com.vebops.domain.WorkOrderProgress;
+import com.vebops.domain.WorkOrderProgressAttachment;
 import com.vebops.domain.enums.DocumentEntityType;
 import com.vebops.domain.enums.DocumentKind;
 import com.vebops.domain.enums.FEStatus;
@@ -84,8 +90,10 @@ import com.vebops.repository.UserRepository;
 import com.vebops.repository.UserRoleRepository;
 import com.vebops.repository.WorkOrderAssignmentRepository;
 import com.vebops.repository.WorkOrderProgressRepository;
+import com.vebops.repository.WorkOrderProgressAttachmentRepository;
 import com.vebops.repository.WorkOrderQueryRepository;
 import com.vebops.repository.WorkOrderRepository;
+import com.vebops.util.PdfUtil;
 
 /**
  * Service encapsulating all back office operations originally defined in
@@ -97,6 +105,13 @@ import com.vebops.repository.WorkOrderRepository;
  */
 @Service
 public class BackOfficeService {
+
+    private static final EnumSet<WOStatus> ACTIVE_WO_STATUSES = EnumSet.of(
+        WOStatus.NEW,
+        WOStatus.ASSIGNED,
+        WOStatus.IN_PROGRESS,
+        WOStatus.ON_HOLD
+    );
 
     private final IntakeService intake;
     private final ProposalService proposals;
@@ -123,6 +138,7 @@ public class BackOfficeService {
     private final CustomerPORepository customerPORepo;
     private final WorkOrderAssignmentRepository woAssignRepo;
     private final WorkOrderProgressRepository woProgressRepo;
+    private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
     private final WorkOrderQueryRepository woQueryRepo;
     private final PasswordResetTokenRepository resetTokenRepo;
     private final ServiceRequestRepository srRepo;
@@ -161,6 +177,7 @@ public class BackOfficeService {
                              CustomerPORepository customerPORepo,
                              WorkOrderAssignmentRepository woAssignRepo,
                              WorkOrderProgressRepository woProgressRepo,
+                             WorkOrderProgressAttachmentRepository progressAttachmentRepo,
                              WorkOrderQueryRepository woQueryRepo,
                              PasswordResetTokenRepository resetTokenRepo,
                              ServiceRequestRepository srRepo, PortalAccountManager portalAccountManager, InventoryService inventoryService
@@ -192,6 +209,7 @@ public class BackOfficeService {
         this.customerPORepo = customerPORepo;
         this.woAssignRepo = woAssignRepo;
         this.woProgressRepo = woProgressRepo;
+        this.progressAttachmentRepo = progressAttachmentRepo;
         this.woQueryRepo = woQueryRepo;
         this.resetTokenRepo = resetTokenRepo;
         this.srRepo = srRepo;
@@ -415,20 +433,20 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         return ResponseEntity.ok(sr);
     }
 
-     public ResponseEntity<WorkOrder> createWorkOrderFromRequest(Long id) {
-     Long tid = tenant();
-     // If already exists, respond 409 with the existing WO (lets UI show WAN)
-     var existing = workOrderRepo.findByTenantIdAndServiceRequest_Id(tid, id);
-     if (existing != null && !existing.isEmpty()) {
-         return ResponseEntity.status(HttpStatus.CONFLICT).body(existing.get(0));
-     }
-     var wo = workOrders.createForServiceRequest(tid, id);
-     var sr = srRepo.findById(id).orElse(null);
-     if (sr != null && (sr.getServiceType() == ServiceTypeCode.SUPPLY_INSTALL || sr.getServiceType() == ServiceTypeCode.INSTALL_ONLY)) {
-         workOrders.autoAssignIfInstallation(tid, wo.getId());
-     }
-     return ResponseEntity.created(URI.create("/office/wo/" + wo.getId())).body(wo);
- }
+    public ResponseEntity<WorkOrder> createWorkOrderFromRequest(Long id) {
+        Long tid = tenant();
+        // If already exists, respond 409 with the existing WO (lets UI show WAN)
+        var existing = workOrderRepo.findByTenantIdAndServiceRequest_Id(tid, id);
+        if (existing != null && !existing.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(existing.get(0));
+        }
+        var wo = workOrders.createForServiceRequest(tid, id);
+        var sr = srRepo.findById(id).orElse(null);
+        if (sr != null && (sr.getServiceType() == ServiceTypeCode.SUPPLY_INSTALL || sr.getServiceType() == ServiceTypeCode.INSTALL_ONLY)) {
+            workOrders.autoAssignIfInstallation(tid, wo.getId());
+        }
+        return ResponseEntity.created(URI.create("/office/wo/" + wo.getId())).body(wo);
+    }
 
     @Transactional
     public ResponseEntity<Void> updateFieldEngineer(Long id, UpdateFERequest req) {
@@ -658,57 +676,47 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
             p.getApprovedBy().getDisplayName();
         }
 
-        boolean needsSubtotal = isMissingOrZero(p.getSubtotal());
-        boolean needsTax = p.getTax() == null;
-        boolean needsTotal = isMissingOrZero(p.getTotal());
-
-        if (needsSubtotal || needsTax || needsTotal) {
-            List<ProposalItem> lines = proposalItemRepo.findByTenantIdAndProposal_Id(p.getTenantId(), p.getId());
-            if (!lines.isEmpty()) {
-                BigDecimal subtotal = BigDecimal.ZERO;
-                BigDecimal tax = BigDecimal.ZERO;
-                for (ProposalItem line : lines) {
-                    if (line.getAmount() != null) {
-                        subtotal = subtotal.add(line.getAmount());
-                    }
-                    BigDecimal lineTax = null;
-                    if (line.getTaxAmount() != null) {
-                        lineTax = line.getTaxAmount();
-                    } else if (line.getTaxRate() != null && line.getAmount() != null) {
-                        lineTax = line.getAmount()
-                                .multiply(line.getTaxRate())
-                                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                    }
-                    if (lineTax != null) {
-                        tax = tax.add(lineTax);
-                    }
+        List<ProposalItem> lines = proposalItemRepo.findByTenantIdAndProposal_Id(p.getTenantId(), p.getId());
+        if (!lines.isEmpty()) {
+            BigDecimal subtotal = BigDecimal.ZERO;
+            BigDecimal tax = BigDecimal.ZERO;
+            for (ProposalItem line : lines) {
+                if (line.getAmount() != null) {
+                    subtotal = subtotal.add(line.getAmount());
                 }
-
-                BigDecimal total = subtotal.add(tax);
-                boolean updated = false;
-
-                if (needsSubtotal && subtotal.compareTo(BigDecimal.ZERO) > 0) {
-                    p.setSubtotal(subtotal);
-                    updated = true;
+                BigDecimal lineTax = null;
+                if (line.getTaxAmount() != null) {
+                    lineTax = line.getTaxAmount();
+                } else if (line.getTaxRate() != null && line.getAmount() != null) {
+                    lineTax = line.getAmount()
+                            .multiply(line.getTaxRate())
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
                 }
-                if (needsTax && (tax.compareTo(BigDecimal.ZERO) > 0 || subtotal.compareTo(BigDecimal.ZERO) > 0)) {
-                    p.setTax(tax);
-                    updated = true;
-                }
-                if (needsTotal && total.compareTo(BigDecimal.ZERO) > 0) {
-                    p.setTotal(total);
-                    updated = true;
-                }
-
-                if (updated) {
-                    proposalRepo.save(p);
+                if (lineTax != null) {
+                    tax = tax.add(lineTax);
                 }
             }
-        }
-    }
 
-    private boolean isMissingOrZero(BigDecimal value) {
-        return value == null || value.compareTo(BigDecimal.ZERO) <= 0;
+            BigDecimal total = subtotal.add(tax);
+            boolean updated = false;
+
+            if (p.getSubtotal() == null || p.getSubtotal().compareTo(subtotal) != 0) {
+                p.setSubtotal(subtotal);
+                updated = true;
+            }
+            if (p.getTax() == null || p.getTax().compareTo(tax) != 0) {
+                p.setTax(tax);
+                updated = true;
+            }
+            if (p.getTotal() == null || p.getTotal().compareTo(total) != 0) {
+                p.setTotal(total);
+                updated = true;
+            }
+
+            if (updated) {
+                proposalRepo.save(p);
+            }
+        }
     }
 
     private void hydrateServiceRequest(ServiceRequest sr) {
@@ -800,11 +808,185 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
                 }
             }
         });
+        Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress = Map.of();
+        List<Long> progressIds = progress.stream()
+            .map(WorkOrderProgress::getId)
+            .filter(idVal -> idVal != null)
+            .toList();
+        if (!progressIds.isEmpty()) {
+            attachmentsByProgress = progressAttachmentRepo
+                .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                .stream()
+                .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+        }
+
         Map<String, Object> out = new HashMap<>();
         out.put("workOrder", wo);
         out.put("assignments", assignments);
-        out.put("progress", progress);
+        out.put("progress", summariseProgress(progress, attachmentsByProgress));
+        out.put("progressSummary", buildProgressSummary(progress, attachmentsByProgress));
         return ResponseEntity.ok(out);
+    }
+
+    public ResponseEntity<byte[]> downloadProgressAttachment(Long woId, Long progressId, Long attachmentId) {
+        Long tid = tenant();
+        WorkOrderProgressAttachment attachment = progressAttachmentRepo
+            .findByTenantIdAndId(tid, attachmentId)
+            .orElseThrow(() -> new NotFoundException("Attachment not found"));
+        WorkOrderProgress progress = attachment.getProgress();
+        if (progress == null || progress.getWorkOrder() == null) {
+            throw new NotFoundException("Progress entry not found for attachment");
+        }
+        WorkOrder wo = progress.getWorkOrder();
+        if (!tid.equals(wo.getTenantId())) {
+            throw new BusinessException("Cross-tenant access");
+        }
+        if (!woId.equals(wo.getId())) {
+            throw new BusinessException("Attachment does not belong to the work order");
+        }
+        if (!progressId.equals(progress.getId())) {
+            throw new BusinessException("Attachment does not belong to the progress entry");
+        }
+        byte[] data = attachment.getData();
+        if (data == null) {
+            data = new byte[0];
+        }
+        String filename = attachment.getFilename() != null ? attachment.getFilename() : "progress-photo";
+        String contentType = attachment.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        }
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename.replace("\"", "") + "\"")
+            .contentType(MediaType.parseMediaType(contentType))
+            .body(data);
+    }
+
+    public ResponseEntity<byte[]> completionReport(Long workOrderId) {
+        Long tid = tenant();
+        WorkOrder wo = workOrderRepo.findById(workOrderId)
+            .orElseThrow(() -> new NotFoundException("Work order not found"));
+        if (!tid.equals(wo.getTenantId())) {
+            throw new BusinessException("Cross-tenant access");
+        }
+
+        touchWorkOrderAssociations(wo);
+
+        List<WorkOrderProgress> progress = woProgressRepo
+            .findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, workOrderId);
+        List<Long> progressIds = progress.stream()
+            .map(WorkOrderProgress::getId)
+            .filter(Objects::nonNull)
+            .toList();
+        if (!progressIds.isEmpty()) {
+            Map<Long, List<WorkOrderProgressAttachment>> attachments = progressAttachmentRepo
+                .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                .stream()
+                .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+            for (WorkOrderProgress entry : progress) {
+                List<WorkOrderProgressAttachment> att = attachments.get(entry.getId());
+                if (att != null) {
+                    att.forEach(entry::addAttachment);
+                }
+            }
+        }
+
+        byte[] pdf = PdfUtil.buildCompletionReportPdf(wo, progress);
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                "inline; filename=completion-report-" + wo.getWan() + ".pdf")
+            .contentType(MediaType.APPLICATION_PDF)
+            .body(pdf);
+    }
+
+    private void touchWorkOrderAssociations(WorkOrder wo) {
+        if (wo == null) {
+            return;
+        }
+        if (wo.getServiceRequest() != null) {
+            wo.getServiceRequest().getId();
+            wo.getServiceRequest().getSrn();
+            wo.getServiceRequest().getDescription();
+            if (wo.getServiceRequest().getCustomer() != null) {
+                wo.getServiceRequest().getCustomer().getId();
+                wo.getServiceRequest().getCustomer().getName();
+                wo.getServiceRequest().getCustomer().getEmail();
+                wo.getServiceRequest().getCustomer().getMobile();
+            }
+        }
+        if (wo.getAssignedFE() != null) {
+            wo.getAssignedFE().getId();
+            if (wo.getAssignedFE().getUser() != null) {
+                wo.getAssignedFE().getUser().getDisplayName();
+            }
+        }
+        if (wo.getAssignedTeam() != null) {
+            wo.getAssignedTeam().getId();
+            wo.getAssignedTeam().getName();
+        }
+        if (wo.getCustomerPO() != null) {
+            wo.getCustomerPO().getId();
+        }
+    }
+
+    private List<Map<String, Object>> summariseProgress(List<WorkOrderProgress> progress,
+                                                        Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (WorkOrderProgress p : progress) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("status", p.getStatus() != null ? p.getStatus().name() : null);
+            map.put("remarks", p.getRemarks());
+            map.put("photoUrl", p.getPhotoUrl());
+            map.put("createdAt", p.getCreatedAt());
+            if (p.getByFE() != null) {
+                Map<String, Object> fe = new HashMap<>();
+                fe.put("id", p.getByFE().getId());
+                if (p.getByFE().getUser() != null) {
+                    fe.put("displayName", p.getByFE().getUser().getDisplayName());
+                }
+                map.put("byFE", fe);
+            }
+            Long progressId = p.getId();
+            Long woId = p.getWorkOrder() != null ? p.getWorkOrder().getId() : null;
+            List<Map<String, Object>> attachmentViews = attachmentsByProgress
+                .getOrDefault(progressId, List.of())
+                .stream()
+                .map(att -> {
+                    Map<String, Object> attMap = new HashMap<>();
+                    attMap.put("id", att.getId());
+                    attMap.put("filename", att.getFilename());
+                    attMap.put("contentType", att.getContentType());
+                    attMap.put("size", att.getSize());
+                    attMap.put("uploadedAt", att.getUploadedAt());
+                    if (woId != null && progressId != null && att.getId() != null) {
+                        attMap.put("downloadPath", String.format("/office/wo/%d/progress/%d/attachments/%d", woId, progressId, att.getId()));
+                    }
+                    return attMap;
+                })
+                .collect(Collectors.toList());
+            map.put("attachments", attachmentViews);
+            list.add(map);
+        }
+        return list;
+    }
+
+    private Map<String, Object> buildProgressSummary(List<WorkOrderProgress> progress,
+                                                     Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress) {
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalUpdates", progress.size());
+        summary.put("photoCount", attachmentsByProgress.values().stream().mapToInt(List::size).sum());
+        if (progress.isEmpty()) {
+            summary.put("lastUpdatedAt", null);
+            summary.put("lastStatus", null);
+        } else {
+            WorkOrderProgress latest = progress.get(progress.size() - 1);
+            summary.put("lastUpdatedAt", latest.getCreatedAt());
+            summary.put("lastStatus", latest.getStatus() != null ? latest.getStatus().name() : null);
+        }
+        return summary;
     }
 
     public ResponseEntity<Void> assignFe(Long id, AssignFERequest body) {
@@ -813,17 +995,222 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
     }
 
     public ResponseEntity<Void> addProgress(Long id, ProgressRequest req) {
-        workOrders.addProgress(tenant(), id, req.status, req.byFeId, req.remarks, req.photoUrl);
+        WorkOrderService.ProgressAttachment attachment;
+        try {
+            attachment = req.toAttachment();
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ex.getMessage());
+        }
+        workOrders.addProgress(tenant(), id, req.status, req.byFeId, req.remarks, req.photoUrl, attachment);
         return ResponseEntity.noContent().build();
     }
 
-    public ResponseEntity<Map<String, Long>> woSummary() {
-        Long tid = tenant();
-        Map<String, Long> m = new HashMap<>();
-        for (WOStatus s : WOStatus.values()) {
-            m.put(s.name(), workOrderRepo.countByTenantIdAndStatus(tid, s));
+    public ResponseEntity<Map<String, Object>> woSummary() {
+        Long tenantId = tenant();
+
+        Map<String, Long> counts = new LinkedHashMap<>();
+        long total = 0L;
+        for (WOStatus status : WOStatus.values()) {
+            long count = workOrderRepo.countByTenantIdAndStatus(tenantId, status);
+            counts.put(status.name(), count);
+            total += count;
         }
-        return ResponseEntity.ok(m);
+
+        long activeCount = counts.entrySet().stream()
+            .filter(entry -> ACTIVE_WO_STATUSES.contains(WOStatus.valueOf(entry.getKey())))
+            .mapToLong(Map.Entry::getValue)
+            .sum();
+
+        long overdue = workOrderRepo.countByTenantIdAndStatusInAndDueDateBefore(
+            tenantId,
+            ACTIVE_WO_STATUSES,
+            LocalDate.now()
+        );
+
+        Optional<WorkOrder> latest = workOrderRepo.findTop1ByTenantIdOrderByUpdatedAtDesc(tenantId);
+        Instant lastUpdatedAt = latest.map(WorkOrder::getUpdatedAt).orElse(null);
+        String lastUpdatedWan = latest.map(WorkOrder::getWan).orElse(null);
+
+        double avgCompletionDays = computeAverageCompletionDays(tenantId);
+        double completionRate = total == 0
+            ? 0d
+            : BigDecimal.valueOf(counts.getOrDefault(WOStatus.COMPLETED.name(), 0L) * 100d / total)
+                .setScale(1, RoundingMode.HALF_UP)
+                .doubleValue();
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("counts", counts);
+        body.put("total", total);
+        body.put("active", activeCount);
+        body.put("overdue", overdue);
+        body.put("completionRate", completionRate);
+        body.put("avgCompletionDays", avgCompletionDays);
+        body.put("lastUpdatedAt", lastUpdatedAt);
+        body.put("lastUpdatedWan", lastUpdatedWan);
+        body.put("engineerLoads", buildEngineerLoads(tenantId));
+        body.put("upcomingDue", buildUpcomingDue(tenantId));
+        return ResponseEntity.ok(body);
+    }
+
+    private double computeAverageCompletionDays(Long tenantId) {
+        List<WorkOrder> recentCompleted = workOrderRepo
+            .findTop25ByTenantIdAndStatusOrderByUpdatedAtDesc(tenantId, WOStatus.COMPLETED);
+        if (recentCompleted.isEmpty()) {
+            return 0d;
+        }
+        double average = recentCompleted.stream()
+            .map(wo -> {
+                Instant created = wo.getCreatedAt();
+                Instant updated = wo.getUpdatedAt();
+                if (created == null || updated == null) {
+                    return null;
+                }
+                double hours = Duration.between(created, updated).toHours();
+                return hours / 24d;
+            })
+            .filter(Objects::nonNull)
+            .mapToDouble(Double::doubleValue)
+            .average()
+            .orElse(0d);
+        return BigDecimal.valueOf(average).setScale(1, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private List<Map<String, Object>> buildEngineerLoads(Long tenantId) {
+        List<WorkOrder> active = workOrderRepo
+            .findTop100ByTenantIdAndStatusInOrderByUpdatedAtDesc(tenantId, ACTIVE_WO_STATUSES);
+        if (active.isEmpty()) {
+            return List.of();
+        }
+        LocalDate today = LocalDate.now();
+        Map<Long, EngineerLoadAccumulator> accumulator = new LinkedHashMap<>();
+        for (WorkOrder workOrder : active) {
+            FieldEngineer fe = workOrder.getAssignedFE();
+            if (fe == null || fe.getId() == null) {
+                continue;
+            }
+            fe.getId();
+            if (fe.getUser() != null) {
+                fe.getUser().getDisplayName();
+            }
+            EngineerLoadAccumulator load = accumulator.computeIfAbsent(
+                fe.getId(),
+                id -> new EngineerLoadAccumulator(id, resolveEngineerName(fe))
+            );
+            load.activeCount++;
+            if (isOverdue(workOrder, today)) {
+                load.overdueCount++;
+            }
+            LocalDate dueDate = workOrder.getDueDate();
+            if (dueDate != null && (load.nextDue == null || dueDate.isBefore(load.nextDue))) {
+                load.nextDue = dueDate;
+            }
+            Instant updatedAt = workOrder.getUpdatedAt();
+            if (updatedAt != null && (load.latestUpdate == null || updatedAt.isAfter(load.latestUpdate))) {
+                load.latestUpdate = updatedAt;
+            }
+        }
+
+        return accumulator.values().stream()
+            .sorted(Comparator
+                .comparingInt((EngineerLoadAccumulator e) -> e.activeCount)
+                .reversed())
+            .map(EngineerLoadAccumulator::toView)
+            .collect(Collectors.toList());
+    }
+
+    private List<Map<String, Object>> buildUpcomingDue(Long tenantId) {
+        List<WorkOrder> dueSoon = workOrderRepo
+            .findTop50ByTenantIdAndStatusInOrderByDueDateAsc(tenantId, ACTIVE_WO_STATUSES);
+        if (dueSoon.isEmpty()) {
+            return List.of();
+        }
+        LocalDate today = LocalDate.now();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (WorkOrder workOrder : dueSoon) {
+            LocalDate due = workOrder.getDueDate();
+            if (due == null) {
+                continue;
+            }
+            FieldEngineer fe = workOrder.getAssignedFE();
+            if (fe != null) {
+                fe.getId();
+                if (fe.getUser() != null) {
+                    fe.getUser().getDisplayName();
+                }
+            }
+            ServiceRequest sr = workOrder.getServiceRequest();
+            if (sr != null) {
+                sr.getId();
+                if (sr.getCustomer() != null) {
+                    sr.getCustomer().getId();
+                    sr.getCustomer().getName();
+                }
+            }
+            Map<String, Object> view = new HashMap<>();
+            view.put("id", workOrder.getId());
+            view.put("wan", workOrder.getWan());
+            view.put("status", workOrder.getStatus() != null ? workOrder.getStatus().name() : null);
+            view.put("dueDate", due);
+            view.put("overdue", isOverdue(workOrder, today));
+            view.put("assignedFe", resolveEngineerName(fe));
+            view.put("customer", sr != null && sr.getCustomer() != null ? sr.getCustomer().getName() : null);
+            list.add(view);
+        }
+        list.sort(Comparator.comparing((Map<String, Object> m) -> (LocalDate) m.get("dueDate")));
+        return list;
+    }
+
+    private boolean isOverdue(WorkOrder workOrder, LocalDate today) {
+        if (workOrder == null) {
+            return false;
+        }
+        if (workOrder.getStatus() == WOStatus.COMPLETED) {
+            return false;
+        }
+        LocalDate due = workOrder.getDueDate();
+        return due != null && due.isBefore(today);
+    }
+
+    private String resolveEngineerName(FieldEngineer fe) {
+        if (fe == null) {
+            return null;
+        }
+        String name = fe.getName();
+        if (name != null && !name.isBlank()) {
+            return name;
+        }
+        if (fe.getUser() != null && fe.getUser().getDisplayName() != null && !fe.getUser().getDisplayName().isBlank()) {
+            return fe.getUser().getDisplayName();
+        }
+        if (fe.getUser() != null && fe.getUser().getEmail() != null) {
+            return fe.getUser().getEmail();
+        }
+        return "Engineer #" + fe.getId();
+    }
+
+    private static final class EngineerLoadAccumulator {
+        private final long feId;
+        private final String name;
+        private int activeCount;
+        private int overdueCount;
+        private LocalDate nextDue;
+        private Instant latestUpdate;
+
+        private EngineerLoadAccumulator(long feId, String name) {
+            this.feId = feId;
+            this.name = name;
+        }
+
+        private Map<String, Object> toView() {
+            Map<String, Object> view = new HashMap<>();
+            view.put("feId", feId);
+            view.put("name", name);
+            view.put("activeCount", activeCount);
+            view.put("overdueCount", overdueCount);
+            view.put("nextDue", nextDue);
+            view.put("latestUpdate", latestUpdate);
+            return view;
+        }
     }
 
     public ResponseEntity<Void> issueItem(Long woId, IssueItemRequest req) {
