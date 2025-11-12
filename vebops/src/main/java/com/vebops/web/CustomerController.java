@@ -16,9 +16,6 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.vebops.domain.Document;
-import com.vebops.domain.Invoice;
-import com.vebops.domain.Proposal;
 import com.vebops.service.CustomerService;
 
 /**
@@ -38,7 +35,7 @@ public class CustomerController {
     }
 
     @GetMapping("/proposals")
-    public ResponseEntity<List<Proposal>> myProposals(@RequestParam(required = false) Long customerId) {
+    public ResponseEntity<List<CustomerService.CustomerProposalRow>> myProposals(@RequestParam(required = false) Long customerId) {
         return svc.myProposals(customerId);
     }
 
@@ -55,18 +52,18 @@ public class CustomerController {
     }
 
     @GetMapping("/proposals/{id}/documents")
-    public ResponseEntity<List<Document>> proposalDocs(@PathVariable Long id, @RequestParam(required = false) Long customerId) {
+    public ResponseEntity<List<CustomerService.ProposalDocumentRow>> proposalDocs(@PathVariable Long id, @RequestParam(required = false) Long customerId) {
         return svc.proposalDocuments(id, customerId);
     }
 
     @GetMapping("/invoices")
-    public ResponseEntity<List<Invoice>> myInvoices(@RequestParam(required = false) Long customerId) {
+    public ResponseEntity<List<CustomerService.CustomerInvoiceRow>> myInvoices(@RequestParam(required = false) Long customerId) {
         return svc.myInvoices(customerId);
     }
 
     // MULTIPART upload for PO PDF (separate from poNumber approval endpoint)
     @PostMapping(value = "/proposals/{id}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Document> uploadProposalDocFile(
+    public ResponseEntity<CustomerService.ProposalDocumentRow> uploadProposalDocFile(
             @PathVariable Long id,
             @RequestPart("file") MultipartFile file,
             @RequestPart(value = "type", required = false) String typeIgnored) {

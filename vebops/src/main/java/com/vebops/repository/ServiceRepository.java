@@ -33,4 +33,11 @@ public interface ServiceRepository extends JpaRepository<Service, Long> {
         @org.springframework.data.repository.query.Param("tenantId") Long tenantId,
         @org.springframework.data.repository.query.Param("keyword") String keyword,
         org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Fetch the most recent services for a tenant ordered by creation timestamp. This is
+     * primarily used when attempting to resolve contextual links (service request / work
+     * order) without issuing broad LIKE queries on the meta JSON column.
+     */
+    java.util.List<Service> findTop50ByTenantIdOrderByCreatedAtDesc(Long tenantId);
 }
