@@ -262,7 +262,7 @@ public class BackOfficeController {
     }
 
     @GetMapping("/wo/summary")
-    public ResponseEntity<Map<String, Long>> woSummary() {
+    public ResponseEntity<Map<String, Object>> woSummary() {
         return bo.woSummary();
     }
 

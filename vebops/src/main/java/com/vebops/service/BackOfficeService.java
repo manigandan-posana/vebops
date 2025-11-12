@@ -9,10 +9,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -101,6 +105,13 @@ import com.vebops.util.PdfUtil;
  */
 @Service
 public class BackOfficeService {
+
+    private static final EnumSet<WOStatus> ACTIVE_WO_STATUSES = EnumSet.of(
+        WOStatus.NEW,
+        WOStatus.ASSIGNED,
+        WOStatus.IN_PROGRESS,
+        WOStatus.ON_HOLD
+    );
 
     private final IntakeService intake;
     private final ProposalService proposals;
@@ -994,13 +1005,212 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         return ResponseEntity.noContent().build();
     }
 
-    public ResponseEntity<Map<String, Long>> woSummary() {
-        Long tid = tenant();
-        Map<String, Long> m = new HashMap<>();
-        for (WOStatus s : WOStatus.values()) {
-            m.put(s.name(), workOrderRepo.countByTenantIdAndStatus(tid, s));
+    public ResponseEntity<Map<String, Object>> woSummary() {
+        Long tenantId = tenant();
+
+        Map<String, Long> counts = new LinkedHashMap<>();
+        long total = 0L;
+        for (WOStatus status : WOStatus.values()) {
+            long count = workOrderRepo.countByTenantIdAndStatus(tenantId, status);
+            counts.put(status.name(), count);
+            total += count;
         }
-        return ResponseEntity.ok(m);
+
+        long activeCount = counts.entrySet().stream()
+            .filter(entry -> ACTIVE_WO_STATUSES.contains(WOStatus.valueOf(entry.getKey())))
+            .mapToLong(Map.Entry::getValue)
+            .sum();
+
+        long overdue = workOrderRepo.countByTenantIdAndStatusInAndDueDateBefore(
+            tenantId,
+            ACTIVE_WO_STATUSES,
+            LocalDate.now()
+        );
+
+        Optional<WorkOrder> latest = workOrderRepo.findTop1ByTenantIdOrderByUpdatedAtDesc(tenantId);
+        Instant lastUpdatedAt = latest.map(WorkOrder::getUpdatedAt).orElse(null);
+        String lastUpdatedWan = latest.map(WorkOrder::getWan).orElse(null);
+
+        double avgCompletionDays = computeAverageCompletionDays(tenantId);
+        double completionRate = total == 0
+            ? 0d
+            : BigDecimal.valueOf(counts.getOrDefault(WOStatus.COMPLETED.name(), 0L) * 100d / total)
+                .setScale(1, RoundingMode.HALF_UP)
+                .doubleValue();
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("counts", counts);
+        body.put("total", total);
+        body.put("active", activeCount);
+        body.put("overdue", overdue);
+        body.put("completionRate", completionRate);
+        body.put("avgCompletionDays", avgCompletionDays);
+        body.put("lastUpdatedAt", lastUpdatedAt);
+        body.put("lastUpdatedWan", lastUpdatedWan);
+        body.put("engineerLoads", buildEngineerLoads(tenantId));
+        body.put("upcomingDue", buildUpcomingDue(tenantId));
+        return ResponseEntity.ok(body);
+    }
+
+    private double computeAverageCompletionDays(Long tenantId) {
+        List<WorkOrder> recentCompleted = workOrderRepo
+            .findTop25ByTenantIdAndStatusOrderByUpdatedAtDesc(tenantId, WOStatus.COMPLETED);
+        if (recentCompleted.isEmpty()) {
+            return 0d;
+        }
+        double average = recentCompleted.stream()
+            .map(wo -> {
+                Instant created = wo.getCreatedAt();
+                Instant updated = wo.getUpdatedAt();
+                if (created == null || updated == null) {
+                    return null;
+                }
+                double hours = Duration.between(created, updated).toHours();
+                return hours / 24d;
+            })
+            .filter(Objects::nonNull)
+            .mapToDouble(Double::doubleValue)
+            .average()
+            .orElse(0d);
+        return BigDecimal.valueOf(average).setScale(1, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private List<Map<String, Object>> buildEngineerLoads(Long tenantId) {
+        List<WorkOrder> active = workOrderRepo
+            .findTop100ByTenantIdAndStatusInOrderByUpdatedAtDesc(tenantId, ACTIVE_WO_STATUSES);
+        if (active.isEmpty()) {
+            return List.of();
+        }
+        LocalDate today = LocalDate.now();
+        Map<Long, EngineerLoadAccumulator> accumulator = new LinkedHashMap<>();
+        for (WorkOrder workOrder : active) {
+            FieldEngineer fe = workOrder.getAssignedFE();
+            if (fe == null || fe.getId() == null) {
+                continue;
+            }
+            fe.getId();
+            if (fe.getUser() != null) {
+                fe.getUser().getDisplayName();
+            }
+            EngineerLoadAccumulator load = accumulator.computeIfAbsent(
+                fe.getId(),
+                id -> new EngineerLoadAccumulator(id, resolveEngineerName(fe))
+            );
+            load.activeCount++;
+            if (isOverdue(workOrder, today)) {
+                load.overdueCount++;
+            }
+            LocalDate dueDate = workOrder.getDueDate();
+            if (dueDate != null && (load.nextDue == null || dueDate.isBefore(load.nextDue))) {
+                load.nextDue = dueDate;
+            }
+            Instant updatedAt = workOrder.getUpdatedAt();
+            if (updatedAt != null && (load.latestUpdate == null || updatedAt.isAfter(load.latestUpdate))) {
+                load.latestUpdate = updatedAt;
+            }
+        }
+
+        return accumulator.values().stream()
+            .sorted(Comparator
+                .comparingInt((EngineerLoadAccumulator e) -> e.activeCount)
+                .reversed())
+            .map(EngineerLoadAccumulator::toView)
+            .collect(Collectors.toList());
+    }
+
+    private List<Map<String, Object>> buildUpcomingDue(Long tenantId) {
+        List<WorkOrder> dueSoon = workOrderRepo
+            .findTop50ByTenantIdAndStatusInOrderByDueDateAsc(tenantId, ACTIVE_WO_STATUSES);
+        if (dueSoon.isEmpty()) {
+            return List.of();
+        }
+        LocalDate today = LocalDate.now();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (WorkOrder workOrder : dueSoon) {
+            LocalDate due = workOrder.getDueDate();
+            if (due == null) {
+                continue;
+            }
+            FieldEngineer fe = workOrder.getAssignedFE();
+            if (fe != null) {
+                fe.getId();
+                if (fe.getUser() != null) {
+                    fe.getUser().getDisplayName();
+                }
+            }
+            ServiceRequest sr = workOrder.getServiceRequest();
+            if (sr != null) {
+                sr.getId();
+                if (sr.getCustomer() != null) {
+                    sr.getCustomer().getId();
+                    sr.getCustomer().getName();
+                }
+            }
+            Map<String, Object> view = new HashMap<>();
+            view.put("id", workOrder.getId());
+            view.put("wan", workOrder.getWan());
+            view.put("status", workOrder.getStatus() != null ? workOrder.getStatus().name() : null);
+            view.put("dueDate", due);
+            view.put("overdue", isOverdue(workOrder, today));
+            view.put("assignedFe", resolveEngineerName(fe));
+            view.put("customer", sr != null && sr.getCustomer() != null ? sr.getCustomer().getName() : null);
+            list.add(view);
+        }
+        list.sort(Comparator.comparing((Map<String, Object> m) -> (LocalDate) m.get("dueDate")));
+        return list;
+    }
+
+    private boolean isOverdue(WorkOrder workOrder, LocalDate today) {
+        if (workOrder == null) {
+            return false;
+        }
+        if (workOrder.getStatus() == WOStatus.COMPLETED) {
+            return false;
+        }
+        LocalDate due = workOrder.getDueDate();
+        return due != null && due.isBefore(today);
+    }
+
+    private String resolveEngineerName(FieldEngineer fe) {
+        if (fe == null) {
+            return null;
+        }
+        String name = fe.getName();
+        if (name != null && !name.isBlank()) {
+            return name;
+        }
+        if (fe.getUser() != null && fe.getUser().getDisplayName() != null && !fe.getUser().getDisplayName().isBlank()) {
+            return fe.getUser().getDisplayName();
+        }
+        if (fe.getUser() != null && fe.getUser().getEmail() != null) {
+            return fe.getUser().getEmail();
+        }
+        return "Engineer #" + fe.getId();
+    }
+
+    private static final class EngineerLoadAccumulator {
+        private final long feId;
+        private final String name;
+        private int activeCount;
+        private int overdueCount;
+        private LocalDate nextDue;
+        private Instant latestUpdate;
+
+        private EngineerLoadAccumulator(long feId, String name) {
+            this.feId = feId;
+            this.name = name;
+        }
+
+        private Map<String, Object> toView() {
+            Map<String, Object> view = new HashMap<>();
+            view.put("feId", feId);
+            view.put("name", name);
+            view.put("activeCount", activeCount);
+            view.put("overdueCount", overdueCount);
+            view.put("nextDue", nextDue);
+            view.put("latestUpdate", latestUpdate);
+            return view;
+        }
     }
 
     public ResponseEntity<Void> issueItem(Long woId, IssueItemRequest req) {

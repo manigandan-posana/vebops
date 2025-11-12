@@ -1,5 +1,6 @@
 package com.vebops.repository;
 
+import java.time.LocalDate;
 import java.util.*;
 
 import org.springframework.data.domain.Page;
@@ -22,4 +23,9 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long> {
     Page<WorkOrder> findByTenantIdAndServiceRequest_Id(Long tenantId, Long srId, Pageable pageable);
     long countByStatus(WOStatus status);
     long countByTenantIdAndStatus(Long tenantId, WOStatus status);
+    long countByTenantIdAndStatusInAndDueDateBefore(Long tenantId, Collection<WOStatus> statuses, LocalDate date);
+    Optional<WorkOrder> findTop1ByTenantIdOrderByUpdatedAtDesc(Long tenantId);
+    List<WorkOrder> findTop25ByTenantIdAndStatusOrderByUpdatedAtDesc(Long tenantId, WOStatus status);
+    List<WorkOrder> findTop100ByTenantIdAndStatusInOrderByUpdatedAtDesc(Long tenantId, Collection<WOStatus> statuses);
+    List<WorkOrder> findTop50ByTenantIdAndStatusInOrderByDueDateAsc(Long tenantId, Collection<WOStatus> statuses);
 }

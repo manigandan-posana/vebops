@@ -682,6 +682,32 @@ export const officeApi = baseApi.injectEndpoints({
     // GET /office/wo/summary
     woSummary: b.query({
       query: () => ({ url: '/office/wo/summary', method: 'GET' }),
+      transformResponse: (res) => {
+        const countsInput = res?.counts && typeof res.counts === 'object' ? res.counts : {}
+        const normalisedCounts = Object.entries(countsInput).reduce((acc, [key, value]) => {
+          const num = Number(value)
+          acc[key] = Number.isFinite(num) ? num : 0
+          return acc
+        }, {})
+        const normaliseNumber = (value, fallback = 0) => {
+          const num = Number(value)
+          return Number.isFinite(num) ? num : fallback
+        }
+        const normaliseList = (value) => (Array.isArray(value) ? value : [])
+
+        return {
+          counts: normalisedCounts,
+          total: normaliseNumber(res?.total),
+          active: normaliseNumber(res?.active),
+          overdue: normaliseNumber(res?.overdue),
+          completionRate: normaliseNumber(res?.completionRate, 0),
+          avgCompletionDays: normaliseNumber(res?.avgCompletionDays, 0),
+          lastUpdatedAt: res?.lastUpdatedAt ?? null,
+          lastUpdatedWan: res?.lastUpdatedWan ?? null,
+          engineerLoads: normaliseList(res?.engineerLoads),
+          upcomingDue: normaliseList(res?.upcomingDue)
+        }
+      },
       providesTags: ['WorkOrders']
     }),
 
