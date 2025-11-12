@@ -48,6 +48,8 @@ import com.vebops.domain.Kit;
 import com.vebops.domain.KitItem;
 import com.vebops.domain.Proposal;
 import com.vebops.domain.ProposalItem;
+import com.vebops.domain.PurchaseOrder;
+import com.vebops.domain.PurchaseOrderLine;
 import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.StockLedger;
 import com.vebops.domain.Store;
@@ -59,6 +61,7 @@ import com.vebops.domain.WorkOrderProgress;
 import com.vebops.domain.WorkOrderProgressAttachment;
 import com.vebops.domain.enums.DocumentEntityType;
 import com.vebops.domain.enums.DocumentKind;
+import com.vebops.domain.enums.EmailEntityType;
 import com.vebops.domain.enums.FEStatus;
 import com.vebops.domain.enums.ProposalStatus;
 import com.vebops.domain.enums.RoleCode;
@@ -82,7 +85,10 @@ import com.vebops.repository.KitRepository;
 import com.vebops.repository.PasswordResetTokenRepository;
 import com.vebops.repository.ProposalItemRepository;
 import com.vebops.repository.ProposalRepository;
+import com.vebops.repository.PurchaseOrderLineRepository;
+import com.vebops.repository.PurchaseOrderRepository;
 import com.vebops.repository.ServiceRequestRepository;
+import com.vebops.repository.ServiceRepository;
 import com.vebops.repository.StockLedgerRepository;
 import com.vebops.repository.StoreRepository;
 import com.vebops.repository.TenantRepository;
@@ -136,12 +142,15 @@ public class BackOfficeService {
     private final InvoiceRepository invoiceRepo;
     private final ProposalItemRepository proposalItemRepo;
     private final CustomerPORepository customerPORepo;
+    private final PurchaseOrderRepository purchaseOrderRepo;
+    private final PurchaseOrderLineRepository purchaseOrderLineRepo;
     private final WorkOrderAssignmentRepository woAssignRepo;
     private final WorkOrderProgressRepository woProgressRepo;
     private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
     private final WorkOrderQueryRepository woQueryRepo;
     private final PasswordResetTokenRepository resetTokenRepo;
     private final ServiceRequestRepository srRepo;
+    private final ServiceRepository serviceRepo;
     private final PortalAccountManager portalAccountManager;
     private final InventoryService inventoryService;
     private final DocumentRepository docRepo;
@@ -175,12 +184,17 @@ public class BackOfficeService {
                              InvoiceRepository invoiceRepo,
                              ProposalItemRepository proposalItemRepo,
                              CustomerPORepository customerPORepo,
+                             PurchaseOrderRepository purchaseOrderRepo,
+                             PurchaseOrderLineRepository purchaseOrderLineRepo,
                              WorkOrderAssignmentRepository woAssignRepo,
                              WorkOrderProgressRepository woProgressRepo,
                              WorkOrderProgressAttachmentRepository progressAttachmentRepo,
                              WorkOrderQueryRepository woQueryRepo,
                              PasswordResetTokenRepository resetTokenRepo,
-                             ServiceRequestRepository srRepo, PortalAccountManager portalAccountManager, InventoryService inventoryService
+                             ServiceRequestRepository srRepo,
+                             ServiceRepository serviceRepo,
+                             PortalAccountManager portalAccountManager,
+                             InventoryService inventoryService
                              , DocumentRepository docRepo, FileStorageService fileStorageService,
                              ProposalDocumentService proposalDocs, ProposalSharingService proposalShare,
                              /* removed unused customerRepo */ TenantGuard tenantGuard, EmailTemplateRepository emailTemplateRepo) {
@@ -207,12 +221,15 @@ public class BackOfficeService {
         this.invoiceRepo = invoiceRepo;
         this.proposalItemRepo = proposalItemRepo;
         this.customerPORepo = customerPORepo;
+        this.purchaseOrderRepo = purchaseOrderRepo;
+        this.purchaseOrderLineRepo = purchaseOrderLineRepo;
         this.woAssignRepo = woAssignRepo;
         this.woProgressRepo = woProgressRepo;
         this.progressAttachmentRepo = progressAttachmentRepo;
         this.woQueryRepo = woQueryRepo;
         this.resetTokenRepo = resetTokenRepo;
         this.srRepo = srRepo;
+        this.serviceRepo = serviceRepo;
         this.portalAccountManager = portalAccountManager;
         this.inventoryService = inventoryService;
         this.docRepo = docRepo;
@@ -662,6 +679,114 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
             sortSpec = Sort.by(direction, property);
         }
         return PageRequest.of(safePage, safeSize, sortSpec);
+    }
+
+    private PurchaseOrderDtos.ListItem toPurchaseOrderListItem(PurchaseOrder po) {
+        PurchaseOrderDtos.ListItem row = new PurchaseOrderDtos.ListItem();
+        row.id = po.getId();
+        row.voucherNumber = po.getVoucherNumber();
+        row.date = po.getOrderDate();
+        row.supplierName = po.getSupplierName();
+        row.supplierEmail = po.getSupplierEmail();
+        row.supplierWhatsapp = po.getSupplierWhatsapp();
+        row.grandTotal = po.getGrandTotal();
+        if (po.getService() != null) {
+            row.serviceId = po.getService().getId();
+            row.serviceWan = row.serviceId != null ? String.valueOf(row.serviceId) : null;
+        }
+        row.buyerName = po.getBuyerName();
+        return row;
+    }
+
+    private PurchaseOrderDtos.Detail toPurchaseOrderDetail(PurchaseOrder po, List<PurchaseOrderLine> lines) {
+        PurchaseOrderDtos.Detail detail = new PurchaseOrderDtos.Detail();
+        detail.header = toPurchaseOrderListItem(po);
+
+        PurchaseOrderDtos.Party buyer = new PurchaseOrderDtos.Party();
+        buyer.name = po.getBuyerName();
+        buyer.address = po.getBuyerAddress();
+        buyer.phone = po.getBuyerPhone();
+        buyer.gstin = po.getBuyerGstin();
+        buyer.stateName = po.getBuyerStateName();
+        buyer.stateCode = po.getBuyerStateCode();
+        buyer.email = po.getBuyerEmail();
+        buyer.website = po.getBuyerWebsite();
+        detail.buyer = buyer;
+
+        PurchaseOrderDtos.Supplier supplier = new PurchaseOrderDtos.Supplier();
+        supplier.name = po.getSupplierName();
+        supplier.address = po.getSupplierAddress();
+        supplier.gstin = po.getSupplierGstin();
+        supplier.stateName = po.getSupplierStateName();
+        supplier.stateCode = po.getSupplierStateCode();
+        supplier.email = po.getSupplierEmail();
+        supplier.whatsapp = po.getSupplierWhatsapp();
+        detail.supplier = supplier;
+
+        PurchaseOrderDtos.Meta meta = new PurchaseOrderDtos.Meta();
+        meta.referenceNumberAndDate = po.getReferenceNumberAndDate();
+        meta.paymentTerms = po.getPaymentTerms();
+        meta.dispatchedThrough = po.getDispatchedThrough();
+        meta.destination = po.getDestination();
+        meta.otherReferences = po.getOtherReferences();
+        meta.termsOfDelivery = po.getTermsOfDelivery();
+        detail.meta = meta;
+
+        PurchaseOrderDtos.Totals totals = new PurchaseOrderDtos.Totals();
+        totals.subTotal = po.getSubTotal();
+        totals.cgstRate = po.getCgstRate();
+        totals.cgstAmount = po.getCgstAmount();
+        totals.sgstRate = po.getSgstRate();
+        totals.sgstAmount = po.getSgstAmount();
+        totals.grandTotal = po.getGrandTotal();
+        detail.totals = totals;
+
+        detail.amountInWords = po.getAmountInWords();
+        detail.companyPan = po.getCompanyPan();
+
+        List<PurchaseOrderLine> sourceLines = lines != null ? lines
+                : purchaseOrderLineRepo.findByTenantIdAndPurchaseOrder_IdOrderByLineNumberAsc(po.getTenantId(), po.getId());
+        for (PurchaseOrderLine line : sourceLines) {
+            PurchaseOrderDtos.Item dto = new PurchaseOrderDtos.Item();
+            dto.description = line.getDescription();
+            dto.quantity = line.getQuantity();
+            dto.unit = line.getUnit();
+            dto.rate = line.getRate();
+            dto.amount = line.getAmount();
+            detail.items.add(dto);
+        }
+        return detail;
+    }
+
+    private LocalDate parsePoDate(String value) {
+        if (value == null || value.isBlank()) {
+            return LocalDate.now();
+        }
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (Exception ex) {
+            throw new BusinessException("Invalid purchase order date");
+        }
+    }
+
+    private static BigDecimal normalizeAmount(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal normalizeRate(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal normalizeQuantity(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private void hydrateProposal(Proposal p) {
@@ -1234,6 +1359,189 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
             invoices.sendInvoice(tenant(), invoiceId, req != null ? req.toEmail : null);
         }
         return ResponseEntity.noContent().build();
+    }
+
+    // ----- Purchase Orders -----
+    @Transactional
+    public ResponseEntity<PurchaseOrderDtos.Detail> createPurchaseOrder(PurchaseOrderDtos.CreateRequest req) {
+        if (req == null) {
+            throw new BusinessException("Purchase order payload is required");
+        }
+        Long tenantId = tenant();
+        tenantGuard.assertActive(tenantId);
+
+        PurchaseOrder po = new PurchaseOrder();
+        po.setTenantId(tenantId);
+
+        if (req.serviceId != null) {
+            var service = serviceRepo.findByTenantIdAndId(tenantId, req.serviceId)
+                    .orElseThrow(() -> new NotFoundException("Service not found"));
+            po.setService(service);
+        }
+
+        po.setVoucherNumber(trimToNull(req.voucherNumber));
+        po.setOrderDate(parsePoDate(req.date));
+
+        PurchaseOrderDtos.Party buyer = req.buyer != null ? req.buyer : new PurchaseOrderDtos.Party();
+        po.setBuyerName(trimToNull(buyer.name));
+        po.setBuyerAddress(trimToNull(buyer.address));
+        po.setBuyerPhone(trimToNull(buyer.phone));
+        po.setBuyerGstin(trimToNull(buyer.gstin));
+        po.setBuyerStateName(trimToNull(buyer.stateName));
+        po.setBuyerStateCode(trimToNull(buyer.stateCode));
+        po.setBuyerEmail(trimToNull(buyer.email));
+        po.setBuyerWebsite(trimToNull(buyer.website));
+
+        PurchaseOrderDtos.Supplier supplier = req.supplier != null ? req.supplier : new PurchaseOrderDtos.Supplier();
+        po.setSupplierName(trimToNull(supplier.name));
+        po.setSupplierAddress(trimToNull(supplier.address));
+        po.setSupplierGstin(trimToNull(supplier.gstin));
+        po.setSupplierStateName(trimToNull(supplier.stateName));
+        po.setSupplierStateCode(trimToNull(supplier.stateCode));
+        po.setSupplierEmail(trimToNull(supplier.email));
+        po.setSupplierWhatsapp(trimToNull(supplier.whatsapp));
+
+        PurchaseOrderDtos.Meta meta = req.meta != null ? req.meta : new PurchaseOrderDtos.Meta();
+        po.setReferenceNumberAndDate(trimToNull(meta.referenceNumberAndDate));
+        po.setPaymentTerms(trimToNull(meta.paymentTerms));
+        po.setDispatchedThrough(trimToNull(meta.dispatchedThrough));
+        po.setDestination(trimToNull(meta.destination));
+        po.setOtherReferences(trimToNull(meta.otherReferences));
+        po.setTermsOfDelivery(trimToNull(meta.termsOfDelivery));
+
+        PurchaseOrderDtos.Totals totals = req.totals != null ? req.totals : new PurchaseOrderDtos.Totals();
+        po.setSubTotal(normalizeAmount(totals.subTotal));
+        po.setCgstRate(normalizeRate(totals.cgstRate));
+        po.setCgstAmount(normalizeAmount(totals.cgstAmount));
+        po.setSgstRate(normalizeRate(totals.sgstRate));
+        po.setSgstAmount(normalizeAmount(totals.sgstAmount));
+        po.setGrandTotal(normalizeAmount(totals.grandTotal));
+        po.setAmountInWords(trimToNull(req.amountInWords));
+        po.setCompanyPan(trimToNull(req.companyPan));
+
+        PurchaseOrder saved = purchaseOrderRepo.save(po);
+
+        List<PurchaseOrderLine> lines = new ArrayList<>();
+        List<PurchaseOrderDtos.Item> reqItems = req.items != null ? req.items : List.of();
+        int index = 1;
+        for (PurchaseOrderDtos.Item item : reqItems) {
+            if (item == null) continue;
+            PurchaseOrderLine line = new PurchaseOrderLine();
+            line.setTenantId(tenantId);
+            line.setPurchaseOrder(saved);
+            line.setLineNumber(index++);
+            line.setDescription(trimToNull(item.description));
+            line.setQuantity(normalizeQuantity(item.quantity));
+            line.setUnit(trimToNull(item.unit));
+            line.setRate(normalizeAmount(item.rate));
+            line.setAmount(normalizeAmount(item.amount));
+            lines.add(line);
+        }
+        if (!lines.isEmpty()) {
+            purchaseOrderLineRepo.saveAll(lines);
+        }
+
+        return ResponseEntity.ok(toPurchaseOrderDetail(saved, lines));
+    }
+
+    public ResponseEntity<Page<PurchaseOrderDtos.ListItem>> listPurchaseOrders(Long serviceId, int page, int size, String sort) {
+        Long tenantId = tenant();
+        Pageable pageable = buildPageRequest(page, size, sort, "createdAt");
+        Page<PurchaseOrder> data = (serviceId != null)
+                ? purchaseOrderRepo.findByTenantIdAndService_Id(tenantId, serviceId, pageable)
+                : purchaseOrderRepo.findByTenantId(tenantId, pageable);
+        Page<PurchaseOrderDtos.ListItem> mapped = data.map(this::toPurchaseOrderListItem);
+        return ResponseEntity.ok(mapped);
+    }
+
+    public ResponseEntity<PurchaseOrderDtos.Detail> getPurchaseOrder(Long id) {
+        Long tenantId = tenant();
+        PurchaseOrder po = purchaseOrderRepo.findByTenantIdAndId(tenantId, id)
+                .orElseThrow(() -> new NotFoundException("Purchase order not found"));
+        List<PurchaseOrderLine> lines = purchaseOrderLineRepo
+                .findByTenantIdAndPurchaseOrder_IdOrderByLineNumberAsc(tenantId, id);
+        return ResponseEntity.ok(toPurchaseOrderDetail(po, lines));
+    }
+
+    public ResponseEntity<byte[]> downloadPurchaseOrderPdf(Long id) {
+        Long tenantId = tenant();
+        PurchaseOrder po = purchaseOrderRepo.findByTenantIdAndId(tenantId, id)
+                .orElseThrow(() -> new NotFoundException("Purchase order not found"));
+        List<PurchaseOrderLine> lines = purchaseOrderLineRepo
+                .findByTenantIdAndPurchaseOrder_IdOrderByLineNumberAsc(tenantId, id);
+        byte[] pdf = PdfUtil.buildPurchaseOrderPdf(po, lines);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentLength(pdf.length);
+        String filename = "purchase-order-" + (po.getVoucherNumber() != null && !po.getVoucherNumber().isBlank()
+                ? po.getVoucherNumber().replaceAll("[^A-Za-z0-9-_]", "_")
+                : String.valueOf(po.getId())) + ".pdf";
+        headers.setContentDisposition(ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build());
+        headers.add(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, "Content-Disposition");
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
+    }
+
+    @Transactional(noRollbackFor = Exception.class)
+    public ResponseEntity<Void> sendPurchaseOrder(Long id, PurchaseOrderDtos.SendRequest req) {
+        Long tenantId = tenant();
+        PurchaseOrder po = purchaseOrderRepo.findByTenantIdAndId(tenantId, id)
+                .orElseThrow(() -> new NotFoundException("Purchase order not found"));
+        List<PurchaseOrderLine> lines = purchaseOrderLineRepo
+                .findByTenantIdAndPurchaseOrder_IdOrderByLineNumberAsc(tenantId, id);
+        byte[] pdf = PdfUtil.buildPurchaseOrderPdf(po, lines);
+
+        String subject = "Purchase Order " + (po.getVoucherNumber() != null ? po.getVoucherNumber() : po.getId());
+        String body = "Please find attached purchase order.";
+
+        String whatsapp = trimToNull(req != null ? req.toWhatsapp : null);
+        if (whatsapp != null) {
+            emailService.send(tenantId, whatsapp, subject, body, "PURCHASE_ORDER", po.getId(), false);
+            return ResponseEntity.noContent().build();
+        }
+
+        String email = trimToNull(req != null ? req.toEmail : null);
+        if (email == null) {
+            email = trimToNull(po.getSupplierEmail());
+        }
+        if (email == null) {
+            throw new BusinessException("Supplier email is required to send the purchase order");
+        }
+
+        String filename = "purchase-order-" + (po.getVoucherNumber() != null && !po.getVoucherNumber().isBlank()
+                ? po.getVoucherNumber().replaceAll("[^A-Za-z0-9-_]", "_")
+                : String.valueOf(po.getId())) + ".pdf";
+        emailService.sendWithAttachment(tenantId, email, subject, body, filename, pdf,
+                MediaType.APPLICATION_PDF_VALUE, EmailEntityType.PURCHASE_ORDER, po.getId());
+        return ResponseEntity.noContent().build();
+    }
+
+    public ResponseEntity<List<PurchaseOrderDtos.Detail>> purchaseOrderSuggestions(String keyword, int limit) {
+        Long tenantId = tenant();
+        int safeLimit = Math.max(1, Math.min(limit <= 0 ? 5 : limit, 10));
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        Pageable suggestionPage = PageRequest.of(0, safeLimit, sort);
+        List<PurchaseOrder> seeds;
+        if (keyword != null && !keyword.isBlank()) {
+            seeds = purchaseOrderRepo.searchTopByKeyword(tenantId, keyword.trim(), suggestionPage);
+        } else {
+            seeds = purchaseOrderRepo.findByTenantId(tenantId, suggestionPage).getContent();
+        }
+
+        List<PurchaseOrderDtos.Detail> suggestions = new ArrayList<>();
+        java.util.Set<Long> seen = new java.util.LinkedHashSet<>();
+        for (PurchaseOrder po : seeds) {
+            if (po.getId() == null || !seen.add(po.getId())) {
+                continue;
+            }
+            List<PurchaseOrderLine> lines = purchaseOrderLineRepo
+                    .findByTenantIdAndPurchaseOrder_IdOrderByLineNumberAsc(tenantId, po.getId());
+            suggestions.add(toPurchaseOrderDetail(po, lines));
+            if (suggestions.size() >= safeLimit) {
+                break;
+            }
+        }
+        return ResponseEntity.ok(suggestions);
     }
 
     public ResponseEntity<Long> intakeEmail(String rawEmail) {

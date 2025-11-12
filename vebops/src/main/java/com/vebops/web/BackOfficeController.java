@@ -63,6 +63,7 @@ import com.vebops.dto.UpdateFERequest;
 import com.vebops.dto.UploadDocumentRequest;
 import com.vebops.dto.UploadPORequest;
 import com.vebops.dto.admin.AdminActivityItem;
+import com.vebops.dto.PurchaseOrderDtos;
 import com.vebops.service.BackOfficeService;
 
 import jakarta.validation.Valid;
@@ -276,6 +277,43 @@ public class BackOfficeController {
     @PostMapping("/invoice/{invoiceId}/send")
     public ResponseEntity<Void> sendInvoice(@PathVariable Long invoiceId, @RequestBody SendInvoiceRequest req) {
         return bo.sendInvoice(invoiceId, req);
+    }
+
+    // ----- Purchase Orders -----
+    @PostMapping("/purchase-orders")
+    public ResponseEntity<PurchaseOrderDtos.Detail> createPurchaseOrder(@RequestBody PurchaseOrderDtos.CreateRequest req) {
+        return bo.createPurchaseOrder(req);
+    }
+
+    @GetMapping("/purchase-orders")
+    public ResponseEntity<Page<PurchaseOrderDtos.ListItem>> listPurchaseOrders(
+            @RequestParam(required = false) Long serviceId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+        return bo.listPurchaseOrders(serviceId, page, size, sort);
+    }
+
+    @GetMapping("/purchase-orders/{id}")
+    public ResponseEntity<PurchaseOrderDtos.Detail> getPurchaseOrder(@PathVariable Long id) {
+        return bo.getPurchaseOrder(id);
+    }
+
+    @GetMapping(value = "/purchase-orders/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadPurchaseOrder(@PathVariable Long id) {
+        return bo.downloadPurchaseOrderPdf(id);
+    }
+
+    @PostMapping("/purchase-orders/{id}/send")
+    public ResponseEntity<Void> sendPurchaseOrder(@PathVariable Long id, @RequestBody(required = false) PurchaseOrderDtos.SendRequest req) {
+        return bo.sendPurchaseOrder(id, req);
+    }
+
+    @GetMapping("/purchase-orders/autocomplete")
+    public ResponseEntity<List<PurchaseOrderDtos.Detail>> purchaseOrderSuggestions(
+            @RequestParam(name = "q", required = false) String keyword,
+            @RequestParam(name = "limit", defaultValue = "5") int limit) {
+        return bo.purchaseOrderSuggestions(keyword, limit);
     }
 
     // ----- Intake via email -----

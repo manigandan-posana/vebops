@@ -371,6 +371,71 @@ export const officeApi = baseApi.injectEndpoints({
       transformResponse: (res) => Array.isArray(res) ? res : []
     }),
 
+    /* -------------------------------- Purchase Orders -------------------------------- */
+    createPurchaseOrder: b.mutation({
+      async queryFn (body, _api, _extra, baseQuery) {
+        const res = await baseQuery({ url: '/office/purchase-orders', method: 'POST', body })
+        return res.error ? { error: res.error } : { data: res.data }
+      },
+      invalidatesTags: [{ type: 'PurchaseOrders', id: 'LIST' }]
+    }),
+
+    listPurchaseOrders: b.query({
+      query: (params = {}) => ({ url: '/office/purchase-orders', method: 'GET', params }),
+      transformResponse: (res) => normalisePage(res),
+      providesTags: (result) => {
+        const rows = result?.content ?? []
+        return rows.length
+          ? [...rows.map((row) => ({ type: 'PurchaseOrders', id: row.id })), { type: 'PurchaseOrders', id: 'LIST' }]
+          : [{ type: 'PurchaseOrders', id: 'LIST' }]
+      }
+    }),
+
+    getPurchaseOrder: b.query({
+      query: (id) => ({ url: `/office/purchase-orders/${id}`, method: 'GET' }),
+      providesTags: (_r,_e,id) => [{ type: 'PurchaseOrders', id }]
+    }),
+
+    downloadPurchaseOrderPdf: b.mutation({
+      async queryFn (id, _api, _extra, baseQuery) {
+        const poId = typeof id === 'object' && id !== null ? id.id : id
+        if (!poId) return { error: { status: 0, data: { message: 'id is required' } } }
+        const res = await baseQuery({
+          url: `/office/purchase-orders/${poId}/pdf`,
+          method: 'GET',
+          headers: { Accept: 'application/pdf' },
+          responseHandler: (r) => r.arrayBuffer(),
+          cache: 'no-store'
+        })
+        if (res.error) return { error: res.error }
+        const cd = res.meta?.response?.headers?.get('Content-Disposition')
+        const filename = extractFilename(cd) || `purchase-order-${poId}.pdf`
+        const blob = new Blob([res.data], { type: 'application/pdf' })
+        downloadBlob(blob, filename, 'application/pdf')
+        return { data: null }
+      }
+    }),
+
+    sendPurchaseOrder: b.mutation({
+      async queryFn ({ id, toEmail, toWhatsapp }, _api, _extra, baseQuery) {
+        if (!id) return { error: { status: 0, data: { message: 'id is required' } } }
+        const payload = {}
+        if (toEmail && toEmail.trim()) payload.toEmail = toEmail
+        if (toWhatsapp && toWhatsapp.trim()) payload.toWhatsapp = toWhatsapp
+        const res = await baseQuery({
+          url: `/office/purchase-orders/${id}/send`,
+          method: 'POST',
+          body: Object.keys(payload).length ? payload : undefined
+        })
+        return res.error ? { error: res.error } : { data: res.data }
+      }
+    }),
+
+    purchaseOrderSuggestions: b.query({
+      query: ({ q, limit = 5 } = {}) => ({ url: '/office/purchase-orders/autocomplete', method: 'GET', params: { q, limit } }),
+      transformResponse: (res) => Array.isArray(res) ? res : []
+    }),
+
     /* --------------------------------- Activity ---------------------------------- */
 
     // GET /office/activity?limit=10
@@ -981,4 +1046,10 @@ export const {
   useDownloadServiceInvoiceMutation,
   useSendServiceInvoiceMutation,
   useShareServiceProposalMutation,
+  useCreatePurchaseOrderMutation,
+  useListPurchaseOrdersQuery,
+  useGetPurchaseOrderQuery,
+  useDownloadPurchaseOrderPdfMutation,
+  useSendPurchaseOrderMutation,
+  usePurchaseOrderSuggestionsQuery,
 } = officeApi

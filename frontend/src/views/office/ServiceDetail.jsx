@@ -7,7 +7,7 @@
 // table of individual line items with totals. The component offers a
 // back link to return to the history list.
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom'
 import { IndianRupee, Send, Share2, FileDown } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
@@ -30,6 +30,7 @@ import {
   FormControlLabel,
   FormLabel,
   Grid,
+  IconButton,
   Link,
   Paper,
   Radio,
@@ -44,9 +45,14 @@ import {
   TextField,
   Typography
 } from '@mui/material'
+import Autocomplete from '@mui/material/Autocomplete'
+import Tooltip from '@mui/material/Tooltip'
 import { alpha } from '@mui/material/styles'
 import EventNoteRoundedIcon from '@mui/icons-material/EventNoteRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { displayDocNumber } from '../../utils/docNumbers'
 import { buildServiceLineDescriptions } from '../../utils/serviceLineDescriptions'
 // Import the getService hook rather than the paginated getServices hook. This
@@ -57,9 +63,16 @@ import {
   useDownloadServiceInvoiceMutation,
   useSendServiceInvoiceMutation,
   useShareServiceProposalMutation,
-  useLazyGetWoProgressAttachmentQuery
+  useLazyGetWoProgressAttachmentQuery,
+  useCreatePurchaseOrderMutation,
+  useListPurchaseOrdersQuery,
+  useGetPurchaseOrderQuery,
+  useDownloadPurchaseOrderPdfMutation,
+  useSendPurchaseOrderMutation,
+  usePurchaseOrderSuggestionsQuery
 } from '../../features/office/officeApi'
 import { downloadBlob } from '../../utils/file'
+import { skipToken } from '@reduxjs/toolkit/query'
 
 const parseJson = (value, fallback) => {
   if (!value) return fallback
@@ -91,6 +104,17 @@ const formatServiceType = (value) => {
     .replace(/(^|\s)\w/g, (match) => match.toUpperCase())
 }
 
+const formatDate = (value) => {
+  if (!value) return '—'
+  try {
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) return '—'
+    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch {
+    return '—'
+  }
+}
+
 const parseAmount = (value) => {
   if (value === null || value === undefined) return null
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -108,6 +132,131 @@ const parseAmount = (value) => {
     return Number.isFinite(num) ? num : null
   }
   return null
+}
+
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100
+
+const coerceNumber = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+const isoDate = (value = new Date()) => {
+  try {
+    const d = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(d.getTime())) return ''
+    return d.toISOString().slice(0, 10)
+  } catch {
+    return ''
+  }
+}
+
+const makeInitialPoForm = (service) => ({
+  voucherNumber: '',
+  date: isoDate(),
+  buyer: {
+    name: service?.buyerName || '',
+    address: service?.buyerAddress || '',
+    phone: service?.buyerContact || '',
+    gstin: service?.buyerGst || '',
+    stateName: service?.buyerState || '',
+    stateCode: '',
+    email: service?.buyerEmail || '',
+    website: ''
+  },
+  supplier: {
+    name: '',
+    address: '',
+    gstin: '',
+    stateName: '',
+    stateCode: '',
+    email: '',
+    whatsapp: ''
+  },
+  meta: {
+    referenceNumberAndDate: '',
+    paymentTerms: '',
+    dispatchedThrough: '',
+    destination: '',
+    otherReferences: '',
+    termsOfDelivery: ''
+  },
+  totals: {
+    cgstRate: 0,
+    sgstRate: 0
+  },
+  amountInWords: '',
+  companyPan: ''
+})
+
+const makeInitialPoItems = (items) => {
+  if (!Array.isArray(items)) return []
+  return items.map((it, index) => {
+    const quantity = parseAmount(firstNonEmpty(it.qty, it.quantity, it.qtyOrdered)) ?? 0
+    const rate = parseAmount(firstNonEmpty(it.rate, it.basePrice, it.unitPrice, it.price)) ?? 0
+    const amount = parseAmount(firstNonEmpty(it.amount, it.lineTotal, it.total)) ?? round2(quantity * rate)
+    return {
+      key: `${Date.now()}-${index}`,
+      description: firstNonEmpty(it.description, it.itemName, it.name, it.code) || '',
+      quantity: Number.isFinite(quantity) ? quantity : 0,
+      unit: firstNonEmpty(it.unit, it.uom, it.unitType, 'NO') || 'NO',
+      rate: Number.isFinite(rate) ? rate : 0,
+      amount: Number.isFinite(amount) ? amount : 0
+    }
+  })
+}
+
+const mapDetailToForm = (detail) => {
+  if (!detail) return makeInitialPoForm({})
+  return {
+    voucherNumber: detail?.header?.voucherNumber || '',
+    date: detail?.header?.date ? isoDate(detail.header.date) : isoDate(),
+    buyer: {
+      name: detail?.buyer?.name || '',
+      address: detail?.buyer?.address || '',
+      phone: detail?.buyer?.phone || '',
+      gstin: detail?.buyer?.gstin || '',
+      stateName: detail?.buyer?.stateName || '',
+      stateCode: detail?.buyer?.stateCode || '',
+      email: detail?.buyer?.email || '',
+      website: detail?.buyer?.website || ''
+    },
+    supplier: {
+      name: detail?.supplier?.name || '',
+      address: detail?.supplier?.address || '',
+      gstin: detail?.supplier?.gstin || '',
+      stateName: detail?.supplier?.stateName || '',
+      stateCode: detail?.supplier?.stateCode || '',
+      email: detail?.supplier?.email || '',
+      whatsapp: detail?.supplier?.whatsapp || ''
+    },
+    meta: {
+      referenceNumberAndDate: detail?.meta?.referenceNumberAndDate || '',
+      paymentTerms: detail?.meta?.paymentTerms || '',
+      dispatchedThrough: detail?.meta?.dispatchedThrough || '',
+      destination: detail?.meta?.destination || '',
+      otherReferences: detail?.meta?.otherReferences || '',
+      termsOfDelivery: detail?.meta?.termsOfDelivery || ''
+    },
+    totals: {
+      cgstRate: detail?.totals?.cgstRate ?? 0,
+      sgstRate: detail?.totals?.sgstRate ?? 0
+    },
+    amountInWords: detail?.amountInWords || '',
+    companyPan: detail?.companyPan || ''
+  }
+}
+
+const mapDetailToItems = (detail) => {
+  if (!detail?.items) return []
+  return detail.items.map((item, index) => ({
+    key: `${Date.now()}-${index}`,
+    description: item?.description || '',
+    quantity: Number.isFinite(item?.quantity) ? item.quantity : 0,
+    unit: item?.unit || 'NO',
+    rate: Number.isFinite(item?.rate) ? item.rate : 0,
+    amount: Number.isFinite(item?.amount) ? item.amount : 0
+  }))
 }
 
 // Local helper to format currency in Indian Rupees.
@@ -163,6 +312,278 @@ export default function ServiceDetail () {
   const [downloadProgressAttachment, { isFetching: isServiceAttachmentDownloading }] = useLazyGetWoProgressAttachmentQuery()
   const [modal, setModal] = useState({ open: false, serviceId: null, method: 'email', contact: '', docType: 'INVOICE' })
   const [sharingDocType, setSharingDocType] = useState(null)
+  const poQueryArgs = service?.id ? { serviceId: service.id, size: 25, sort: 'createdAt,desc' } : skipToken
+  const { data: poPage, isFetching: isPoLoading, refetch: refetchPurchaseOrders } = useListPurchaseOrdersQuery(poQueryArgs)
+  const purchaseOrders = poPage?.content ?? []
+  const [createPurchaseOrder, createPoState] = useCreatePurchaseOrderMutation()
+  const [downloadPurchaseOrderPdf] = useDownloadPurchaseOrderPdfMutation()
+  const [sendPurchaseOrder, sendPoState] = useSendPurchaseOrderMutation()
+  const [poModal, setPoModal] = useState({ open: false })
+  const [poForm, setPoForm] = useState(makeInitialPoForm(service))
+  const [poItems, setPoItems] = useState([])
+  const [poSuggestionQuery, setPoSuggestionQuery] = useState('')
+  const { data: poSuggestions = [] } = usePurchaseOrderSuggestionsQuery({ q: poSuggestionQuery, limit: 8 }, { skip: !poModal.open })
+  const [poSendModal, setPoSendModal] = useState({ open: false, id: null, method: 'email', contact: '' })
+  const [poDetailOpen, setPoDetailOpen] = useState(false)
+  const [selectedPoId, setSelectedPoId] = useState(null)
+  const { data: selectedPoDetail } = useGetPurchaseOrderQuery(selectedPoId, { skip: !selectedPoId })
+
+  useEffect(() => {
+    if (!poModal.open) {
+      setPoForm(makeInitialPoForm(service))
+      const rawItems = parseJson(service?.itemsJson, [])
+      setPoItems(makeInitialPoItems(rawItems))
+    }
+  }, [service?.id, poModal.open])
+
+  const poSummary = useMemo(() => {
+    const subTotal = round2(poItems.reduce((sum, item) => sum + coerceNumber(item.amount), 0))
+    const cgstRate = coerceNumber(poForm.totals?.cgstRate)
+    const sgstRate = coerceNumber(poForm.totals?.sgstRate)
+    const cgstAmount = round2(subTotal * (cgstRate / 100))
+    const sgstAmount = round2(subTotal * (sgstRate / 100))
+    const grandTotal = round2(subTotal + cgstAmount + sgstAmount)
+    return { subTotal, cgstRate, sgstRate, cgstAmount, sgstAmount, grandTotal }
+  }, [poItems, poForm.totals?.cgstRate, poForm.totals?.sgstRate])
+
+  const statusChip = useMemo(() => {
+    if (!workOrder?.status) return null
+    const label = String(workOrder.status).replace(/_/g, ' ').toLowerCase()
+    const text = label.replace(/(^|\s)\w/g, (m) => m.toUpperCase())
+    let color = 'default'
+    const upper = String(workOrder.status).toUpperCase()
+    if (upper === 'COMPLETED') color = 'success'
+    else if (upper === 'IN_PROGRESS') color = 'primary'
+    else if (upper === 'ASSIGNED') color = 'info'
+    else if (upper === 'ON_HOLD') color = 'error'
+    return <Chip label={text} size='small' color={color} variant={color === 'default' ? 'outlined' : 'filled'} />
+  }, [workOrder?.status])
+
+  const openPurchaseOrderModal = useCallback(() => {
+    setPoModal({ open: true })
+    setPoSuggestionQuery('')
+  }, [])
+
+  const closePurchaseOrderModal = useCallback(() => {
+    setPoModal({ open: false })
+    setPoSuggestionQuery('')
+  }, [])
+
+  const handlePoTemplateSelect = useCallback((_event, value) => {
+    if (!value) return
+    setPoForm(mapDetailToForm(value))
+    setPoItems(mapDetailToItems(value))
+  }, [])
+
+  const handlePoFormChange = useCallback((path, value) => {
+    setPoForm((prev) => {
+      const next = { ...prev }
+      if (path.startsWith('buyer.')) {
+        const key = path.replace('buyer.', '')
+        next.buyer = { ...next.buyer, [key]: value }
+      } else if (path.startsWith('supplier.')) {
+        const key = path.replace('supplier.', '')
+        next.supplier = { ...next.supplier, [key]: value }
+      } else if (path.startsWith('meta.')) {
+        const key = path.replace('meta.', '')
+        next.meta = { ...next.meta, [key]: value }
+      } else if (path.startsWith('totals.')) {
+        const key = path.replace('totals.', '')
+        next.totals = { ...next.totals, [key]: value }
+      } else {
+        next[path] = value
+      }
+      return next
+    })
+  }, [])
+
+  const handlePoItemChange = useCallback((index, field, rawValue) => {
+    setPoItems((prev) => {
+      const next = prev.map((item, idx) => {
+        if (idx !== index) return item
+        const updated = { ...item }
+        if (field === 'description' || field === 'unit') {
+          updated[field] = rawValue
+        } else {
+          const numeric = coerceNumber(rawValue)
+          updated[field] = numeric
+        }
+        if (field === 'quantity' || field === 'rate') {
+          const qty = field === 'quantity' ? coerceNumber(rawValue) : coerceNumber(updated.quantity)
+          const rate = field === 'rate' ? coerceNumber(rawValue) : coerceNumber(updated.rate)
+          updated.amount = round2(qty * rate)
+        }
+        if (field === 'amount') {
+          updated.amount = round2(coerceNumber(rawValue))
+        }
+        return updated
+      })
+      return next
+    })
+  }, [])
+
+  const handlePoAddItem = useCallback(() => {
+    setPoItems((prev) => [
+      ...prev,
+      {
+        key: `${Date.now()}-${prev.length + 1}`,
+        description: '',
+        quantity: 0,
+        unit: 'NO',
+        rate: 0,
+        amount: 0
+      }
+    ])
+  }, [])
+
+  const handlePoRemoveItem = useCallback((index) => {
+    setPoItems((prev) => prev.filter((_, idx) => idx !== index))
+  }, [])
+
+  const handlePoSubmit = useCallback(async () => {
+    if (!service?.id) {
+      toast.error('Service not ready yet')
+      return
+    }
+    if (!poItems.length) {
+      toast.error('Add at least one line item')
+      return
+    }
+    const preparedItems = poItems
+      .map((item, idx) => ({
+        index: idx,
+        description: (item.description || '').trim(),
+        quantity: round2(coerceNumber(item.quantity)),
+        unit: (item.unit || '').trim() || 'NO',
+        rate: round2(coerceNumber(item.rate)),
+        amount: round2(coerceNumber(item.amount))
+      }))
+      .filter((item) => item.description)
+
+    if (!preparedItems.length) {
+      toast.error('Add a description for each item')
+      return
+    }
+
+    const payload = {
+      serviceId: service.id,
+      voucherNumber: poForm.voucherNumber || undefined,
+      date: poForm.date || isoDate(),
+      buyer: {
+        name: poForm.buyer?.name || '',
+        address: poForm.buyer?.address || '',
+        phone: poForm.buyer?.phone || '',
+        gstin: poForm.buyer?.gstin || '',
+        stateName: poForm.buyer?.stateName || '',
+        stateCode: poForm.buyer?.stateCode || '',
+        email: poForm.buyer?.email || '',
+        website: poForm.buyer?.website || ''
+      },
+      supplier: {
+        name: poForm.supplier?.name || '',
+        address: poForm.supplier?.address || '',
+        gstin: poForm.supplier?.gstin || '',
+        stateName: poForm.supplier?.stateName || '',
+        stateCode: poForm.supplier?.stateCode || '',
+        email: poForm.supplier?.email || '',
+        whatsapp: poForm.supplier?.whatsapp || ''
+      },
+      meta: {
+        referenceNumberAndDate: poForm.meta?.referenceNumberAndDate || '',
+        paymentTerms: poForm.meta?.paymentTerms || '',
+        dispatchedThrough: poForm.meta?.dispatchedThrough || '',
+        destination: poForm.meta?.destination || '',
+        otherReferences: poForm.meta?.otherReferences || '',
+        termsOfDelivery: poForm.meta?.termsOfDelivery || ''
+      },
+      items: preparedItems.map((item) => ({
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        rate: item.rate,
+        amount: item.amount
+      })),
+      totals: {
+        subTotal: poSummary.subTotal,
+        cgstRate: poSummary.cgstRate,
+        cgstAmount: poSummary.cgstAmount,
+        sgstRate: poSummary.sgstRate,
+        sgstAmount: poSummary.sgstAmount,
+        grandTotal: poSummary.grandTotal
+      },
+      amountInWords: poForm.amountInWords || '',
+      companyPan: poForm.companyPan || ''
+    }
+
+    try {
+      const res = await createPurchaseOrder(payload).unwrap()
+      toast.success('Purchase order created')
+      closePurchaseOrderModal()
+      refetchPurchaseOrders()
+      const newId = res?.header?.id
+      if (newId) {
+        setSelectedPoId(newId)
+        setPoDetailOpen(true)
+      }
+    } catch (err) {
+      const message = err?.data?.message || err?.error || 'Failed to create purchase order'
+      toast.error(String(message))
+    }
+  }, [service?.id, poItems, poForm, poSummary, createPurchaseOrder, closePurchaseOrderModal, refetchPurchaseOrders])
+
+  const handlePoView = useCallback((id) => {
+    setSelectedPoId(id)
+    setPoDetailOpen(true)
+  }, [])
+
+  const handlePoDownload = useCallback(async (id) => {
+    try {
+      await downloadPurchaseOrderPdf(id).unwrap()
+    } catch (err) {
+      const message = err?.data?.message || err?.error || 'Unable to download purchase order'
+      toast.error(String(message))
+    }
+  }, [downloadPurchaseOrderPdf])
+
+  const handlePoSendOpen = useCallback((row) => {
+    const method = row?.supplierEmail ? 'email' : 'whatsapp'
+    const contact = method === 'email' ? (row?.supplierEmail || '') : (row?.supplierWhatsapp || '')
+    setPoSendModal({ open: true, id: row?.id || null, method, contact })
+  }, [])
+
+  const closePoSendModal = useCallback(() => {
+    setPoSendModal({ open: false, id: null, method: 'email', contact: '' })
+  }, [])
+
+  const handlePoSendSubmit = useCallback(async () => {
+    if (!poSendModal.id) {
+      toast.error('Select a purchase order first')
+      return
+    }
+    const contact = poSendModal.contact?.trim()
+    if (!contact) {
+      toast.error('Provide an email or WhatsApp number')
+      return
+    }
+    const payload = {
+      id: poSendModal.id,
+      toEmail: poSendModal.method === 'email' ? contact : undefined,
+      toWhatsapp: poSendModal.method === 'whatsapp' ? contact : undefined
+    }
+    try {
+      await sendPurchaseOrder(payload).unwrap()
+      toast.success('Purchase order sent')
+      closePoSendModal()
+    } catch (err) {
+      const message = err?.data?.message || err?.error || 'Failed to send purchase order'
+      toast.error(String(message))
+    }
+  }, [poSendModal, sendPurchaseOrder, closePoSendModal])
+
+  const closePoDetail = useCallback(() => {
+    setPoDetailOpen(false)
+    setSelectedPoId(null)
+  }, [])
 
   const statusChip = useMemo(() => {
     if (!workOrder?.status) return null
@@ -737,6 +1158,122 @@ export default function ServiceDetail () {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader
+              title='Purchase orders'
+              subheader='Create and share supplier purchase orders for this work order'
+              action={(
+                <Button
+                  variant='contained'
+                  startIcon={<AddCircleOutlineIcon />}
+                  onClick={openPurchaseOrderModal}
+                  disabled={!service?.id}
+                >
+                  New purchase order
+                </Button>
+              )}
+            />
+            <CardContent>
+              {isPoLoading ? (
+                <Stack direction='row' spacing={2} alignItems='center'>
+                  <CircularProgress size={24} />
+                  <Typography variant='body2' color='text.secondary'>Loading purchase orders…</Typography>
+                </Stack>
+              ) : purchaseOrders.length === 0 ? (
+                <Stack spacing={2} alignItems='flex-start'>
+                  <Typography variant='body2' color='text.secondary'>
+                    No purchase orders have been raised for this service yet.
+                  </Typography>
+                  <Button
+                    size='small'
+                    startIcon={<AddCircleOutlineIcon />}
+                    onClick={openPurchaseOrderModal}
+                    disabled={!service?.id}
+                  >
+                    Create the first purchase order
+                  </Button>
+                </Stack>
+              ) : (
+                <TableContainer component={Paper} variant='outlined'>
+                  <Table size='small'>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Voucher</TableCell>
+                        <TableCell>Date</TableCell>
+                        <TableCell>Supplier</TableCell>
+                        <TableCell>Buyer</TableCell>
+                        <TableCell align='right'>Total</TableCell>
+                        <TableCell align='right'>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {purchaseOrders.map((row) => (
+                        <TableRow key={row.id} hover>
+                          <TableCell>
+                            <Stack spacing={0.5}>
+                              <Typography variant='body2' fontWeight={600}>
+                                {row.voucherNumber || `PO-${row.id}`}
+                              </Typography>
+                              {row.serviceWan && (
+                                <Typography variant='caption' color='text.secondary'>
+                                  {row.serviceWan}
+                                </Typography>
+                              )}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2'>{formatDate(row.date)}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Stack spacing={0.5}>
+                              <Typography variant='body2'>{row.supplierName || '—'}</Typography>
+                              {row.supplierEmail && (
+                                <Typography variant='caption' color='text.secondary'>
+                                  {row.supplierEmail}
+                                </Typography>
+                              )}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2'>{row.buyerName || '—'}</Typography>
+                          </TableCell>
+                          <TableCell align='right'>
+                            <Typography variant='body2' fontWeight={600}>{fmtINR(row.grandTotal)}</Typography>
+                          </TableCell>
+                          <TableCell align='right'>
+                            <Stack direction='row' spacing={1} justifyContent='flex-end'>
+                              <Tooltip title='View details'>
+                                <span>
+                                  <IconButton size='small' onClick={() => handlePoView(row.id)}>
+                                    <OpenInNewIcon fontSize='small' />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title='Download PDF'>
+                                <span>
+                                  <IconButton size='small' onClick={() => handlePoDownload(row.id)}>
+                                    <FileDown size={18} />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title='Send to supplier'>
+                                <span>
+                                  <IconButton size='small' onClick={() => handlePoSendOpen(row)}>
+                                    <Send size={18} />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </CardContent>
+          </Card>
+
           {(workOrder || progress.length > 0) && (
             <Card>
               <CardHeader
@@ -937,6 +1474,583 @@ export default function ServiceDetail () {
           </Card>
         </Stack>
       </Container>
+
+      <Dialog open={poModal.open} onClose={closePurchaseOrderModal} maxWidth='lg' fullWidth>
+        <DialogTitle>New purchase order</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <Autocomplete
+              options={poSuggestions}
+              getOptionLabel={(option) => {
+                const header = option?.header || option
+                const voucher = header?.voucherNumber || (header?.id ? `PO-${header.id}` : '')
+                const supplier = option?.supplier?.name || header?.supplierName || ''
+                return [voucher, supplier].filter(Boolean).join(' • ') || 'Previous purchase order'
+              }}
+              onInputChange={(_, value) => setPoSuggestionQuery(value)}
+              onChange={handlePoTemplateSelect}
+              isOptionEqualToValue={(option, value) => (option?.header?.id || option?.id) === (value?.header?.id || value?.id)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label='Reuse a previous purchase order'
+                  placeholder='Search by supplier, voucher, or destination'
+                />
+              )}
+            />
+
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  label='Voucher number'
+                  value={poForm.voucherNumber}
+                  onChange={(event) => handlePoFormChange('voucherNumber', event.target.value)}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  type='date'
+                  label='Order date'
+                  InputLabelProps={{ shrink: true }}
+                  value={poForm.date || isoDate()}
+                  onChange={(event) => handlePoFormChange('date', event.target.value)}
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
+
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Paper variant='outlined' sx={{ p: 2 }}>
+                  <Stack spacing={2}>
+                    <Typography variant='subtitle2'>Invoice To (Buyer)</Typography>
+                    <TextField
+                      label='Company name'
+                      value={poForm.buyer?.name || ''}
+                      onChange={(event) => handlePoFormChange('buyer.name', event.target.value)}
+                      fullWidth
+                    />
+                    <TextField
+                      label='Address'
+                      value={poForm.buyer?.address || ''}
+                      onChange={(event) => handlePoFormChange('buyer.address', event.target.value)}
+                      multiline
+                      minRows={2}
+                      fullWidth
+                    />
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label='Phone / Cell'
+                          value={poForm.buyer?.phone || ''}
+                          onChange={(event) => handlePoFormChange('buyer.phone', event.target.value)}
+                          fullWidth
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label='GSTIN / UIN'
+                          value={poForm.buyer?.gstin || ''}
+                          onChange={(event) => handlePoFormChange('buyer.gstin', event.target.value)}
+                          fullWidth
+                        />
+                      </Grid>
+                    </Grid>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label='State name'
+                          value={poForm.buyer?.stateName || ''}
+                          onChange={(event) => handlePoFormChange('buyer.stateName', event.target.value)}
+                          fullWidth
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label='State code'
+                          value={poForm.buyer?.stateCode || ''}
+                          onChange={(event) => handlePoFormChange('buyer.stateCode', event.target.value)}
+                          fullWidth
+                        />
+                      </Grid>
+                    </Grid>
+                    <TextField
+                      label='Email'
+                      value={poForm.buyer?.email || ''}
+                      onChange={(event) => handlePoFormChange('buyer.email', event.target.value)}
+                      fullWidth
+                    />
+                    <TextField
+                      label='Website'
+                      value={poForm.buyer?.website || ''}
+                      onChange={(event) => handlePoFormChange('buyer.website', event.target.value)}
+                      fullWidth
+                    />
+                  </Stack>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Paper variant='outlined' sx={{ p: 2 }}>
+                  <Stack spacing={2}>
+                    <Typography variant='subtitle2'>Supplier (Bill From)</Typography>
+                    <TextField
+                      label='Supplier name'
+                      value={poForm.supplier?.name || ''}
+                      onChange={(event) => handlePoFormChange('supplier.name', event.target.value)}
+                      fullWidth
+                    />
+                    <TextField
+                      label='Address'
+                      value={poForm.supplier?.address || ''}
+                      onChange={(event) => handlePoFormChange('supplier.address', event.target.value)}
+                      multiline
+                      minRows={2}
+                      fullWidth
+                    />
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label='GSTIN / UIN'
+                          value={poForm.supplier?.gstin || ''}
+                          onChange={(event) => handlePoFormChange('supplier.gstin', event.target.value)}
+                          fullWidth
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label='State name'
+                          value={poForm.supplier?.stateName || ''}
+                          onChange={(event) => handlePoFormChange('supplier.stateName', event.target.value)}
+                          fullWidth
+                        />
+                      </Grid>
+                    </Grid>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label='State code'
+                          value={poForm.supplier?.stateCode || ''}
+                          onChange={(event) => handlePoFormChange('supplier.stateCode', event.target.value)}
+                          fullWidth
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          label='Email'
+                          value={poForm.supplier?.email || ''}
+                          onChange={(event) => handlePoFormChange('supplier.email', event.target.value)}
+                          fullWidth
+                        />
+                      </Grid>
+                    </Grid>
+                    <TextField
+                      label='WhatsApp number'
+                      value={poForm.supplier?.whatsapp || ''}
+                      onChange={(event) => handlePoFormChange('supplier.whatsapp', event.target.value)}
+                      fullWidth
+                    />
+                  </Stack>
+                </Paper>
+              </Grid>
+            </Grid>
+
+            <Paper variant='outlined' sx={{ p: 2 }}>
+              <Stack spacing={2}>
+                <Typography variant='subtitle2'>Order details</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label='Reference No. & Date'
+                      value={poForm.meta?.referenceNumberAndDate || ''}
+                      onChange={(event) => handlePoFormChange('meta.referenceNumberAndDate', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label='Mode / Terms of Payment'
+                      value={poForm.meta?.paymentTerms || ''}
+                      onChange={(event) => handlePoFormChange('meta.paymentTerms', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label='Dispatched through'
+                      value={poForm.meta?.dispatchedThrough || ''}
+                      onChange={(event) => handlePoFormChange('meta.dispatchedThrough', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label='Destination'
+                      value={poForm.meta?.destination || ''}
+                      onChange={(event) => handlePoFormChange('meta.destination', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label='Other references'
+                      value={poForm.meta?.otherReferences || ''}
+                      onChange={(event) => handlePoFormChange('meta.otherReferences', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      label='Terms of delivery'
+                      value={poForm.meta?.termsOfDelivery || ''}
+                      onChange={(event) => handlePoFormChange('meta.termsOfDelivery', event.target.value)}
+                      fullWidth
+                    />
+                  </Grid>
+                </Grid>
+              </Stack>
+            </Paper>
+
+            <Stack spacing={2}>
+              <Stack direction='row' justifyContent='space-between' alignItems='center'>
+                <Typography variant='subtitle2'>Line items</Typography>
+                <Button startIcon={<AddCircleOutlineIcon />} onClick={handlePoAddItem}>
+                  Add item
+                </Button>
+              </Stack>
+              <TableContainer component={Paper} variant='outlined'>
+                <Table size='small'>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Sl No.</TableCell>
+                      <TableCell>Description of goods</TableCell>
+                      <TableCell align='right'>Quantity</TableCell>
+                      <TableCell align='right'>Unit</TableCell>
+                      <TableCell align='right'>Rate (₹)</TableCell>
+                      <TableCell align='right'>Amount (₹)</TableCell>
+                      <TableCell align='center'>Remove</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {poItems.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7}>
+                          <Typography variant='body2' color='text.secondary' align='center'>
+                            Add at least one item for the purchase order.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      poItems.map((item, index) => (
+                        <TableRow key={item.key || index}>
+                          <TableCell>{index + 1}</TableCell>
+                          <TableCell sx={{ minWidth: 220 }}>
+                            <TextField
+                              value={item.description}
+                              onChange={(event) => handlePoItemChange(index, 'description', event.target.value)}
+                              multiline
+                              minRows={2}
+                              fullWidth
+                            />
+                          </TableCell>
+                          <TableCell align='right' sx={{ width: 110 }}>
+                            <TextField
+                              type='number'
+                              value={item.quantity}
+                              onChange={(event) => handlePoItemChange(index, 'quantity', event.target.value)}
+                              inputProps={{ step: '0.01', min: 0 }}
+                              fullWidth
+                            />
+                          </TableCell>
+                          <TableCell align='right' sx={{ width: 110 }}>
+                            <TextField
+                              value={item.unit}
+                              onChange={(event) => handlePoItemChange(index, 'unit', event.target.value)}
+                              fullWidth
+                            />
+                          </TableCell>
+                          <TableCell align='right' sx={{ width: 140 }}>
+                            <TextField
+                              type='number'
+                              value={item.rate}
+                              onChange={(event) => handlePoItemChange(index, 'rate', event.target.value)}
+                              inputProps={{ step: '0.01', min: 0 }}
+                              fullWidth
+                            />
+                          </TableCell>
+                          <TableCell align='right' sx={{ width: 140 }}>
+                            <TextField
+                              type='number'
+                              value={item.amount}
+                              onChange={(event) => handlePoItemChange(index, 'amount', event.target.value)}
+                              inputProps={{ step: '0.01', min: 0 }}
+                              fullWidth
+                            />
+                          </TableCell>
+                          <TableCell align='center' sx={{ width: 80 }}>
+                            <Tooltip title='Remove item'>
+                              <span>
+                                <IconButton size='small' color='error' onClick={() => handlePoRemoveItem(index)}>
+                                  <DeleteOutlineIcon fontSize='small' />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Stack>
+
+            <Grid container spacing={3} alignItems='flex-start'>
+              <Grid item xs={12} md={6}>
+                <Stack spacing={2}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        type='number'
+                        label='CGST %'
+                        value={poForm.totals?.cgstRate ?? ''}
+                        onChange={(event) => handlePoFormChange('totals.cgstRate', event.target.value)}
+                        inputProps={{ step: '0.01', min: 0 }}
+                        fullWidth
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        type='number'
+                        label='SGST %'
+                        value={poForm.totals?.sgstRate ?? ''}
+                        onChange={(event) => handlePoFormChange('totals.sgstRate', event.target.value)}
+                        inputProps={{ step: '0.01', min: 0 }}
+                        fullWidth
+                      />
+                    </Grid>
+                  </Grid>
+                  <TextField
+                    label='Amount in words'
+                    value={poForm.amountInWords}
+                    onChange={(event) => handlePoFormChange('amountInWords', event.target.value)}
+                    multiline
+                    minRows={2}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Company's PAN"
+                    value={poForm.companyPan}
+                    onChange={(event) => handlePoFormChange('companyPan', event.target.value)}
+                    fullWidth
+                  />
+                </Stack>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Paper variant='outlined' sx={{ p: 2 }}>
+                  <Stack spacing={1.25}>
+                    <Stack direction='row' justifyContent='space-between'>
+                      <Typography variant='body2'>Subtotal</Typography>
+                      <Typography variant='body2' fontWeight={600}>{fmtINR(poSummary.subTotal)}</Typography>
+                    </Stack>
+                    <Stack direction='row' justifyContent='space-between'>
+                      <Typography variant='body2'>CGST {poSummary.cgstRate}%</Typography>
+                      <Typography variant='body2' fontWeight={600}>{fmtINR(poSummary.cgstAmount)}</Typography>
+                    </Stack>
+                    <Stack direction='row' justifyContent='space-between'>
+                      <Typography variant='body2'>SGST {poSummary.sgstRate}%</Typography>
+                      <Typography variant='body2' fontWeight={600}>{fmtINR(poSummary.sgstAmount)}</Typography>
+                    </Stack>
+                    <Divider sx={{ my: 1 }} />
+                    <Stack direction='row' justifyContent='space-between' alignItems='center'>
+                      <Typography variant='subtitle1' fontWeight={700}>Grand total</Typography>
+                      <Typography variant='h6' fontWeight={700}>{fmtINR(poSummary.grandTotal)}</Typography>
+                    </Stack>
+                  </Stack>
+                </Paper>
+              </Grid>
+            </Grid>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePurchaseOrderModal} color='inherit'>Cancel</Button>
+          <Button onClick={handlePoSubmit} variant='contained' disabled={createPoState.isLoading}>
+            {createPoState.isLoading ? 'Creating…' : 'Create purchase order'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={poDetailOpen} onClose={closePoDetail} maxWidth='md' fullWidth>
+        <DialogTitle>Purchase order details</DialogTitle>
+        <DialogContent dividers>
+          {!selectedPoDetail ? (
+            <Stack alignItems='center' justifyContent='center' sx={{ py: 6 }}>
+              <CircularProgress />
+            </Stack>
+          ) : (
+            <Stack spacing={3}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6}>
+                  <Stack spacing={1}>
+                    <Typography variant='subtitle2'>Voucher</Typography>
+                    <Typography variant='body1' fontWeight={600}>
+                      {selectedPoDetail.header?.voucherNumber || `PO-${selectedPoDetail.header?.id}`}
+                    </Typography>
+                    <Typography variant='body2' color='text.secondary'>
+                      Date: {formatDate(selectedPoDetail.header?.date)}
+                    </Typography>
+                  </Stack>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Stack spacing={1}>
+                    <Typography variant='subtitle2'>Supplier</Typography>
+                    <Typography variant='body1'>{selectedPoDetail.supplier?.name || '—'}</Typography>
+                    <Typography variant='body2' color='text.secondary'>
+                      {selectedPoDetail.supplier?.address || '—'}
+                    </Typography>
+                    {(selectedPoDetail.supplier?.gstin || selectedPoDetail.supplier?.stateName) && (
+                      <Typography variant='body2' color='text.secondary'>
+                        GSTIN: {selectedPoDetail.supplier?.gstin || '—'} • State: {selectedPoDetail.supplier?.stateName || '—'}
+                      </Typography>
+                    )}
+                  </Stack>
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Paper variant='outlined' sx={{ p: 2 }}>
+                    <Typography variant='subtitle2' gutterBottom>Invoice To</Typography>
+                    <Typography variant='body2' fontWeight={600}>{selectedPoDetail.buyer?.name || '—'}</Typography>
+                    <Typography variant='body2' color='text.secondary'>{selectedPoDetail.buyer?.address || '—'}</Typography>
+                    <Typography variant='caption' color='text.secondary'>
+                      GSTIN: {selectedPoDetail.buyer?.gstin || '—'}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Paper variant='outlined' sx={{ p: 2 }}>
+                    <Typography variant='subtitle2' gutterBottom>Supplier</Typography>
+                    <Typography variant='body2' fontWeight={600}>{selectedPoDetail.supplier?.name || '—'}</Typography>
+                    <Typography variant='body2' color='text.secondary'>{selectedPoDetail.supplier?.address || '—'}</Typography>
+                    <Typography variant='caption' color='text.secondary'>
+                      GSTIN: {selectedPoDetail.supplier?.gstin || '—'}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              <TableContainer component={Paper} variant='outlined'>
+                <Table size='small'>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Sl No.</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell align='right'>Quantity</TableCell>
+                      <TableCell align='right'>Unit</TableCell>
+                      <TableCell align='right'>Rate (₹)</TableCell>
+                      <TableCell align='right'>Amount (₹)</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(selectedPoDetail.items || []).map((item, index) => (
+                      <TableRow key={`${item.description}-${index}`}>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>{item.description || '—'}</TableCell>
+                        <TableCell align='right'>{item.quantity ?? '—'}</TableCell>
+                        <TableCell align='right'>{item.unit || '—'}</TableCell>
+                        <TableCell align='right'>{fmtINR(item.rate)}</TableCell>
+                        <TableCell align='right'>{fmtINR(item.amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Paper variant='outlined' sx={{ p: 2, alignSelf: 'flex-end', width: { xs: '100%', sm: 360 } }}>
+                <Stack spacing={1.25}>
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='body2'>Subtotal</Typography>
+                    <Typography variant='body2' fontWeight={600}>{fmtINR(selectedPoDetail.totals?.subTotal)}</Typography>
+                  </Stack>
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='body2'>CGST {selectedPoDetail.totals?.cgstRate ?? 0}%</Typography>
+                    <Typography variant='body2' fontWeight={600}>{fmtINR(selectedPoDetail.totals?.cgstAmount)}</Typography>
+                  </Stack>
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='body2'>SGST {selectedPoDetail.totals?.sgstRate ?? 0}%</Typography>
+                    <Typography variant='body2' fontWeight={600}>{fmtINR(selectedPoDetail.totals?.sgstAmount)}</Typography>
+                  </Stack>
+                  <Divider sx={{ my: 1 }} />
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='subtitle1' fontWeight={700}>Grand total</Typography>
+                    <Typography variant='subtitle1' fontWeight={700}>{fmtINR(selectedPoDetail.totals?.grandTotal)}</Typography>
+                  </Stack>
+                  {selectedPoDetail.amountInWords && (
+                    <Typography variant='caption' color='text.secondary'>
+                      Amount chargeable in words: {selectedPoDetail.amountInWords}
+                    </Typography>
+                  )}
+                </Stack>
+              </Paper>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePoDetail} color='inherit'>Close</Button>
+          {selectedPoDetail?.header?.id && (
+            <Button
+              onClick={() => handlePoSendOpen({
+                id: selectedPoDetail.header.id,
+                supplierEmail: selectedPoDetail.header.supplierEmail,
+                supplierWhatsapp: selectedPoDetail.header.supplierWhatsapp
+              })}
+              startIcon={<Send size={18} />}
+            >
+              Send
+            </Button>
+          )}
+          {selectedPoDetail?.header?.id && (
+            <Button
+              variant='contained'
+              startIcon={<FileDown size={18} />}
+              onClick={() => handlePoDownload(selectedPoDetail.header.id)}
+            >
+              Download PDF
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={poSendModal.open} onClose={closePoSendModal} maxWidth='xs' fullWidth>
+        <DialogTitle>Send purchase order</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <FormControl component='fieldset'>
+              <FormLabel component='legend'>Delivery method</FormLabel>
+              <RadioGroup
+                row
+                value={poSendModal.method}
+                onChange={(_, value) => setPoSendModal((prev) => ({ ...prev, method: value }))}
+              >
+                <FormControlLabel value='email' control={<Radio />} label='Email' />
+                <FormControlLabel value='whatsapp' control={<Radio />} label='WhatsApp' />
+              </RadioGroup>
+            </FormControl>
+            <TextField
+              label={poSendModal.method === 'email' ? 'Supplier email' : 'Supplier WhatsApp number'}
+              value={poSendModal.contact}
+              onChange={(event) => setPoSendModal((prev) => ({ ...prev, contact: event.target.value }))}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePoSendModal} color='inherit'>Cancel</Button>
+          <Button onClick={handlePoSendSubmit} variant='contained' disabled={sendPoState.isLoading}>
+            {sendPoState.isLoading ? 'Sending…' : 'Send purchase order'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={modal.open} onClose={closeModal} maxWidth='sm' fullWidth>
         <DialogTitle>Send document</DialogTitle>

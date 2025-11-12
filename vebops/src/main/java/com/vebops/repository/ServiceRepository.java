@@ -40,4 +40,6 @@ public interface ServiceRepository extends JpaRepository<Service, Long> {
      * order) without issuing broad LIKE queries on the meta JSON column.
      */
     java.util.List<Service> findTop50ByTenantIdOrderByCreatedAtDesc(Long tenantId);
+
+    java.util.Optional<Service> findByTenantIdAndId(Long tenantId, Long id);
 }
