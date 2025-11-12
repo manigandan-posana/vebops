@@ -29,6 +29,9 @@ import TaskAltRoundedIcon from '@mui/icons-material/TaskAltRounded'
 import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded'
 import AssignmentRoundedIcon from '@mui/icons-material/AssignmentRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
+import StorefrontRoundedIcon from '@mui/icons-material/StorefrontRounded'
+import LocalShippingRoundedIcon from '@mui/icons-material/LocalShippingRounded'
+import Inventory2RoundedIcon from '@mui/icons-material/Inventory2Rounded'
 import {
   usePostProgressMutation,
   useLazyGetCompletionReportPdfQuery,
@@ -74,6 +77,40 @@ export default function JobDetail () {
   const srDescription = [serviceInfo?.description, sr?.description]
     .map((val) => (typeof val === 'string' ? val.trim() : ''))
     .find((val) => val) || ''
+  const buyer = serviceInfo?.buyer || {}
+  const consignee = serviceInfo?.consignee || {}
+  const kit = serviceInfo?.kit || {}
+  const kitComponents = Array.isArray(kit?.components) ? kit.components : []
+  const serviceDocId = serviceInfo?.serviceId
+  const rawCustomerPo = serviceInfo?.customerPoNumber || po?.poNumber || ''
+  const hasValue = (value) => {
+    if (value === null || value === undefined) return false
+    if (typeof value === 'string') return value.trim().length > 0
+    return true
+  }
+  const joinParts = (parts = [], separator = ', ') =>
+    parts
+      .filter((part) => hasValue(part))
+      .map((part) => (typeof part === 'string' ? part.trim() : String(part)))
+      .filter((part) => part.length > 0)
+      .join(separator)
+  const formatQty = (value) => {
+    if (value === null || value === undefined) return '—'
+    const num = Number(value)
+    if (Number.isFinite(num)) {
+      if (Math.abs(num - Math.round(num)) < 0.001) return String(Math.round(num))
+      return num.toFixed(2).replace(/\.00$/, '')
+    }
+    if (typeof value === 'string') return value.trim() || '—'
+    return String(value)
+  }
+  const hasBuyerDetails = [buyer.name, buyer.gst, buyer.address, buyer.pin, buyer.state, buyer.contact, buyer.email].some(hasValue)
+  const hasConsigneeDetails = [consignee.name, consignee.gst, consignee.address, consignee.pin, consignee.state].some(hasValue)
+  const hasKitSummary = hasValue(kit.name) || hasValue(kit.code) || kitComponents.length > 0
+  const customerPoValue = hasValue(rawCustomerPo)
+    ? (typeof rawCustomerPo === 'string' ? rawCustomerPo.trim() : String(rawCustomerPo))
+    : '—'
+  const serviceDocValue = hasValue(serviceDocId) ? `#${serviceDocId}` : '—'
 
   const [status, setStatus] = useState(STEPS[0].value)
   const [remarks, setRemarks] = useState('')
@@ -174,7 +211,10 @@ export default function JobDetail () {
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
-              <Info label='Customer PO' value={po?.poNumber || '—'} />
+              <Info label='Customer PO' value={customerPoValue} />
+            </Grid>
+            <Grid item xs={12} sm={6} md={4}>
+              <Info label='Service Document' value={serviceDocValue} />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
               <Info label='Service Request' value={sr?.srn || '—'} />
@@ -210,6 +250,96 @@ export default function JobDetail () {
                 <Info label='Job Description' value={srDescription} multiline />
               </Grid>
             ) : null}
+            {hasBuyerDetails && (
+              <Grid item xs={12} md={6}>
+                <Box
+                  sx={{
+                    borderRadius: 2,
+                    border: (theme) => `1px solid ${theme.palette.divider}`,
+                    p: 2
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Stack direction='row' spacing={1} alignItems='center'>
+                      <StorefrontRoundedIcon color='primary' fontSize='small' />
+                      <Typography variant='subtitle2'>Buyer (Bill To)</Typography>
+                    </Stack>
+                    <Stack spacing={0.5}>
+                      <Typography variant='body2' fontWeight={600}>
+                        {hasValue(buyer.name) ? buyer.name : '—'}
+                      </Typography>
+                      {hasValue(buyer.gst) ? (
+                        <Typography variant='caption' color='text.secondary'>
+                          GSTIN: {buyer.gst}
+                        </Typography>
+                      ) : null}
+                      {hasValue(buyer.contact) || hasValue(buyer.email) ? (
+                        <Stack spacing={0.25}>
+                          {hasValue(buyer.contact) ? (
+                            <Typography variant='caption' color='text.secondary'>
+                              Contact: {buyer.contact}
+                            </Typography>
+                          ) : null}
+                          {hasValue(buyer.email) ? (
+                            <Typography variant='caption' color='text.secondary'>
+                              Email: {buyer.email}
+                            </Typography>
+                          ) : null}
+                        </Stack>
+                      ) : null}
+                      {hasValue(buyer.address) ? (
+                        <Typography variant='body2' color='text.secondary'>
+                          {buyer.address}
+                        </Typography>
+                      ) : null}
+                      {hasValue(buyer.pin) || hasValue(buyer.state) ? (
+                        <Typography variant='caption' color='text.secondary'>
+                        {joinParts([buyer.pin, buyer.state])}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </Stack>
+                </Box>
+              </Grid>
+            )}
+            {hasConsigneeDetails && (
+              <Grid item xs={12} md={6}>
+                <Box
+                  sx={{
+                    borderRadius: 2,
+                    border: (theme) => `1px solid ${theme.palette.divider}`,
+                    p: 2
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Stack direction='row' spacing={1} alignItems='center'>
+                      <LocalShippingRoundedIcon color='primary' fontSize='small' />
+                      <Typography variant='subtitle2'>Consignee (Ship To)</Typography>
+                    </Stack>
+                    <Stack spacing={0.5}>
+                      <Typography variant='body2' fontWeight={600}>
+                        {hasValue(consignee.name) ? consignee.name : '—'}
+                      </Typography>
+                      {hasValue(consignee.gst) ? (
+                        <Typography variant='caption' color='text.secondary'>
+                          GSTIN: {consignee.gst}
+                        </Typography>
+                      ) : null}
+                      {hasValue(consignee.address) ? (
+                        <Typography variant='body2' color='text.secondary'>
+                          {consignee.address}
+                        </Typography>
+                      ) : null}
+                      {hasValue(consignee.pin) || hasValue(consignee.state) ? (
+                        <Typography variant='caption' color='text.secondary'>
+                        {joinParts([consignee.pin, consignee.state])}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                  </Stack>
+                </Box>
+              </Grid>
+            )}
           </Grid>
 
           {instruction ? (
@@ -231,6 +361,60 @@ export default function JobDetail () {
             <Typography variant='subtitle2' color='text.secondary'>
               Items / Kits
             </Typography>
+            {hasKitSummary ? (
+              <Box
+                sx={{
+                  borderRadius: 2,
+                  border: (theme) => `1px dashed ${theme.palette.divider}`,
+                  p: 2
+                }}
+              >
+                <Stack spacing={1}>
+                  <Stack direction='row' spacing={1} alignItems='center'>
+                    <Inventory2RoundedIcon color='primary' fontSize='small' />
+                    <Typography variant='subtitle2'>Kit overview</Typography>
+                  </Stack>
+                  <Stack spacing={0.25}>
+                    <Typography variant='body2' fontWeight={600}>
+                      {hasValue(kit.name) ? kit.name : '—'}
+                    </Typography>
+                    {hasValue(kit.code) || hasValue(kit.description) ? (
+                      <Typography variant='caption' color='text.secondary'>
+                        {joinParts([kit.code, kit.description], ' • ')}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                  {hasValue(kit.brand) || hasValue(kit.category) || hasValue(kit.material) || hasValue(kit.voltage) || hasValue(kit.cores) ? (
+                    <Typography variant='caption' color='text.secondary'>
+                      {joinParts([kit.brand, kit.category, kit.material, kit.voltage, kit.cores], ' • ')}
+                    </Typography>
+                  ) : null}
+                  {hasValue(kit.hsn) || hasValue(kit.price) ? (
+                    <Typography variant='caption' color='text.secondary'>
+                      {joinParts([
+                        hasValue(kit.hsn) ? `HSN: ${kit.hsn}` : null,
+                        hasValue(kit.price) ? `Price: ₹${formatQty(kit.price)}` : null
+                      ], ' • ')}
+                    </Typography>
+                  ) : null}
+                  {kitComponents.length > 0 ? (
+                    <Stack spacing={0.25} sx={{ mt: 0.5 }}>
+                      {kitComponents.map((component, index) => {
+                        const label = joinParts([component.name, component.code], ' • ') || 'Component'
+                        const quantity = formatQty(component.qty)
+                        const uom = hasValue(component.uom) ? component.uom : ''
+                        const key = component.itemId || component.code || component.name || `kit-${index}`
+                        return (
+                          <Typography key={key} variant='caption' color='text.secondary'>
+                            • {label} — {quantity}{uom ? ` ${uom}` : ''}
+                          </Typography>
+                        )
+                      })}
+                    </Stack>
+                  ) : null}
+                </Stack>
+              </Box>
+            ) : null}
             {items.length === 0 ? (
               <Typography variant='body2' color='text.secondary'>
                 No items assigned.

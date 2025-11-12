@@ -124,7 +124,7 @@ export const customerApi = baseApi.injectEndpoints({
       async queryFn ({ id, filename }, _api, _extra, baseQuery) {
         if (!id) return { error: { status: 0, data: { message: 'id is required' } } }
         const res = await baseQuery({
-          url: `/customer/proposals/${id}/pdf/latest`, // ✅ singular `/customer`
+          url: `/customers/proposals/${id}/pdf/latest`,
           method: 'GET',
           responseHandler: (r) => r.blob(),
           headers: { Accept: 'application/pdf' }

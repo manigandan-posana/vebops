@@ -11,17 +11,22 @@ import org.springframework.stereotype.Service;
 
 import com.vebops.context.TenantContext;
 import com.vebops.domain.FieldEngineer;
+import com.vebops.domain.KitItem;
+import com.vebops.domain.Service;
+import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderProgress;
 import com.vebops.dto.ProgressRequest;
 import com.vebops.exception.BusinessException;
 import com.vebops.exception.NotFoundException;
 import com.vebops.repository.FieldEngineerRepository;
+import com.vebops.repository.KitItemRepository;
 import com.vebops.repository.WorkOrderAssignmentRepository;
 import com.vebops.repository.WorkOrderItemRepository;
 import com.vebops.repository.WorkOrderProgressRepository;
 import com.vebops.repository.WorkOrderQueryRepository;
 import com.vebops.repository.WorkOrderRepository;
+import com.vebops.repository.ServiceRepository;
 import com.vebops.util.PdfUtil;
 
 /**
@@ -38,6 +43,8 @@ public class FeService {
     private final WorkOrderItemRepository woItemRepo;
     private final WorkOrderAssignmentRepository woAssignRepo;
     private final FieldEngineerRepository feRepo;
+    private final ServiceRepository serviceRepo;
+    private final KitItemRepository kitItemRepo;
 
     public FeService(WorkOrderService workOrders,
                      WorkOrderQueryRepository woQuery,
@@ -45,7 +52,9 @@ public class FeService {
                      WorkOrderProgressRepository woProgressRepo,
                      WorkOrderItemRepository woItemRepo,
                      WorkOrderAssignmentRepository woAssignRepo,
-                     FieldEngineerRepository feRepo) {
+                     FieldEngineerRepository feRepo,
+                     ServiceRepository serviceRepo,
+                     KitItemRepository kitItemRepo) {
         this.workOrders = workOrders;
         this.woQuery = woQuery;
         this.woRepo = woRepo;
@@ -53,6 +62,8 @@ public class FeService {
         this.woItemRepo = woItemRepo;
         this.woAssignRepo = woAssignRepo;
         this.feRepo = feRepo;
+        this.serviceRepo = serviceRepo;
+        this.kitItemRepo = kitItemRepo;
     }
 
     private Long tenant() { return TenantContext.getTenantId(); }
@@ -181,47 +192,67 @@ public class FeService {
             ));
         });
 
-        ServiceSummary summary = null;
-        if (wo.getServiceRequest() != null) {
-            var sr = wo.getServiceRequest();
+        ServiceRequest sr = wo.getServiceRequest();
+        Long srId = null;
+        String srn = null;
+        String serviceType = null;
+        String description = null;
+        String siteAddress = null;
+        String customerName = null;
+        String customerEmail = null;
+        String customerMobile = null;
+        String customerAddress = null;
+        if (sr != null) {
             sr.getServiceType();
             sr.getSrn();
             sr.getDescription();
             sr.getSiteAddress();
-            String serviceType = sr.getServiceType() != null ? sr.getServiceType().name() : null;
-            String srn = sr.getSrn();
-            String description = sr.getDescription();
-            String siteAddress = sr.getSiteAddress();
-            String customerName = null;
-            String customerEmail = null;
-            String customerMobile = null;
-            String customerAddress = null;
+            srId = sr.getId();
+            serviceType = sr.getServiceType() != null ? sr.getServiceType().name() : null;
+            srn = sr.getSrn();
+            description = sr.getDescription();
+            siteAddress = trimToNull(sr.getSiteAddress());
             if (sr.getCustomer() != null) {
                 sr.getCustomer().getName();
                 sr.getCustomer().getEmail();
                 sr.getCustomer().getMobile();
                 sr.getCustomer().getAddress();
-                customerName = sr.getCustomer().getName();
-                customerEmail = sr.getCustomer().getEmail();
-                customerMobile = sr.getCustomer().getMobile();
-                customerAddress = sr.getCustomer().getAddress();
+                customerName = trimToNull(sr.getCustomer().getName());
+                customerEmail = trimToNull(sr.getCustomer().getEmail());
+                customerMobile = trimToNull(sr.getCustomer().getMobile());
+                customerAddress = trimToNull(sr.getCustomer().getAddress());
+                if (siteAddress == null) {
+                    siteAddress = customerAddress;
+                }
             }
-            summary = new ServiceSummary(
-                sr.getId(),
-                srn,
-                serviceType,
-                description,
-                siteAddress,
-                customerName,
-                customerEmail,
-                customerMobile,
-                customerAddress
-            );
         }
 
-        if (wo.getCustomerPO() != null) {
-            wo.getCustomerPO().getPoNumber();
+        Service linkedService = resolveLinkedService(tid, srId, wo.getId());
+        BuyerSummary buyerSummary = deriveBuyerSummary(sr, linkedService);
+        ConsigneeSummary consigneeSummary = deriveConsigneeSummary(linkedService);
+        if (siteAddress == null && linkedService != null) {
+            siteAddress = trimToNull(linkedService.getConsigneeAddress());
         }
+        KitSummary kitSummary = deriveKitSummary(tid, sr);
+        String customerPoNumber = wo.getCustomerPO() != null ? trimToNull(wo.getCustomerPO().getPoNumber()) : null;
+        Long serviceId = linkedService != null ? linkedService.getId() : null;
+
+        ServiceSummary summary = new ServiceSummary(
+            srId,
+            srn,
+            serviceType,
+            description,
+            siteAddress,
+            customerName,
+            customerEmail,
+            customerMobile,
+            customerAddress,
+            buyerSummary,
+            consigneeSummary,
+            kitSummary,
+            customerPoNumber,
+            serviceId
+        );
 
         List<WorkOrderProgress> progress = woProgressRepo.findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, woId);
         List<ProgressEntry> progressEntries = new ArrayList<>(progress.size());
@@ -262,6 +293,176 @@ public class FeService {
         ));
     }
 
+    private BuyerSummary deriveBuyerSummary(ServiceRequest sr, Service svc) {
+        if (svc != null) {
+            String name = trimToNull(svc.getBuyerName());
+            String gst = trimToNull(svc.getBuyerGst());
+            String address = trimToNull(svc.getBuyerAddress());
+            String pin = trimToNull(svc.getBuyerPin());
+            String state = trimToNull(svc.getBuyerState());
+            String contact = trimToNull(svc.getBuyerContact());
+            String email = trimToNull(svc.getBuyerEmail());
+            if (hasText(name) || hasText(gst) || hasText(address) || hasText(pin) || hasText(state) || hasText(contact) || hasText(email)) {
+                return new BuyerSummary(name, gst, address, pin, state, contact, email);
+            }
+        }
+        if (sr != null && sr.getCustomer() != null) {
+            var customer = sr.getCustomer();
+            customer.getName();
+            customer.getEmail();
+            customer.getMobile();
+            customer.getAddress();
+            String name = trimToNull(customer.getName());
+            String address = trimToNull(customer.getAddress());
+            String contact = trimToNull(customer.getMobile());
+            String email = trimToNull(customer.getEmail());
+            if (hasText(name) || hasText(address) || hasText(contact) || hasText(email)) {
+                return new BuyerSummary(name, null, address, null, null, contact, email);
+            }
+        }
+        return null;
+    }
+
+    private ConsigneeSummary deriveConsigneeSummary(Service svc) {
+        if (svc == null) {
+            return null;
+        }
+        String name = trimToNull(svc.getConsigneeName());
+        String gst = trimToNull(svc.getConsigneeGst());
+        String address = trimToNull(svc.getConsigneeAddress());
+        String pin = trimToNull(svc.getConsigneePin());
+        String state = trimToNull(svc.getConsigneeState());
+        if (hasText(name) || hasText(gst) || hasText(address) || hasText(pin) || hasText(state)) {
+            return new ConsigneeSummary(name, gst, address, pin, state);
+        }
+        return null;
+    }
+
+    private KitSummary deriveKitSummary(Long tenantId, ServiceRequest sr) {
+        if (sr == null || sr.getProposal() == null || sr.getProposal().getKit() == null) {
+            return null;
+        }
+        var proposal = sr.getProposal();
+        var kit = proposal.getKit();
+        if (kit == null) {
+            return null;
+        }
+        kit.getId();
+        kit.getName();
+        kit.getCode();
+        kit.getDescription();
+        kit.getHsnSac();
+        kit.getBrand();
+        kit.getVoltageKV();
+        kit.getCores();
+        kit.getSizeSqmm();
+        kit.getCategory();
+        kit.getMaterial();
+        kit.getPrice();
+
+        List<KitComponent> components = new ArrayList<>();
+        if (kit.getId() != null) {
+            List<KitItem> kitItems = kitItemRepo.findByTenantIdAndKit_Id(tenantId, kit.getId());
+            if (kitItems != null) {
+                for (KitItem ki : kitItems) {
+                    if (ki.getItem() != null) {
+                        ki.getItem().getId();
+                        ki.getItem().getCode();
+                        ki.getItem().getName();
+                        ki.getItem().getSpec();
+                        ki.getItem().getHsnSac();
+                        ki.getItem().getUom();
+                    }
+                    components.add(new KitComponent(
+                        ki.getItem() != null ? ki.getItem().getId() : null,
+                        ki.getItem() != null ? trimToNull(ki.getItem().getCode()) : null,
+                        ki.getItem() != null ? trimToNull(ki.getItem().getName()) : null,
+                        ki.getItem() != null ? trimToNull(ki.getItem().getSpec()) : null,
+                        ki.getItem() != null ? trimToNull(ki.getItem().getHsnSac()) : null,
+                        ki.getItem() != null ? trimToNull(ki.getItem().getUom()) : null,
+                        ki.getQty()
+                    ));
+                }
+            }
+        }
+        String kitName = trimToNull(kit.getName());
+        if (!hasText(kitName) && components.isEmpty()) {
+            return null;
+        }
+        return new KitSummary(
+            kit.getId(),
+            trimToNull(kit.getCode()),
+            kitName,
+            trimToNull(kit.getDescription()),
+            trimToNull(kit.getHsnSac()),
+            trimToNull(kit.getBrand()),
+            trimToNull(kit.getVoltageKV()),
+            trimToNull(kit.getCores()),
+            kit.getSizeSqmm(),
+            trimToNull(kit.getCategory()),
+            trimToNull(kit.getMaterial()),
+            kit.getPrice(),
+            components
+        );
+    }
+
+    private Service resolveLinkedService(Long tenantId, Long srId, Long woId) {
+        if (tenantId == null) {
+            return null;
+        }
+        List<Service> candidates = serviceRepo.findTop50ByTenantIdOrderByCreatedAtDesc(tenantId);
+        Service srMatch = null;
+        Service woMatch = null;
+        for (Service svc : candidates) {
+            if (svc == null) {
+                continue;
+            }
+            String meta = svc.getMetaJson();
+            String compact = meta != null ? meta.replaceAll("\\s+", "") : null;
+            boolean matchesSr = srId != null && metaContains(compact, srId, "serviceRequestId", "srId");
+            boolean matchesWo = woId != null && metaContains(compact, woId, "workOrderId", "woId");
+            if (matchesSr && matchesWo) {
+                return svc;
+            }
+            if (matchesSr && srMatch == null) {
+                srMatch = svc;
+            }
+            if (matchesWo && woMatch == null) {
+                woMatch = svc;
+            }
+        }
+        return srMatch != null ? srMatch : woMatch;
+    }
+
+    private boolean metaContains(String compactMeta, Long value, String... keys) {
+        if (compactMeta == null || value == null || keys == null || keys.length == 0) {
+            return false;
+        }
+        String str = value.toString();
+        for (String key : keys) {
+            if (key == null) {
+                continue;
+            }
+            String prefix = "\"" + key + "\":";
+            if (compactMeta.contains(prefix + str) || compactMeta.contains(prefix + "\"" + str + "\"")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
     public record FeWorkOrderDetail(WorkOrder workOrder,
                                     String instruction,
                                     List<FeWorkOrderItem> items,
@@ -285,7 +486,48 @@ public class FeService {
                                  String customerName,
                                  String customerEmail,
                                  String customerMobile,
-                                 String customerAddress) { }
+                                 String customerAddress,
+                                 BuyerSummary buyer,
+                                 ConsigneeSummary consignee,
+                                 KitSummary kit,
+                                 String customerPoNumber,
+                                 Long serviceId) { }
+
+    public record BuyerSummary(String name,
+                               String gst,
+                               String address,
+                               String pin,
+                               String state,
+                               String contact,
+                               String email) { }
+
+    public record ConsigneeSummary(String name,
+                                   String gst,
+                                   String address,
+                                   String pin,
+                                   String state) { }
+
+    public record KitSummary(Long id,
+                             String code,
+                             String name,
+                             String description,
+                             String hsn,
+                             String brand,
+                             String voltage,
+                             String cores,
+                             Integer sizeSqmm,
+                             String category,
+                             String material,
+                             java.math.BigDecimal price,
+                             List<KitComponent> components) { }
+
+    public record KitComponent(Long itemId,
+                               String code,
+                               String name,
+                               String spec,
+                               String hsn,
+                               String uom,
+                               java.math.BigDecimal qty) { }
 
     public record ProgressEntry(Long id,
                                 String status,
