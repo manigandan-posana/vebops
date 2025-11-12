@@ -56,8 +56,10 @@ import {
   useGetServiceQuery,
   useDownloadServiceInvoiceMutation,
   useSendServiceInvoiceMutation,
-  useShareServiceProposalMutation
+  useShareServiceProposalMutation,
+  useLazyGetWoProgressAttachmentQuery
 } from '../../features/office/officeApi'
+import { downloadBlob } from '../../utils/file'
 
 const parseJson = (value, fallback) => {
   if (!value) return fallback
@@ -150,14 +152,30 @@ export default function ServiceDetail () {
   const { data, isFetching, error } = useGetServiceQuery(id)
   const service = data?.service ?? data ?? {}
   const workOrder = data?.workOrder ?? null
+  const customerPo = workOrder?.customerPO ?? null
   const serviceRequest = data?.serviceRequest ?? null
   const progress = Array.isArray(data?.progress) ? data.progress : []
   const assignments = Array.isArray(data?.assignments) ? data.assignments : []
+  const progressSummary = data?.progressSummary || {}
   const [downloadInvoice] = useDownloadServiceInvoiceMutation()
   const [sendServiceInvoice, sendState] = useSendServiceInvoiceMutation()
   const [shareServiceProposal] = useShareServiceProposalMutation()
+  const [downloadProgressAttachment, { isFetching: isServiceAttachmentDownloading }] = useLazyGetWoProgressAttachmentQuery()
   const [modal, setModal] = useState({ open: false, serviceId: null, method: 'email', contact: '', docType: 'INVOICE' })
   const [sharingDocType, setSharingDocType] = useState(null)
+
+  const statusChip = useMemo(() => {
+    if (!workOrder?.status) return null
+    const label = String(workOrder.status).replace(/_/g, ' ').toLowerCase()
+    const text = label.replace(/(^|\s)\w/g, (m) => m.toUpperCase())
+    let color = 'default'
+    const upper = String(workOrder.status).toUpperCase()
+    if (upper === 'COMPLETED') color = 'success'
+    else if (upper === 'IN_PROGRESS') color = 'primary'
+    else if (upper === 'ASSIGNED') color = 'info'
+    else if (upper === 'ON_HOLD') color = 'error'
+    return <Chip label={text} size='small' color={color} variant={color === 'default' ? 'outlined' : 'filled'} />
+  }, [workOrder?.status])
 
   const openSendModal = (docType = 'INVOICE') => {
     const contact = service?.buyerContact || service?.buyerEmail || ''
@@ -187,6 +205,24 @@ export default function ServiceDetail () {
       closeModal()
     }
   }
+
+  const woId = workOrder?.id
+
+  const handleDownloadProgressAttachment = async (progressId, attachment) => {
+    if (!woId || !progressId || !attachment?.id) return
+    try {
+      const blob = await downloadProgressAttachment({ woId, progressId, attachmentId: attachment.id }).unwrap()
+      const filename = attachment.filename || `progress-photo-${attachment.id}`
+      downloadBlob(blob, filename)
+    } catch (err) {
+      toast.error(String(err?.data?.message || err?.error || 'Unable to download attachment'))
+    }
+  }
+
+  const summaryTotalUpdates = progressSummary?.totalUpdates ?? progress.length
+  const summaryPhotoCount = progressSummary?.photoCount ?? progress.reduce((sum, entry) => sum + (Array.isArray(entry.attachments) ? entry.attachments.length : 0), 0)
+  const summaryLastUpdated = progressSummary?.lastUpdatedAt ? formatDateTime(progressSummary.lastUpdatedAt) : (progress.length ? formatDateTime(progress[progress.length - 1]?.createdAt) : '—')
+  const summaryLastStatus = progressSummary?.lastStatus || (progress.length ? progress[progress.length - 1]?.status : null)
 
   const handleDownload = async (docType = 'INVOICE') => {
     if (!service?.id) return
@@ -366,19 +402,6 @@ export default function ServiceDetail () {
   }
 
   const totalTax = (cgstAmount ?? 0) + (sgstAmount ?? 0) + (igstAmount ?? 0)
-
-  const statusChip = useMemo(() => {
-    if (!workOrder?.status) return null
-    const label = String(workOrder.status).replace(/_/g, ' ').toLowerCase()
-    const text = label.replace(/(^|\s)\w/g, (m) => m.toUpperCase())
-    let color = 'default'
-    const upper = String(workOrder.status).toUpperCase()
-    if (upper === 'COMPLETED') color = 'success'
-    else if (upper === 'IN_PROGRESS') color = 'primary'
-    else if (upper === 'ASSIGNED') color = 'info'
-    else if (upper === 'ON_HOLD') color = 'error'
-    return <Chip label={text} size='small' color={color} variant={color === 'default' ? 'outlined' : 'filled'} />
-  }, [workOrder?.status])
 
   const progressStatusColor = (status) => {
     const upper = String(status || '').toUpperCase()
@@ -567,9 +590,30 @@ export default function ServiceDetail () {
                           <InfoRow label='Field Engineer' value={`${workOrder.assignedFE.name || '—'}${workOrder.assignedFE.id ? ` (ID ${workOrder.assignedFE.id})` : ''}`} />
                         </Grid>
                       )}
-                      {workOrder?.customerPO && (
+                      {customerPo && (
                         <Grid item xs={12} sm={6} md={3}>
-                          <InfoRow label='Customer PO' value={workOrder.customerPO.poNumber || '—'} />
+                          <InfoRow
+                            label='Customer PO'
+                            value={(
+                              <Stack spacing={1} alignItems='flex-start'>
+                                <Typography variant='body2' color='text.primary'>
+                                  {customerPo.poNumber || '—'}
+                                </Typography>
+                                {customerPo.fileUrl && (
+                                  <Button
+                                    size='small'
+                                    variant='outlined'
+                                    component='a'
+                                    href={customerPo.fileUrl}
+                                    target='_blank'
+                                    rel='noreferrer'
+                                  >
+                                    View PO
+                                  </Button>
+                                )}
+                              </Stack>
+                            )}
+                          />
                         </Grid>
                       )}
                     </>
@@ -698,7 +742,9 @@ export default function ServiceDetail () {
               <CardHeader
                 avatar={<HistoryRoundedIcon color='primary' />}
                 title='Progress updates'
-                subheader={workOrder ? 'Latest updates from the field team' : 'No linked work order was found'}
+                subheader={workOrder
+                  ? `Last update ${summaryLastUpdated} • ${summaryTotalUpdates} update${summaryTotalUpdates === 1 ? '' : 's'} • ${summaryPhotoCount} photo${summaryPhotoCount === 1 ? '' : 's'} • Latest status ${formatServiceType(summaryLastStatus)}`
+                  : 'No linked work order was found'}
               />
               <CardContent>
                 {progress.length === 0 ? (
@@ -738,9 +784,9 @@ export default function ServiceDetail () {
                             </Typography>
                           )}
                           <Stack direction='row' spacing={2} sx={{ mt: 1 }}>
-                            {entry.byFE?.name && (
+                            {(entry.byFE?.name || entry.byFE?.displayName) && (
                               <Typography variant='caption' color='text.secondary'>
-                                By {entry.byFE.name}{entry.byFE.id ? ` (ID ${entry.byFE.id})` : ''}
+                                By {(entry.byFE?.displayName || entry.byFE?.name)}{entry.byFE?.id ? ` (ID ${entry.byFE.id})` : ''}
                               </Typography>
                             )}
                             {entry.photoUrl && (
@@ -749,6 +795,21 @@ export default function ServiceDetail () {
                               </Link>
                             )}
                           </Stack>
+                          {Array.isArray(entry.attachments) && entry.attachments.length > 0 && (
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                              {entry.attachments.map((attachment) => (
+                                <Button
+                                  key={attachment.id || attachment.downloadPath}
+                                  size='small'
+                                  variant='text'
+                                  onClick={() => handleDownloadProgressAttachment(entry.id, attachment)}
+                                  disabled={isServiceAttachmentDownloading}
+                                >
+                                  {attachment.filename || 'Download photo'}
+                                </Button>
+                              ))}
+                            </Stack>
+                          )}
                         </Box>
                       )
                     })}
