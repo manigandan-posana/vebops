@@ -415,20 +415,20 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         return ResponseEntity.ok(sr);
     }
 
-     public ResponseEntity<WorkOrder> createWorkOrderFromRequest(Long id) {
-     Long tid = tenant();
-     // If already exists, respond 409 with the existing WO (lets UI show WAN)
-     var existing = workOrderRepo.findByTenantIdAndServiceRequest_Id(tid, id);
-     if (existing != null && !existing.isEmpty()) {
-         return ResponseEntity.status(HttpStatus.CONFLICT).body(existing.get(0));
-     }
-     var wo = workOrders.createForServiceRequest(tid, id);
-     var sr = srRepo.findById(id).orElse(null);
-     if (sr != null && (sr.getServiceType() == ServiceTypeCode.SUPPLY_INSTALL || sr.getServiceType() == ServiceTypeCode.INSTALL_ONLY)) {
-         workOrders.autoAssignIfInstallation(tid, wo.getId());
-     }
-     return ResponseEntity.created(URI.create("/office/wo/" + wo.getId())).body(wo);
- }
+    public ResponseEntity<WorkOrder> createWorkOrderFromRequest(Long id) {
+        Long tid = tenant();
+        // If already exists, respond 409 with the existing WO (lets UI show WAN)
+        var existing = workOrderRepo.findByTenantIdAndServiceRequest_Id(tid, id);
+        if (existing != null && !existing.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(existing.get(0));
+        }
+        var wo = workOrders.createForServiceRequest(tid, id);
+        var sr = srRepo.findById(id).orElse(null);
+        if (sr != null && (sr.getServiceType() == ServiceTypeCode.SUPPLY_INSTALL || sr.getServiceType() == ServiceTypeCode.INSTALL_ONLY)) {
+            workOrders.autoAssignIfInstallation(tid, wo.getId());
+        }
+        return ResponseEntity.created(URI.create("/office/wo/" + wo.getId())).body(wo);
+    }
 
     @Transactional
     public ResponseEntity<Void> updateFieldEngineer(Long id, UpdateFERequest req) {
