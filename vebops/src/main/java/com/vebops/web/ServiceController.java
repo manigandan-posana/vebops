@@ -505,12 +505,37 @@ public class ServiceController {
      */
     @GetMapping("/autocomplete")
     @PreAuthorize("hasAnyRole('OFFICE','BACK_OFFICE')")
-    public ResponseEntity<java.util.List<java.util.Map<String, Object>>> autocomplete(
+    public ResponseEntity<List<Map<String, Object>>> autocomplete(
             @RequestParam(name = "q") String q,
             @RequestParam(name = "limit", defaultValue = "5") int limit
     ) {
         if (q == null || q.isBlank()) {
-        return ResponseEntity.ok(java.util.Collections.emptyList());
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+
+        Long tenantId = TenantContext.getTenantId();
+        int max = Math.max(1, Math.min(limit, 50));
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, max);
+        org.springframework.data.domain.Page<Service> page = repository.searchByTenantIdAndKeyword(tenantId, q, pageable);
+        List<Map<String, Object>> out = new ArrayList<>();
+        java.util.Set<String> seenKeys = new java.util.HashSet<>();
+        for (Service s : page.getContent()) {
+            String key = (s.getBuyerName() != null ? s.getBuyerName().toLowerCase() : "") + "|"
+                    + (s.getBuyerContact() != null ? s.getBuyerContact().toLowerCase() : "");
+            if (seenKeys.contains(key)) continue;
+            seenKeys.add(key);
+            Map<String, Object> m = new HashMap<>();
+            m.put("buyerName", s.getBuyerName());
+            m.put("buyerGst", s.getBuyerGst());
+            m.put("buyerAddress", s.getBuyerAddress());
+            m.put("buyerPin", s.getBuyerPin());
+            m.put("buyerState", s.getBuyerState());
+            m.put("buyerContact", s.getBuyerContact());
+            m.put("buyerEmail", s.getBuyerEmail());
+            out.add(m);
+            if (out.size() >= max) break;
+        }
+        return ResponseEntity.ok(out);
     }
 
     private Map<String, Object> resolveServiceContext(Long tenantId, Service svc) {
@@ -777,31 +802,6 @@ public class ServiceController {
         }
         return null;
     }
-        Long tenantId = TenantContext.getTenantId();
-        int max = Math.max(1, Math.min(limit, 50));
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, max);
-        org.springframework.data.domain.Page<Service> page = repository.searchByTenantIdAndKeyword(tenantId, q, pageable);
-        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
-        java.util.Set<String> seenKeys = new java.util.HashSet<>();
-        for (Service s : page.getContent()) {
-            // Key by name + contact to deduplicate suggestions
-            String key = (s.getBuyerName() != null ? s.getBuyerName().toLowerCase() : "") + "|" + (s.getBuyerContact() != null ? s.getBuyerContact().toLowerCase() : "");
-            if (seenKeys.contains(key)) continue;
-            seenKeys.add(key);
-            java.util.Map<String, Object> m = new java.util.HashMap<>();
-            m.put("buyerName", s.getBuyerName());
-            m.put("buyerGst", s.getBuyerGst());
-            m.put("buyerAddress", s.getBuyerAddress());
-            m.put("buyerPin", s.getBuyerPin());
-            m.put("buyerState", s.getBuyerState());
-            m.put("buyerContact", s.getBuyerContact());
-            m.put("buyerEmail", s.getBuyerEmail());
-            out.add(m);
-            if (out.size() >= max) break;
-        }
-        return ResponseEntity.ok(out);
-    }
-
     /**
      * Create a new service. Expects a JSON body with the following
      * structure:
