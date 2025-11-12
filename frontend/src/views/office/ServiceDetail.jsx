@@ -152,6 +152,7 @@ export default function ServiceDetail () {
   const { data, isFetching, error } = useGetServiceQuery(id)
   const service = data?.service ?? data ?? {}
   const workOrder = data?.workOrder ?? null
+  const customerPo = workOrder?.customerPO ?? null
   const serviceRequest = data?.serviceRequest ?? null
   const progress = Array.isArray(data?.progress) ? data.progress : []
   const assignments = Array.isArray(data?.assignments) ? data.assignments : []
@@ -589,9 +590,30 @@ export default function ServiceDetail () {
                           <InfoRow label='Field Engineer' value={`${workOrder.assignedFE.name || '—'}${workOrder.assignedFE.id ? ` (ID ${workOrder.assignedFE.id})` : ''}`} />
                         </Grid>
                       )}
-                      {workOrder?.customerPO && (
+                      {customerPo && (
                         <Grid item xs={12} sm={6} md={3}>
-                          <InfoRow label='Customer PO' value={workOrder.customerPO.poNumber || '—'} />
+                          <InfoRow
+                            label='Customer PO'
+                            value={(
+                              <Stack spacing={1} alignItems='flex-start'>
+                                <Typography variant='body2' color='text.primary'>
+                                  {customerPo.poNumber || '—'}
+                                </Typography>
+                                {customerPo.fileUrl && (
+                                  <Button
+                                    size='small'
+                                    variant='outlined'
+                                    component='a'
+                                    href={customerPo.fileUrl}
+                                    target='_blank'
+                                    rel='noreferrer'
+                                  >
+                                    View PO
+                                  </Button>
+                                )}
+                              </Stack>
+                            )}
+                          />
                         </Grid>
                       )}
                     </>

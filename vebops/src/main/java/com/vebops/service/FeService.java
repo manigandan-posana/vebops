@@ -100,6 +100,8 @@ public class FeService {
             }
             if (wo.getCustomerPO() != null) {
                 wo.getCustomerPO().getId();
+                wo.getCustomerPO().getPoNumber();
+                wo.getCustomerPO().getFileUrl();
             }
         });
         return ResponseEntity.ok(list);
@@ -154,6 +156,8 @@ public class FeService {
         }
         if (wo.getCustomerPO() != null) {
             wo.getCustomerPO().getId();
+            wo.getCustomerPO().getPoNumber();
+            wo.getCustomerPO().getFileUrl();
         }
         List<WorkOrderProgress> progress = woProgressRepo.findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, id);
         List<Long> progressIds = progress.stream()

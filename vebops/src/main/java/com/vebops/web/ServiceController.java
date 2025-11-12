@@ -660,6 +660,8 @@ public class ServiceController {
         }
         if (wo.getCustomerPO() != null) {
             wo.getCustomerPO().getPoNumber();
+            wo.getCustomerPO().getFileUrl();
+            wo.getCustomerPO().getUploadedAt();
         }
     }
 
@@ -728,6 +730,8 @@ public class ServiceController {
             Map<String, Object> po = new LinkedHashMap<>();
             po.put("id", wo.getCustomerPO().getId());
             po.put("poNumber", wo.getCustomerPO().getPoNumber());
+            po.put("fileUrl", wo.getCustomerPO().getFileUrl());
+            po.put("uploadedAt", wo.getCustomerPO().getUploadedAt());
             map.put("customerPO", po);
         }
         return map;

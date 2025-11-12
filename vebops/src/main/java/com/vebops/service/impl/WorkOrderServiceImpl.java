@@ -195,6 +195,9 @@ public class WorkOrderServiceImpl implements WorkOrderService {
     public void addProgress(Long tenantId, Long woId, String status, Long byFeId, String remarks, String photoUrl, ProgressAttachment attachment) {
         tenantGuard.assertActive(tenantId);
         WorkOrder wo = woRepo.findById(woId).orElseThrow(() -> new NotFoundException("WO not found"));
+        if (wo.getStatus() == WOStatus.COMPLETED) {
+            throw new BusinessException("Work order is already completed and cannot be updated");
+        }
         // Persist a timeline entry for the work order and optionally store a binary
         // attachment. Attachments are stored as BLOBs on the progress entity so
         // the back office can review photo evidence of installation progress.

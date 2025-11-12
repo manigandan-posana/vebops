@@ -66,6 +66,7 @@ export default function JobDetail () {
   const sr = workOrder?.serviceRequest || {}
   const customer = sr?.customer || {}
   const po = workOrder?.customerPO || {}
+  const customerPoLink = typeof po?.fileUrl === 'string' && po.fileUrl.trim() ? po.fileUrl : null
   const srSiteAddress = [
     serviceInfo?.siteAddress,
     sr?.siteAddress,
@@ -111,12 +112,34 @@ export default function JobDetail () {
   const customerPoValue = hasValue(rawCustomerPo)
     ? (typeof rawCustomerPo === 'string' ? rawCustomerPo.trim() : String(rawCustomerPo))
     : '—'
+  const customerPoDisplay = customerPoValue === '—' && !customerPoLink
+    ? '—'
+    : (
+        <Stack spacing={0.5} alignItems='flex-start'>
+          <Typography variant='body2' color='text.primary'>
+            {customerPoValue}
+          </Typography>
+          {customerPoLink && (
+            <Button
+              component='a'
+              href={customerPoLink}
+              target='_blank'
+              rel='noreferrer'
+              size='small'
+              variant='outlined'
+            >
+              View PO
+            </Button>
+          )}
+        </Stack>
+      )
   const serviceDocValue = hasValue(serviceDocId) ? `#${serviceDocId}` : '—'
 
   const [status, setStatus] = useState(STEPS[0].value)
   const [remarks, setRemarks] = useState('')
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
+  const isClosed = String(workOrder?.status || '').toUpperCase() === 'COMPLETED'
 
   const [postProgress, { isLoading }] = usePostProgressMutation()
   const [fetchPdf, { isFetching: isPdfLoading }] = useLazyGetCompletionReportPdfQuery()
@@ -132,9 +155,23 @@ export default function JobDetail () {
     return () => URL.revokeObjectURL(objectUrl)
   }, [photoFile])
 
+  useEffect(() => {
+    const current = String(workOrder?.status || '').toUpperCase()
+    if (STEPS.some((step) => step.value === current)) {
+      setStatus(current)
+    }
+    if (isClosed) {
+      setPhotoFile(null)
+    }
+  }, [workOrder?.status, isClosed])
+
   async function handlePostProgress (event) {
     event?.preventDefault()
     if (!id) return
+    if (isClosed) {
+      toast.error('Work order is already completed')
+      return
+    }
     try {
       await postProgress({ woId: id, status, remarks, photoFile }).unwrap()
       setRemarks('')
@@ -251,7 +288,7 @@ export default function JobDetail () {
               />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
-              <Info label='Customer PO' value={customerPoValue} />
+              <Info label='Customer PO' value={customerPoDisplay} />
             </Grid>
             <Grid item xs={12} sm={6} md={4}>
               <Info label='Service Document' value={serviceDocValue} />
@@ -566,6 +603,11 @@ export default function JobDetail () {
         <CardHeader title='Update progress' subheader='Share quick updates to keep the back office informed.' />
         <Divider />
         <CardContent>
+          {isClosed && (
+            <Alert severity='info' sx={{ mb: 2 }}>
+              This work order is completed. Further progress updates are disabled.
+            </Alert>
+          )}
           <Box component='form' onSubmit={handlePostProgress} noValidate>
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
@@ -577,6 +619,7 @@ export default function JobDetail () {
                   value={status}
                   onChange={(event) => setStatus(event.target.value)}
                   onKeyDown={focusNextInputOnEnter}
+                  disabled={isClosed}
                 >
                   {STEPS.map((step) => (
                     <MenuItem key={step.value} value={step.value}>
@@ -591,7 +634,7 @@ export default function JobDetail () {
                     variant='outlined'
                     component='label'
                     size='small'
-                    disabled={isLoading}
+                    disabled={isLoading || isClosed}
                   >
                     {photoFile ? 'Change photo' : 'Upload progress photo'}
                     <input type='file' accept='image/*' hidden onChange={handleSelectPhoto} />
@@ -624,6 +667,7 @@ export default function JobDetail () {
                   onChange={(event) => setRemarks(event.target.value)}
                   onKeyDown={focusNextInputOnEnter}
                   autoComplete='on'
+                  disabled={isClosed}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -631,7 +675,7 @@ export default function JobDetail () {
                   <Button
                     type='submit'
                     variant='contained'
-                    disabled={isLoading}
+                    disabled={isLoading || isClosed}
                     startIcon={<TaskAltRoundedIcon fontSize='small' />}
                   >
                     {isLoading ? 'Posting…' : 'Post Progress'}
@@ -663,6 +707,14 @@ export default function JobDetail () {
 }
 
 function Info ({ label, value, multiline = false, icon = null }) {
+  const isElement = React.isValidElement(value)
+  const textValue = (() => {
+    if (isElement) return null
+    if (value === null || value === undefined) return '—'
+    if (typeof value === 'string') return value.trim() || '—'
+    return String(value)
+  })()
+
   return (
     <Stack spacing={0.5}>
       <Stack direction='row' spacing={1} alignItems='center'>
@@ -671,13 +723,17 @@ function Info ({ label, value, multiline = false, icon = null }) {
           {label}
         </Typography>
       </Stack>
-      <Typography
-        variant='body2'
-        color='text.primary'
-        sx={multiline ? { whiteSpace: 'pre-line' } : undefined}
-      >
-        {value || '—'}
-      </Typography>
+      {isElement ? (
+        value
+      ) : (
+        <Typography
+          variant='body2'
+          color='text.primary'
+          sx={multiline ? { whiteSpace: 'pre-line' } : undefined}
+        >
+          {textValue}
+        </Typography>
+      )}
     </Stack>
   )
 }
