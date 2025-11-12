@@ -4,10 +4,13 @@ import { Box, Container, useMediaQuery, useTheme } from "@mui/material";
 import Topbar from "../components/Topbar";
 import Sidebar from "../components/Sidebar";
 import CProposals from "../../views/customer/Proposals";
+import WorkOrders from "../../views/customer/WorkOrders";
+import WorkOrderDetail from "../../views/customer/WorkOrderDetail";
 import Invoices from "../../views/customer/Invoices";
 
 const items = [
   { to: "/customer/proposals", label: "Proposals" },
+  { to: "/customer/work-orders", label: "Work Orders" },
   { to: "/customer/invoices", label: "Invoices" },
 ];
 
@@ -28,6 +31,8 @@ export default function CustomerLayout() {
             <Routes>
               <Route path="/" element={<Navigate to="proposals" replace />} />
               <Route path="proposals" element={<CProposals />} />
+              <Route path="work-orders" element={<WorkOrders />} />
+              <Route path="work-orders/:id" element={<WorkOrderDetail />} />
               <Route path="invoices" element={<Invoices />} />
             </Routes>
           </Container>

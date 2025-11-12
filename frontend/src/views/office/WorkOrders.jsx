@@ -11,8 +11,11 @@ import {
   useProposalRejectMutation,
   useWoAssignMutation,
   useWoCompleteMutation,
-  useWoTimelineQuery
+  useWoTimelineQuery,
+  useLazyGetWoProgressAttachmentQuery,
+  useLazyGetWoCompletionReportQuery
 } from '../../features/office/officeApi'
+import { downloadBlob } from '../../utils/file'
 import {
   Alert,
   Box,
@@ -568,12 +571,15 @@ function TimelineDialog ({ open, onClose, workOrder }) {
   const woId = workOrder?.id
   const skip = !open || !woId
   const { data, isFetching, error, refetch } = useWoTimelineQuery(woId, { skip })
+  const [downloadProgressAttachment, { isFetching: isDownloadingAttachment }] = useLazyGetWoProgressAttachmentQuery()
+  const [downloadCompletionReport, { isFetching: isDownloadingReport }] = useLazyGetWoCompletionReportQuery()
 
   const timelineWo = data?.workOrder || workOrder || {}
   const sr = timelineWo?.serviceRequest || workOrder?.serviceRequest || {}
   const fe = timelineWo?.assignedFE || workOrder?.assignedFE || {}
   const progress = Array.isArray(data?.progress) ? data.progress : []
   const assignments = Array.isArray(data?.assignments) ? data.assignments : []
+  const progressSummary = data?.progressSummary || {}
 
   const statusLabel = (status) => {
     if (!status) return 'Update'
@@ -608,6 +614,35 @@ function TimelineDialog ({ open, onClose, workOrder }) {
     }
   }
 
+  const summaryTotal = progressSummary?.totalUpdates ?? progress.length
+  const summaryPhotos = progressSummary?.photoCount ?? 0
+  const summaryLastAt = progressSummary?.lastUpdatedAt ? formatDate(progressSummary.lastUpdatedAt) : (progress.length ? formatDate(progress[progress.length - 1]?.createdAt) : '—')
+  const summaryLastStatus = progressSummary?.lastStatus ? statusLabel(progressSummary.lastStatus) : (progress.length ? statusLabel(progress[progress.length - 1]?.status) : 'Update')
+  const canDownloadReport = String(timelineWo?.status || workOrder?.status || '').toUpperCase() === 'COMPLETED'
+
+  async function handleDownloadAttachment (progressId, attachment) {
+    if (!woId || !progressId || !attachment?.id) return
+    try {
+      const blob = await downloadProgressAttachment({ woId, progressId, attachmentId: attachment.id }).unwrap()
+      const filename = attachment.filename || `progress-photo-${attachment.id}`
+      downloadBlob(blob, filename)
+    } catch (err) {
+      toast.error(String(err?.data?.message || err?.error || 'Unable to download attachment'))
+    }
+  }
+
+  async function handleDownloadCompletionReport () {
+    if (!woId) return
+    try {
+      const blob = await downloadCompletionReport(woId).unwrap()
+      const filename = `completion-report-${timelineWo?.wan || workOrder?.wan || woId}.pdf`
+      downloadBlob(blob, filename)
+      toast.success('Downloaded')
+    } catch (err) {
+      toast.error(String(err?.data?.message || err?.error || 'Unable to download certificate'))
+    }
+  }
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth='md' fullWidth>
       <DialogTitle>{timelineWo?.wan ? `Timeline • ${timelineWo.wan}` : 'Work order timeline'}</DialogTitle>
@@ -625,7 +660,10 @@ function TimelineDialog ({ open, onClose, workOrder }) {
           </Card>
 
           <Card variant='outlined' sx={{ borderRadius: 2 }}>
-            <CardHeader title='Progress updates' />
+            <CardHeader
+              title='Progress updates'
+              subheader={`Last update ${summaryLastAt} • ${summaryTotal} update${summaryTotal === 1 ? '' : 's'} • ${summaryPhotos} photo${summaryPhotos === 1 ? '' : 's'}`}
+            />
             <CardContent>
               {progress.length === 0 ? (
                 <Typography variant='body2' color='text.secondary'>No updates posted yet.</Typography>
@@ -649,9 +687,24 @@ function TimelineDialog ({ open, onClose, workOrder }) {
                         </Stack>
                         {entry.remarks && <Typography variant='body2' sx={{ mt: 1 }}>{entry.remarks}</Typography>}
                         <Stack direction='row' spacing={2} sx={{ mt: 1 }}>
-                          {entry.byFE?.user?.displayName && <Typography variant='caption' color='text.secondary'>By {entry.byFE.user.displayName}</Typography>}
+                          {(entry.byFE?.displayName || entry.byFE?.name) && <Typography variant='caption' color='text.secondary'>By {entry.byFE?.displayName || entry.byFE?.name}</Typography>}
                           {entry.photoUrl && <Link href={entry.photoUrl} target='_blank' rel='noreferrer' variant='caption'>View photo evidence</Link>}
                         </Stack>
+                        {Array.isArray(entry.attachments) && entry.attachments.length > 0 && (
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                            {entry.attachments.map((attachment) => (
+                              <Button
+                                key={attachment.id || attachment.downloadPath}
+                                size='small'
+                                variant='text'
+                                onClick={() => handleDownloadAttachment(entry.id, attachment)}
+                                disabled={isDownloadingAttachment}
+                              >
+                                {attachment.filename || 'Download photo'}
+                              </Button>
+                            ))}
+                          </Stack>
+                        )}
                       </Box>
                     )
                   })}
@@ -686,6 +739,14 @@ function TimelineDialog ({ open, onClose, workOrder }) {
         </Stack>
       </DialogContent>
       <DialogActions>
+        <Button
+          variant='outlined'
+          startIcon={<DownloadRoundedIcon fontSize='small' />}
+          onClick={handleDownloadCompletionReport}
+          disabled={!canDownloadReport || isDownloadingReport}
+        >
+          {isDownloadingReport ? 'Preparing…' : 'Completion PDF'}
+        </Button>
         <Button variant='outlined' color='inherit' onClick={() => refetch()} disabled={isFetching || skip} startIcon={<RefreshRoundedIcon fontSize='small' />}> {isFetching ? 'Refreshing…' : 'Refresh'} </Button>
         <Button variant='contained' onClick={onClose}>Close</Button>
       </DialogActions>

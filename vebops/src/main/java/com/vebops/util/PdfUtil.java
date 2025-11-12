@@ -5,7 +5,10 @@ import com.lowagie.text.pdf.*;
 import com.vebops.domain.Invoice;
 import com.vebops.domain.InvoiceLine;
 import com.vebops.domain.WorkOrder;
+import com.vebops.domain.Customer;
+import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrderProgress;
+import com.vebops.domain.WorkOrderProgressAttachment;
 
 // Import PdfRendererBuilder for HTML to PDF conversion.  This class comes from the
 // openhtmltopdf-pdfbox module and provides a fluent API for converting HTML
@@ -656,6 +659,44 @@ public class PdfUtil {
     for(String c: cells){ t.addCell(new Phrase(c)); }
   }
 
+  private static void addMetaRow(PdfPTable table, String labelText, String valueText, Font labelFont, Font valueFont) {
+    PdfPCell labelCell = new PdfPCell(new Phrase(labelText, labelFont));
+    labelCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+    labelCell.setPaddingBottom(4f);
+    table.addCell(labelCell);
+
+    PdfPCell valueCell = new PdfPCell(new Phrase(valueText, valueFont));
+    valueCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
+    valueCell.setPaddingBottom(4f);
+    table.addCell(valueCell);
+  }
+
+  private static String assignedEngineerName(WorkOrder wo) {
+    if (wo == null || wo.getAssignedFE() == null) {
+      return "";
+    }
+    if (wo.getAssignedFE().getUser() != null) {
+      return safe(wo.getAssignedFE().getUser().getDisplayName());
+    }
+    return safe(wo.getAssignedFE().getName());
+  }
+
+  private static String resolveSiteAddress(WorkOrder wo, ServiceRequest sr) {
+    if (sr == null) {
+      return "";
+    }
+    String[] candidates = {
+      sr.getSiteAddress(),
+      sr.getDescription()
+    };
+    for (String candidate : candidates) {
+      if (candidate != null && !candidate.isBlank()) {
+        return candidate;
+      }
+    }
+    return "";
+  }
+
   /**
    * Builds a completion report PDF for a given work order. The report
    * summarises the work order details and lists all recorded progress
@@ -670,34 +711,103 @@ public class PdfUtil {
   public static byte[] buildCompletionReportPdf(WorkOrder wo, java.util.List<WorkOrderProgress> progress) {
     try {
       ByteArrayOutputStream bout = new ByteArrayOutputStream();
-      Document doc = new Document(PageSize.A4, 36, 36, 36, 36);
+      Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
       PdfWriter.getInstance(doc, bout);
       doc.open();
-      Font h1 = new Font(Font.HELVETICA, 16, Font.BOLD);
-      Font h2 = new Font(Font.HELVETICA, 12, Font.BOLD);
-      Font text = new Font(Font.HELVETICA, 10);
 
-      // Header
-      doc.add(new Paragraph("WORK ORDER COMPLETION REPORT", h1));
-      doc.add(new Paragraph("Work Order: " + wo.getWan(), h2));
-      doc.add(new Paragraph("Service Request: " + (wo.getServiceRequest() != null ? wo.getServiceRequest().getSrn() : ""), text));
-      doc.add(new Paragraph("Status: " + wo.getStatus(), text));
-      doc.add(new Paragraph("Customer: " + (wo.getServiceRequest() != null && wo.getServiceRequest().getCustomer() != null ? wo.getServiceRequest().getCustomer().getName() : ""), text));
+      Font title = new Font(Font.HELVETICA, 18, Font.BOLD);
+      Font section = new Font(Font.HELVETICA, 12, Font.BOLD);
+      Font label = new Font(Font.HELVETICA, 10, Font.BOLD);
+      Font value = new Font(Font.HELVETICA, 10, Font.NORMAL);
+
+      doc.add(new Paragraph("WORK COMPLETION CERTIFICATE", title));
+      doc.add(new Paragraph("Generated on: " + java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm")
+        .format(java.time.LocalDateTime.now()), value));
       doc.add(Chunk.NEWLINE);
 
-      // Table of progress entries
-      PdfPTable table = new PdfPTable(4);
-      table.setWidthPercentage(100);
-      table.setWidths(new float[]{20f, 40f, 30f, 30f});
-      addHeader(table, "Status", "Remarks", "Photo URL", "Timestamp");
-      for (WorkOrderProgress p : progress) {
-        addRow(table,
-          p.getStatus() != null ? p.getStatus().name() : "",
-          p.getRemarks() != null ? p.getRemarks() : "",
-          p.getPhotoUrl() != null ? p.getPhotoUrl() : "",
-          p.getCreatedAt() != null ? p.getCreatedAt().toString() : "");
+      PdfPTable overview = new PdfPTable(2);
+      overview.setWidthPercentage(100);
+      overview.setWidths(new float[]{1.2f, 2.2f});
+      addMetaRow(overview, "Work Order", safe(wo.getWan()), label, value);
+      addMetaRow(overview, "Status", wo.getStatus() != null ? wo.getStatus().name() : "", label, value);
+      ServiceRequest sr = wo.getServiceRequest();
+      addMetaRow(overview, "Service Request", sr != null ? safe(sr.getSrn()) : "", label, value);
+      addMetaRow(overview, "Service Type", sr != null && sr.getServiceType() != null ? sr.getServiceType().name() : "", label, value);
+      addMetaRow(overview, "Assigned Engineer", safe(assignedEngineerName(wo)), label, value);
+      addMetaRow(overview, "Customer", sr != null && sr.getCustomer() != null ? safe(sr.getCustomer().getName()) : "", label, value);
+      addMetaRow(overview, "Customer PO", wo.getCustomerPO() != null ? safe(wo.getCustomerPO().getPoNumber()) : "", label, value);
+      addMetaRow(overview, "Site Address", safe(resolveSiteAddress(wo, sr)), label, value);
+      doc.add(overview);
+      doc.add(Chunk.NEWLINE);
+
+      if (sr != null && sr.getCustomer() != null) {
+        Customer customer = sr.getCustomer();
+        PdfPTable customerTbl = new PdfPTable(2);
+        customerTbl.setWidthPercentage(100);
+        customerTbl.setWidths(new float[]{1.2f, 2.2f});
+        addMetaRow(customerTbl, "Customer Email", safe(customer.getEmail()), label, value);
+        addMetaRow(customerTbl, "Customer Phone", safe(customer.getMobile()), label, value);
+        doc.add(customerTbl);
+        doc.add(Chunk.NEWLINE);
       }
-      doc.add(table);
+
+      doc.add(new Paragraph("Progress Timeline", section));
+      doc.add(Chunk.NEWLINE);
+
+      PdfPTable progressTable = new PdfPTable(new float[]{0.6f, 1.4f, 2.2f, 1.4f, 1.6f});
+      progressTable.setWidthPercentage(100);
+      addHeader(progressTable, "#", "Status", "Remarks", "Updated By", "Timestamp");
+      int idx = 1;
+      for (WorkOrderProgress p : progress) {
+        progressTable.addCell(new Phrase(String.valueOf(idx++), value));
+        progressTable.addCell(new Phrase(p.getStatus() != null ? p.getStatus().name().replace('_', ' ') : "", value));
+        progressTable.addCell(new Phrase(safe(p.getRemarks()), value));
+        String by = "";
+        if (p.getByFE() != null) {
+          by = safe(p.getByFE().getUser() != null ? p.getByFE().getUser().getDisplayName() : p.getByFE().getName());
+        }
+        progressTable.addCell(new Phrase(by, value));
+        progressTable.addCell(new Phrase(p.getCreatedAt() != null ? p.getCreatedAt().toString() : "", value));
+      }
+      if (progress.isEmpty()) {
+        PdfPCell empty = new PdfPCell(new Phrase("No progress updates were recorded for this work order.", value));
+        empty.setColspan(5);
+        progressTable.addCell(empty);
+      }
+      doc.add(progressTable);
+      doc.add(Chunk.NEWLINE);
+
+      doc.add(new Paragraph("Photo Evidence", section));
+      doc.add(Chunk.NEWLINE);
+      java.util.List<WorkOrderProgressAttachment> photos = new java.util.ArrayList<>();
+      for (WorkOrderProgress p : progress) {
+        if (p.getAttachments() != null) {
+          photos.addAll(p.getAttachments());
+        }
+      }
+      if (photos.isEmpty()) {
+        doc.add(new Paragraph("No photos were uploaded for this work order.", value));
+      } else {
+        PdfPTable photoTable = new PdfPTable(new float[]{0.7f, 2.6f, 1.4f, 1.3f});
+        photoTable.setWidthPercentage(100);
+        addHeader(photoTable, "#", "File Name", "Content Type", "Uploaded At");
+        int pIdx = 1;
+        for (WorkOrderProgressAttachment att : photos) {
+          photoTable.addCell(new Phrase(String.valueOf(pIdx++), value));
+          photoTable.addCell(new Phrase(safe(att.getFilename()), value));
+          photoTable.addCell(new Phrase(safe(att.getContentType()), value));
+          photoTable.addCell(new Phrase(att.getUploadedAt() != null ? att.getUploadedAt().toString() : "", value));
+        }
+        doc.add(photoTable);
+      }
+
+      doc.add(Chunk.NEWLINE);
+      doc.add(new Paragraph("Completion Summary", section));
+      doc.add(new Paragraph("This certificate confirms that the above work order has been completed with the recorded progress updates and supporting evidence.", value));
+      doc.add(Chunk.NEWLINE);
+      doc.add(new Paragraph("Authorised Signature", section));
+      doc.add(new Paragraph("______________________________", value));
+      doc.add(new Paragraph("Name & Designation", value));
 
       doc.close();
       return bout.toByteArray();
