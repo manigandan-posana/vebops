@@ -15,6 +15,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -51,6 +52,7 @@ import com.vebops.domain.UserRole;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderAssignment;
 import com.vebops.domain.WorkOrderProgress;
+import com.vebops.domain.WorkOrderProgressAttachment;
 import com.vebops.domain.enums.DocumentEntityType;
 import com.vebops.domain.enums.DocumentKind;
 import com.vebops.domain.enums.FEStatus;
@@ -84,8 +86,10 @@ import com.vebops.repository.UserRepository;
 import com.vebops.repository.UserRoleRepository;
 import com.vebops.repository.WorkOrderAssignmentRepository;
 import com.vebops.repository.WorkOrderProgressRepository;
+import com.vebops.repository.WorkOrderProgressAttachmentRepository;
 import com.vebops.repository.WorkOrderQueryRepository;
 import com.vebops.repository.WorkOrderRepository;
+import com.vebops.util.PdfUtil;
 
 /**
  * Service encapsulating all back office operations originally defined in
@@ -123,6 +127,7 @@ public class BackOfficeService {
     private final CustomerPORepository customerPORepo;
     private final WorkOrderAssignmentRepository woAssignRepo;
     private final WorkOrderProgressRepository woProgressRepo;
+    private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
     private final WorkOrderQueryRepository woQueryRepo;
     private final PasswordResetTokenRepository resetTokenRepo;
     private final ServiceRequestRepository srRepo;
@@ -161,6 +166,7 @@ public class BackOfficeService {
                              CustomerPORepository customerPORepo,
                              WorkOrderAssignmentRepository woAssignRepo,
                              WorkOrderProgressRepository woProgressRepo,
+                             WorkOrderProgressAttachmentRepository progressAttachmentRepo,
                              WorkOrderQueryRepository woQueryRepo,
                              PasswordResetTokenRepository resetTokenRepo,
                              ServiceRequestRepository srRepo, PortalAccountManager portalAccountManager, InventoryService inventoryService
@@ -192,6 +198,7 @@ public class BackOfficeService {
         this.customerPORepo = customerPORepo;
         this.woAssignRepo = woAssignRepo;
         this.woProgressRepo = woProgressRepo;
+        this.progressAttachmentRepo = progressAttachmentRepo;
         this.woQueryRepo = woQueryRepo;
         this.resetTokenRepo = resetTokenRepo;
         this.srRepo = srRepo;
@@ -415,20 +422,20 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         return ResponseEntity.ok(sr);
     }
 
-     public ResponseEntity<WorkOrder> createWorkOrderFromRequest(Long id) {
-     Long tid = tenant();
-     // If already exists, respond 409 with the existing WO (lets UI show WAN)
-     var existing = workOrderRepo.findByTenantIdAndServiceRequest_Id(tid, id);
-     if (existing != null && !existing.isEmpty()) {
-         return ResponseEntity.status(HttpStatus.CONFLICT).body(existing.get(0));
-     }
-     var wo = workOrders.createForServiceRequest(tid, id);
-     var sr = srRepo.findById(id).orElse(null);
-     if (sr != null && (sr.getServiceType() == ServiceTypeCode.SUPPLY_INSTALL || sr.getServiceType() == ServiceTypeCode.INSTALL_ONLY)) {
-         workOrders.autoAssignIfInstallation(tid, wo.getId());
-     }
-     return ResponseEntity.created(URI.create("/office/wo/" + wo.getId())).body(wo);
- }
+    public ResponseEntity<WorkOrder> createWorkOrderFromRequest(Long id) {
+        Long tid = tenant();
+        // If already exists, respond 409 with the existing WO (lets UI show WAN)
+        var existing = workOrderRepo.findByTenantIdAndServiceRequest_Id(tid, id);
+        if (existing != null && !existing.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(existing.get(0));
+        }
+        var wo = workOrders.createForServiceRequest(tid, id);
+        var sr = srRepo.findById(id).orElse(null);
+        if (sr != null && (sr.getServiceType() == ServiceTypeCode.SUPPLY_INSTALL || sr.getServiceType() == ServiceTypeCode.INSTALL_ONLY)) {
+            workOrders.autoAssignIfInstallation(tid, wo.getId());
+        }
+        return ResponseEntity.created(URI.create("/office/wo/" + wo.getId())).body(wo);
+    }
 
     @Transactional
     public ResponseEntity<Void> updateFieldEngineer(Long id, UpdateFERequest req) {
@@ -800,11 +807,185 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
                 }
             }
         });
+        Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress = Map.of();
+        List<Long> progressIds = progress.stream()
+            .map(WorkOrderProgress::getId)
+            .filter(idVal -> idVal != null)
+            .toList();
+        if (!progressIds.isEmpty()) {
+            attachmentsByProgress = progressAttachmentRepo
+                .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                .stream()
+                .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+        }
+
         Map<String, Object> out = new HashMap<>();
         out.put("workOrder", wo);
         out.put("assignments", assignments);
-        out.put("progress", progress);
+        out.put("progress", summariseProgress(progress, attachmentsByProgress));
+        out.put("progressSummary", buildProgressSummary(progress, attachmentsByProgress));
         return ResponseEntity.ok(out);
+    }
+
+    public ResponseEntity<byte[]> downloadProgressAttachment(Long woId, Long progressId, Long attachmentId) {
+        Long tid = tenant();
+        WorkOrderProgressAttachment attachment = progressAttachmentRepo
+            .findByTenantIdAndId(tid, attachmentId)
+            .orElseThrow(() -> new NotFoundException("Attachment not found"));
+        WorkOrderProgress progress = attachment.getProgress();
+        if (progress == null || progress.getWorkOrder() == null) {
+            throw new NotFoundException("Progress entry not found for attachment");
+        }
+        WorkOrder wo = progress.getWorkOrder();
+        if (!tid.equals(wo.getTenantId())) {
+            throw new BusinessException("Cross-tenant access");
+        }
+        if (!woId.equals(wo.getId())) {
+            throw new BusinessException("Attachment does not belong to the work order");
+        }
+        if (!progressId.equals(progress.getId())) {
+            throw new BusinessException("Attachment does not belong to the progress entry");
+        }
+        byte[] data = attachment.getData();
+        if (data == null) {
+            data = new byte[0];
+        }
+        String filename = attachment.getFilename() != null ? attachment.getFilename() : "progress-photo";
+        String contentType = attachment.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        }
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename.replace("\"", "") + "\"")
+            .contentType(MediaType.parseMediaType(contentType))
+            .body(data);
+    }
+
+    public ResponseEntity<byte[]> completionReport(Long workOrderId) {
+        Long tid = tenant();
+        WorkOrder wo = workOrderRepo.findById(workOrderId)
+            .orElseThrow(() -> new NotFoundException("Work order not found"));
+        if (!tid.equals(wo.getTenantId())) {
+            throw new BusinessException("Cross-tenant access");
+        }
+
+        touchWorkOrderAssociations(wo);
+
+        List<WorkOrderProgress> progress = woProgressRepo
+            .findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, workOrderId);
+        List<Long> progressIds = progress.stream()
+            .map(WorkOrderProgress::getId)
+            .filter(Objects::nonNull)
+            .toList();
+        if (!progressIds.isEmpty()) {
+            Map<Long, List<WorkOrderProgressAttachment>> attachments = progressAttachmentRepo
+                .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                .stream()
+                .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+            for (WorkOrderProgress entry : progress) {
+                List<WorkOrderProgressAttachment> att = attachments.get(entry.getId());
+                if (att != null) {
+                    att.forEach(entry::addAttachment);
+                }
+            }
+        }
+
+        byte[] pdf = PdfUtil.buildCompletionReportPdf(wo, progress);
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                "inline; filename=completion-report-" + wo.getWan() + ".pdf")
+            .contentType(MediaType.APPLICATION_PDF)
+            .body(pdf);
+    }
+
+    private void touchWorkOrderAssociations(WorkOrder wo) {
+        if (wo == null) {
+            return;
+        }
+        if (wo.getServiceRequest() != null) {
+            wo.getServiceRequest().getId();
+            wo.getServiceRequest().getSrn();
+            wo.getServiceRequest().getDescription();
+            if (wo.getServiceRequest().getCustomer() != null) {
+                wo.getServiceRequest().getCustomer().getId();
+                wo.getServiceRequest().getCustomer().getName();
+                wo.getServiceRequest().getCustomer().getEmail();
+                wo.getServiceRequest().getCustomer().getMobile();
+            }
+        }
+        if (wo.getAssignedFE() != null) {
+            wo.getAssignedFE().getId();
+            if (wo.getAssignedFE().getUser() != null) {
+                wo.getAssignedFE().getUser().getDisplayName();
+            }
+        }
+        if (wo.getAssignedTeam() != null) {
+            wo.getAssignedTeam().getId();
+            wo.getAssignedTeam().getName();
+        }
+        if (wo.getCustomerPO() != null) {
+            wo.getCustomerPO().getId();
+        }
+    }
+
+    private List<Map<String, Object>> summariseProgress(List<WorkOrderProgress> progress,
+                                                        Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (WorkOrderProgress p : progress) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", p.getId());
+            map.put("status", p.getStatus() != null ? p.getStatus().name() : null);
+            map.put("remarks", p.getRemarks());
+            map.put("photoUrl", p.getPhotoUrl());
+            map.put("createdAt", p.getCreatedAt());
+            if (p.getByFE() != null) {
+                Map<String, Object> fe = new HashMap<>();
+                fe.put("id", p.getByFE().getId());
+                if (p.getByFE().getUser() != null) {
+                    fe.put("displayName", p.getByFE().getUser().getDisplayName());
+                }
+                map.put("byFE", fe);
+            }
+            Long progressId = p.getId();
+            Long woId = p.getWorkOrder() != null ? p.getWorkOrder().getId() : null;
+            List<Map<String, Object>> attachmentViews = attachmentsByProgress
+                .getOrDefault(progressId, List.of())
+                .stream()
+                .map(att -> {
+                    Map<String, Object> attMap = new HashMap<>();
+                    attMap.put("id", att.getId());
+                    attMap.put("filename", att.getFilename());
+                    attMap.put("contentType", att.getContentType());
+                    attMap.put("size", att.getSize());
+                    attMap.put("uploadedAt", att.getUploadedAt());
+                    if (woId != null && progressId != null && att.getId() != null) {
+                        attMap.put("downloadPath", String.format("/office/wo/%d/progress/%d/attachments/%d", woId, progressId, att.getId()));
+                    }
+                    return attMap;
+                })
+                .collect(Collectors.toList());
+            map.put("attachments", attachmentViews);
+            list.add(map);
+        }
+        return list;
+    }
+
+    private Map<String, Object> buildProgressSummary(List<WorkOrderProgress> progress,
+                                                     Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress) {
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalUpdates", progress.size());
+        summary.put("photoCount", attachmentsByProgress.values().stream().mapToInt(List::size).sum());
+        if (progress.isEmpty()) {
+            summary.put("lastUpdatedAt", null);
+            summary.put("lastStatus", null);
+        } else {
+            WorkOrderProgress latest = progress.get(progress.size() - 1);
+            summary.put("lastUpdatedAt", latest.getCreatedAt());
+            summary.put("lastStatus", latest.getStatus() != null ? latest.getStatus().name() : null);
+        }
+        return summary;
     }
 
     public ResponseEntity<Void> assignFe(Long id, AssignFERequest body) {
@@ -813,7 +994,13 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
     }
 
     public ResponseEntity<Void> addProgress(Long id, ProgressRequest req) {
-        workOrders.addProgress(tenant(), id, req.status, req.byFeId, req.remarks, req.photoUrl);
+        WorkOrderService.ProgressAttachment attachment;
+        try {
+            attachment = req.toAttachment();
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ex.getMessage());
+        }
+        workOrders.addProgress(tenant(), id, req.status, req.byFeId, req.remarks, req.photoUrl, attachment);
         return ResponseEntity.noContent().build();
     }
 

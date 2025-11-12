@@ -45,7 +45,10 @@ const statusTone = (status) => {
 
 export default function Invoices () {
   const customerId = useSelector(selectAuth)?.user?.customerId ?? null
-  const { data = { content: [] }, error, isLoading } = useGetMyInvoicesQuery(customerId ? { customerId } : undefined)
+  const { data = { content: [] }, error, isLoading } = useGetMyInvoicesQuery(
+    customerId ? { customerId } : undefined,
+    { skip: customerId === null }
+  )
   const [triggerPdf, pdfState] = useLazyGetInvoicePdfQuery()
   const invoices = Array.isArray(data?.content) ? data.content : []
 
