@@ -114,22 +114,50 @@ export default function JobDetail () {
 
   const [status, setStatus] = useState(STEPS[0].value)
   const [remarks, setRemarks] = useState('')
-  const [photoUrl, setPhotoUrl] = useState('')
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
 
   const [postProgress, { isLoading }] = usePostProgressMutation()
   const [fetchPdf, { isFetching: isPdfLoading }] = useLazyGetCompletionReportPdfQuery()
+  const [fetchAttachment, { isFetching: isAttachmentLoading }] = useLazyGetProgressAttachmentQuery()
+
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreview(null)
+      return undefined
+    }
+    const objectUrl = URL.createObjectURL(photoFile)
+    setPhotoPreview(objectUrl)
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [photoFile])
 
   async function handlePostProgress (event) {
     event?.preventDefault()
     if (!id) return
     try {
-      await postProgress({ woId: id, status, remarks, photoUrl }).unwrap()
+      await postProgress({ woId: id, status, remarks, photoFile }).unwrap()
       setRemarks('')
+      setPhotoFile(null)
       toast.success('Progress updated')
       refetchDetail()
     } catch (e) {
       toast.error(String(e?.data?.message || e?.error || 'Failed to post progress'))
     }
+  }
+
+  function handleSelectPhoto (event) {
+    const file = event?.target?.files?.[0]
+    if (file) {
+      if (file.size > 8 * 1024 * 1024) {
+        toast.error('Please select a photo under 8 MB')
+        return
+      }
+      setPhotoFile(file)
+    }
+  }
+
+  function clearPhotoSelection () {
+    setPhotoFile(null)
   }
 
   async function handleDownload () {
@@ -139,6 +167,17 @@ export default function JobDetail () {
       if (res) downloadBlob(res, `completion-report-${id}.pdf`)
     } catch (e) {
       toast.error(String(e?.data?.message || e?.error || 'Download failed'))
+    }
+  }
+
+  async function handleDownloadAttachment (progressId, attachment) {
+    if (!id || !attachment?.id) return
+    try {
+      const blob = await fetchAttachment({ woId: id, progressId, attachmentId: attachment.id }).unwrap()
+      const filename = attachment.filename || `progress-photo-${attachment.id}`
+      downloadBlob(blob, filename)
+    } catch (e) {
+      toast.error(String(e?.data?.message || e?.error || 'Unable to download photo'))
     }
   }
 
@@ -500,6 +539,21 @@ export default function JobDetail () {
                       </Link>
                     )}
                   </Stack>
+                  {Array.isArray(entry.attachments) && entry.attachments.length > 0 && (
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                      {entry.attachments.map((attachment) => (
+                        <Button
+                          key={attachment.id || attachment.downloadPath}
+                          size='small'
+                          variant='text'
+                          onClick={() => handleDownloadAttachment(entry.id, attachment)}
+                          disabled={isAttachmentLoading}
+                        >
+                          {attachment.filename || 'Download photo'}
+                        </Button>
+                      ))}
+                    </Stack>
+                  )}
                 </Box>
               ))}
             </Stack>
@@ -531,15 +585,34 @@ export default function JobDetail () {
                 </TextField>
               </Grid>
               <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  size='small'
-                  label='Photo URL (optional)'
-                  value={photoUrl}
-                  onChange={(event) => setPhotoUrl(event.target.value)}
-                  onKeyDown={focusNextInputOnEnter}
-                  autoComplete='on'
-                />
+                <Stack spacing={1} alignItems='flex-start'>
+                  <Button
+                    variant='outlined'
+                    component='label'
+                    size='small'
+                    disabled={isLoading}
+                  >
+                    {photoFile ? 'Change photo' : 'Upload progress photo'}
+                    <input type='file' accept='image/*' hidden onChange={handleSelectPhoto} />
+                  </Button>
+                  {photoFile && (
+                    <Chip
+                      label={`${photoFile.name} (${Math.round(photoFile.size / 1024)} KB)`}
+                      onDelete={clearPhotoSelection}
+                      variant='outlined'
+                      size='small'
+                    />
+                  )}
+                  <Typography variant='caption' color='text.secondary'>JPEG/PNG up to 8 MB</Typography>
+                  {photoPreview && (
+                    <Box
+                      component='img'
+                      src={photoPreview}
+                      alt='Selected progress'
+                      sx={{ width: 160, height: 'auto', borderRadius: 2, border: (theme) => `1px solid ${theme.palette.divider}` }}
+                    />
+                  )}
+                </Stack>
               </Grid>
               <Grid item xs={12}>
                 <TextField

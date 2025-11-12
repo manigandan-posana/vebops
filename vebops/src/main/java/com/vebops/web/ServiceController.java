@@ -15,10 +15,12 @@ import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderAssignment;
 import com.vebops.domain.WorkOrderProgress;
+import com.vebops.domain.WorkOrderProgressAttachment;
 import com.vebops.repository.ServiceRepository;
 import com.vebops.repository.ServiceRequestRepository;
 import com.vebops.repository.WorkOrderAssignmentRepository;
 import com.vebops.repository.WorkOrderProgressRepository;
+import com.vebops.repository.WorkOrderProgressAttachmentRepository;
 import com.vebops.repository.WorkOrderRepository;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -67,6 +69,7 @@ public class ServiceController {
     private final WorkOrderRepository workOrderRepo;
     private final WorkOrderProgressRepository workOrderProgressRepo;
     private final WorkOrderAssignmentRepository workOrderAssignmentRepo;
+    private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
 
     private final com.vebops.repository.DocumentRepository documentRepo;
     private final com.vebops.repository.CompanyDetailsRepository companyRepo;
@@ -86,6 +89,7 @@ public class ServiceController {
                              WorkOrderRepository workOrderRepo,
                              WorkOrderProgressRepository workOrderProgressRepo,
                              WorkOrderAssignmentRepository workOrderAssignmentRepo,
+                             WorkOrderProgressAttachmentRepository progressAttachmentRepo,
                              com.vebops.repository.DocumentRepository documentRepo,
                              com.vebops.repository.CompanyDetailsRepository companyRepo,
                              org.springframework.mail.javamail.JavaMailSender mailSender,
@@ -99,6 +103,7 @@ public class ServiceController {
         this.workOrderRepo = workOrderRepo;
         this.workOrderProgressRepo = workOrderProgressRepo;
         this.workOrderAssignmentRepo = workOrderAssignmentRepo;
+        this.progressAttachmentRepo = progressAttachmentRepo;
         this.documentRepo = documentRepo;
         this.companyRepo = companyRepo;
         this.mailSender = mailSender;
@@ -611,7 +616,19 @@ public class ServiceController {
             List<WorkOrderProgress> progress = workOrderProgressRepo
                     .findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tenantId, wo.getId());
             progress.forEach(this::hydrateProgressForContext);
-            out.put("progress", summariseProgress(progress));
+            Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress = Map.of();
+            List<Long> progressIds = progress.stream()
+                    .map(WorkOrderProgress::getId)
+                    .filter(idVal -> idVal != null)
+                    .toList();
+            if (!progressIds.isEmpty()) {
+                attachmentsByProgress = progressAttachmentRepo
+                        .findByTenantIdAndProgress_IdIn(tenantId, progressIds)
+                        .stream()
+                        .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                        .collect(java.util.stream.Collectors.groupingBy(att -> att.getProgress().getId()));
+            }
+            out.put("progress", summariseProgress(progress, attachmentsByProgress, wo.getId()));
         } else {
             out.put("workOrder", null);
             out.put("assignments", java.util.Collections.emptyList());
@@ -763,7 +780,9 @@ public class ServiceController {
         return list;
     }
 
-    private List<Map<String, Object>> summariseProgress(List<WorkOrderProgress> progress) {
+    private List<Map<String, Object>> summariseProgress(List<WorkOrderProgress> progress,
+                                                        Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress,
+                                                        Long woId) {
         List<Map<String, Object>> list = new ArrayList<>();
         for (WorkOrderProgress p : progress) {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -781,6 +800,24 @@ public class ServiceController {
                 fe.put("name", name);
                 map.put("byFE", fe);
             }
+            Long progressId = p.getId();
+            List<Map<String, Object>> attachmentViews = attachmentsByProgress
+                    .getOrDefault(progressId, java.util.Collections.emptyList())
+                    .stream()
+                    .map(att -> {
+                        Map<String, Object> attMap = new LinkedHashMap<>();
+                        attMap.put("id", att.getId());
+                        attMap.put("filename", att.getFilename());
+                        attMap.put("contentType", att.getContentType());
+                        attMap.put("size", att.getSize());
+                        attMap.put("uploadedAt", att.getUploadedAt());
+                        if (woId != null && progressId != null && att.getId() != null) {
+                            attMap.put("downloadPath", String.format("/office/wo/%d/progress/%d/attachments/%d", woId, progressId, att.getId()));
+                        }
+                        return attMap;
+                    })
+                    .toList();
+            map.put("attachments", attachmentViews);
             list.add(map);
         }
         return list;

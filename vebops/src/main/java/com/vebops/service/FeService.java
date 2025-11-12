@@ -3,6 +3,9 @@ package com.vebops.service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -16,6 +19,7 @@ import com.vebops.domain.Service;
 import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderProgress;
+import com.vebops.domain.WorkOrderProgressAttachment;
 import com.vebops.dto.ProgressRequest;
 import com.vebops.exception.BusinessException;
 import com.vebops.exception.NotFoundException;
@@ -24,6 +28,7 @@ import com.vebops.repository.KitItemRepository;
 import com.vebops.repository.WorkOrderAssignmentRepository;
 import com.vebops.repository.WorkOrderItemRepository;
 import com.vebops.repository.WorkOrderProgressRepository;
+import com.vebops.repository.WorkOrderProgressAttachmentRepository;
 import com.vebops.repository.WorkOrderQueryRepository;
 import com.vebops.repository.WorkOrderRepository;
 import com.vebops.repository.ServiceRepository;
@@ -45,6 +50,7 @@ public class FeService {
     private final FieldEngineerRepository feRepo;
     private final ServiceRepository serviceRepo;
     private final KitItemRepository kitItemRepo;
+    private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
 
     public FeService(WorkOrderService workOrders,
                      WorkOrderQueryRepository woQuery,
@@ -54,7 +60,8 @@ public class FeService {
                      WorkOrderAssignmentRepository woAssignRepo,
                      FieldEngineerRepository feRepo,
                      ServiceRepository serviceRepo,
-                     KitItemRepository kitItemRepo) {
+                     KitItemRepository kitItemRepo,
+                     WorkOrderProgressAttachmentRepository progressAttachmentRepo) {
         this.workOrders = workOrders;
         this.woQuery = woQuery;
         this.woRepo = woRepo;
@@ -64,6 +71,7 @@ public class FeService {
         this.feRepo = feRepo;
         this.serviceRepo = serviceRepo;
         this.kitItemRepo = kitItemRepo;
+        this.progressAttachmentRepo = progressAttachmentRepo;
     }
 
     private Long tenant() { return TenantContext.getTenantId(); }
@@ -110,7 +118,13 @@ public class FeService {
                 .map(FieldEngineer::getId)
                 .orElseThrow(() -> new NotFoundException("Field engineer profile not found for user"));
         }
-        workOrders.addProgress(tid, woId, req.status, feId, req.remarks, req.photoUrl);
+        WorkOrderService.ProgressAttachment attachment;
+        try {
+            attachment = req.toAttachment();
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ex.getMessage());
+        }
+        workOrders.addProgress(tid, woId, req.status, feId, req.remarks, req.photoUrl, attachment);
         return ResponseEntity.noContent().build();
     }
 
@@ -143,11 +157,73 @@ public class FeService {
             wo.getCustomerPO().getId();
         }
         List<WorkOrderProgress> progress = woProgressRepo.findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, id);
+        List<Long> progressIds = progress.stream()
+            .map(WorkOrderProgress::getId)
+            .filter(Objects::nonNull)
+            .toList();
+        if (!progressIds.isEmpty()) {
+            Map<Long, List<WorkOrderProgressAttachment>> attachments = progressAttachmentRepo
+                .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                .stream()
+                .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+            progress.forEach(p -> {
+                List<WorkOrderProgressAttachment> attList = attachments.get(p.getId());
+                if (attList != null) {
+                    attList.forEach(p::addAttachment);
+                }
+            });
+        }
         byte[] pdf = PdfUtil.buildCompletionReportPdf(wo, progress);
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=completion-report-" + wo.getWan() + ".pdf")
             .contentType(MediaType.APPLICATION_PDF)
             .body(pdf);
+    }
+
+    public ResponseEntity<byte[]> downloadProgressAttachment(Long woId, Long progressId, Long attachmentId) {
+        Long tid = tenant();
+        Long uid = TenantContext.getUserId();
+        var fe = feRepo.findFirstByTenantIdAndUser_Id(tid, uid)
+            .orElseThrow(() -> new NotFoundException("Field engineer profile not found for user"));
+
+        WorkOrderProgressAttachment attachment = progressAttachmentRepo
+            .findByTenantIdAndId(tid, attachmentId)
+            .orElseThrow(() -> new NotFoundException("Attachment not found"));
+
+        WorkOrderProgress progress = attachment.getProgress();
+        if (progress == null || progress.getWorkOrder() == null) {
+            throw new NotFoundException("Progress entry not found for attachment");
+        }
+        WorkOrder wo = progress.getWorkOrder();
+        if (!tid.equals(wo.getTenantId())) {
+            throw new BusinessException("Cross-tenant access");
+        }
+        if (!woId.equals(wo.getId())) {
+            throw new BusinessException("Attachment does not belong to the work order");
+        }
+        if (!progressId.equals(progress.getId())) {
+            throw new BusinessException("Attachment does not belong to the progress entry");
+        }
+        if (wo.getAssignedFE() == null || wo.getAssignedFE().getId() == null
+                || !wo.getAssignedFE().getId().equals(fe.getId())) {
+            throw new BusinessException("Work order is not assigned to you");
+        }
+
+        byte[] data = attachment.getData();
+        if (data == null) {
+            data = new byte[0];
+        }
+        String filename = attachment.getFilename() != null ? attachment.getFilename() : "progress-photo";
+        String contentType = attachment.getContentType();
+        if (contentType == null || contentType.isBlank()) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        }
+
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename.replace("\"", "") + "\"")
+            .contentType(MediaType.parseMediaType(contentType))
+            .body(data);
     }
 
     public ResponseEntity<List<WorkOrder>> assignedForCurrentUser() {
@@ -255,6 +331,18 @@ public class FeService {
         );
 
         List<WorkOrderProgress> progress = woProgressRepo.findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tid, woId);
+        Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress = Map.of();
+        List<Long> progressIds = progress.stream()
+                .map(WorkOrderProgress::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (!progressIds.isEmpty()) {
+            attachmentsByProgress = progressAttachmentRepo
+                    .findByTenantIdAndProgress_IdIn(tid, progressIds)
+                    .stream()
+                    .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                    .collect(Collectors.groupingBy(att -> att.getProgress().getId()));
+        }
         List<ProgressEntry> progressEntries = new ArrayList<>(progress.size());
         for (WorkOrderProgress p : progress) {
             Instant createdAt = p.getCreatedAt();
@@ -270,13 +358,18 @@ public class FeService {
                         : p.getByFE().getName();
                 by = new ProgressUser(p.getByFE().getId(), name);
             }
+            List<ProgressAttachmentView> attachments = attachmentsByProgress.getOrDefault(p.getId(), List.of())
+                    .stream()
+                    .map(att -> toAttachmentView(woId, p.getId(), att))
+                    .collect(Collectors.toList());
             progressEntries.add(new ProgressEntry(
                 p.getId(),
                 status,
                 p.getRemarks(),
                 p.getPhotoUrl(),
                 createdAt,
-                by
+                by,
+                attachments
             ));
         }
 
@@ -463,6 +556,17 @@ public class FeService {
         return value != null && !value.trim().isEmpty();
     }
 
+    private ProgressAttachmentView toAttachmentView(Long woId, Long progressId, WorkOrderProgressAttachment attachment) {
+        Long id = attachment.getId();
+        String filename = attachment.getFilename();
+        String contentType = attachment.getContentType();
+        Long size = attachment.getSize();
+        Instant uploadedAt = attachment.getUploadedAt();
+        String downloadPath = id == null ? null
+                : String.format("/fe/wo/%d/progress/%d/attachments/%d", woId, progressId, id);
+        return new ProgressAttachmentView(id, filename, contentType, size, uploadedAt, downloadPath);
+    }
+
     public record FeWorkOrderDetail(WorkOrder workOrder,
                                     String instruction,
                                     List<FeWorkOrderItem> items,
@@ -534,8 +638,15 @@ public class FeService {
                                 String remarks,
                                 String photoUrl,
                                 Instant createdAt,
-                                ProgressUser by) { }
+                                ProgressUser by,
+                                List<ProgressAttachmentView> attachments) { }
 
     public record ProgressUser(Long id, String name) { }
 
+    public record ProgressAttachmentView(Long id,
+                                         String filename,
+                                         String contentType,
+                                         Long size,
+                                         Instant uploadedAt,
+                                         String downloadPath) { }
 }

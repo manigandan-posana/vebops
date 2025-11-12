@@ -663,6 +663,14 @@ export const officeApi = baseApi.injectEndpoints({
       providesTags: (_r,_e,id) => [{ type:'WorkOrders', id }]
     }),
 
+    getWoProgressAttachment: b.query({
+      query: ({ woId, progressId, attachmentId }) => ({
+        url: `/office/wo/${woId}/progress/${progressId}/attachments/${attachmentId}`,
+        method: 'GET',
+        responseHandler: (response) => response.blob()
+      })
+    }),
+
     // GET /office/wo/summary
     woSummary: b.query({
       query: () => ({ url: '/office/wo/summary', method: 'GET' }),
@@ -681,14 +689,41 @@ export const officeApi = baseApi.injectEndpoints({
       invalidatesTags: ['WorkOrders','Stocks','Ledger']
     }),
 
-    // POST /office/wo/{id}/progress { status, byFeId, remarks?, photoUrl? }
+    // POST /office/wo/{id}/progress { status, byFeId, remarks?, photoUrl?, photoName?, photoContentType?, photoSize?, photoData? }
     woProgress: b.mutation({
-      async queryFn ({ id, ...body }, _api, _extra, baseQuery) {
+      async queryFn ({ id, photoFile, ...body }, _api, _extra, baseQuery) {
         if (!id) return { error: { status: 0, data: { message: 'id is required' } } }
         try { requireFields(body, ['status']) } catch (e) {
           return { error: { status: 0, data: { message: e.message } } }
         }
-        const res = await baseQuery({ url: `/office/wo/${id}/progress`, method: 'POST', body })
+        let photoPayload = {}
+        if (photoFile instanceof File) {
+          try {
+            const base64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader()
+              reader.onload = () => {
+                const result = reader.result || ''
+                const commaIndex = typeof result === 'string' ? result.indexOf(',') : -1
+                resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result)
+              }
+              reader.onerror = () => reject(reader.error || new Error('Unable to read file'))
+              reader.readAsDataURL(photoFile)
+            })
+            photoPayload = {
+              photoName: photoFile.name,
+              photoContentType: photoFile.type,
+              photoSize: photoFile.size,
+              photoData: base64
+            }
+          } catch (err) {
+            return { error: { status: 0, data: { message: err?.message || 'Failed to read photo' } } }
+          }
+        }
+        const res = await baseQuery({ url: `/office/wo/${id}/progress`, method: 'POST', body: {
+          ...body,
+          photoUrl: body.photoUrl || null,
+          ...photoPayload
+        } })
         return res.error ? { error: res.error } : { data: null }
       },
       invalidatesTags: ['WorkOrders']
@@ -891,6 +926,7 @@ export const {
   useWoSummaryQuery,
   useWoAssignMutation,
   useWoProgressMutation,
+  useLazyGetWoProgressAttachmentQuery,
   useWoIssueItemMutation,
   useWoCompleteMutation,
   useReceiveStockMutation,

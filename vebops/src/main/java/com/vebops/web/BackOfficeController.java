@@ -239,6 +239,13 @@ public class BackOfficeController {
         return bo.woTimeline(id);
     }
 
+    @GetMapping("/wo/{woId}/progress/{progressId}/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadProgressAttachment(@PathVariable Long woId,
+                                                              @PathVariable Long progressId,
+                                                              @PathVariable Long attachmentId) {
+        return bo.downloadProgressAttachment(woId, progressId, attachmentId);
+    }
+
     @PostMapping("/wo/{id}/assign")
     public ResponseEntity<Void> assignFe(@PathVariable Long id, @RequestBody @Valid AssignFERequest body) {
         return bo.assignFe(id, body);
