@@ -665,57 +665,47 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
             p.getApprovedBy().getDisplayName();
         }
 
-        boolean needsSubtotal = isMissingOrZero(p.getSubtotal());
-        boolean needsTax = p.getTax() == null;
-        boolean needsTotal = isMissingOrZero(p.getTotal());
-
-        if (needsSubtotal || needsTax || needsTotal) {
-            List<ProposalItem> lines = proposalItemRepo.findByTenantIdAndProposal_Id(p.getTenantId(), p.getId());
-            if (!lines.isEmpty()) {
-                BigDecimal subtotal = BigDecimal.ZERO;
-                BigDecimal tax = BigDecimal.ZERO;
-                for (ProposalItem line : lines) {
-                    if (line.getAmount() != null) {
-                        subtotal = subtotal.add(line.getAmount());
-                    }
-                    BigDecimal lineTax = null;
-                    if (line.getTaxAmount() != null) {
-                        lineTax = line.getTaxAmount();
-                    } else if (line.getTaxRate() != null && line.getAmount() != null) {
-                        lineTax = line.getAmount()
-                                .multiply(line.getTaxRate())
-                                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-                    }
-                    if (lineTax != null) {
-                        tax = tax.add(lineTax);
-                    }
+        List<ProposalItem> lines = proposalItemRepo.findByTenantIdAndProposal_Id(p.getTenantId(), p.getId());
+        if (!lines.isEmpty()) {
+            BigDecimal subtotal = BigDecimal.ZERO;
+            BigDecimal tax = BigDecimal.ZERO;
+            for (ProposalItem line : lines) {
+                if (line.getAmount() != null) {
+                    subtotal = subtotal.add(line.getAmount());
                 }
-
-                BigDecimal total = subtotal.add(tax);
-                boolean updated = false;
-
-                if (needsSubtotal && subtotal.compareTo(BigDecimal.ZERO) > 0) {
-                    p.setSubtotal(subtotal);
-                    updated = true;
+                BigDecimal lineTax = null;
+                if (line.getTaxAmount() != null) {
+                    lineTax = line.getTaxAmount();
+                } else if (line.getTaxRate() != null && line.getAmount() != null) {
+                    lineTax = line.getAmount()
+                            .multiply(line.getTaxRate())
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
                 }
-                if (needsTax && (tax.compareTo(BigDecimal.ZERO) > 0 || subtotal.compareTo(BigDecimal.ZERO) > 0)) {
-                    p.setTax(tax);
-                    updated = true;
-                }
-                if (needsTotal && total.compareTo(BigDecimal.ZERO) > 0) {
-                    p.setTotal(total);
-                    updated = true;
-                }
-
-                if (updated) {
-                    proposalRepo.save(p);
+                if (lineTax != null) {
+                    tax = tax.add(lineTax);
                 }
             }
-        }
-    }
 
-    private boolean isMissingOrZero(BigDecimal value) {
-        return value == null || value.compareTo(BigDecimal.ZERO) <= 0;
+            BigDecimal total = subtotal.add(tax);
+            boolean updated = false;
+
+            if (p.getSubtotal() == null || p.getSubtotal().compareTo(subtotal) != 0) {
+                p.setSubtotal(subtotal);
+                updated = true;
+            }
+            if (p.getTax() == null || p.getTax().compareTo(tax) != 0) {
+                p.setTax(tax);
+                updated = true;
+            }
+            if (p.getTotal() == null || p.getTotal().compareTo(total) != 0) {
+                p.setTotal(total);
+                updated = true;
+            }
+
+            if (updated) {
+                proposalRepo.save(p);
+            }
+        }
     }
 
     private void hydrateServiceRequest(ServiceRequest sr) {

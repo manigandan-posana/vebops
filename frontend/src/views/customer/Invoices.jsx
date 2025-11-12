@@ -29,6 +29,49 @@ import { displayDocNumber, normalizeDocNumber } from '../../utils/docNumbers'
 
 const selectAuth = (s) => s?.auth || {}
 
+const parseAmount = (value) => {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[^0-9.-]/g, '')
+    if (!cleaned) return null
+    const parsed = Number(cleaned)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+const formatAmount = (value) => {
+  if (value === null || value === undefined) return '—'
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value)
+}
+
+const deriveAmounts = (invoice) => {
+  const subtotalRaw = parseAmount(invoice?.subtotal)
+  const taxRaw = parseAmount(invoice?.tax)
+  const explicitTotal = parseAmount(invoice?.total)
+  const subtotal = subtotalRaw ?? 0
+  const tax = taxRaw ?? 0
+  const computed = subtotal + tax
+  const hasComponents = subtotalRaw !== null || taxRaw !== null
+  let total = explicitTotal
+  if (total === null && hasComponents) {
+    total = computed
+  }
+  if (total !== null && hasComponents && Math.abs(total - computed) > 0.01) {
+    total = computed
+  }
+  if (total === null) {
+    total = computed
+  }
+  return { subtotal, tax, total }
+}
+
 const statusTone = (status) => {
   const value = (status || '').toUpperCase()
   switch (value) {
@@ -100,7 +143,9 @@ export default function Invoices () {
                 <TableRow>
                   <TableCell>Invoice</TableCell>
                   <TableCell>Date</TableCell>
-                  <TableCell>Total</TableCell>
+                  <TableCell align='right'>Subtotal</TableCell>
+                  <TableCell align='right'>GST</TableCell>
+                  <TableCell align='right'>Total (incl. GST)</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Work Order</TableCell>
                   <TableCell align='right'>Actions</TableCell>
@@ -109,7 +154,7 @@ export default function Invoices () {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} sx={{ p: 0 }}>
+                    <TableCell colSpan={8} sx={{ p: 0 }}>
                       <LinearProgress color='primary' />
                     </TableCell>
                   </TableRow>
@@ -117,7 +162,7 @@ export default function Invoices () {
 
                 {!isLoading && invoices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align='center' sx={{ py: 6 }}>
+                    <TableCell colSpan={8} align='center' sx={{ py: 6 }}>
                       <Typography variant='body2' color='text.secondary'>
                         No invoices yet.
                       </Typography>
@@ -130,7 +175,7 @@ export default function Invoices () {
                       const id = inv.id
                       const code = displayDocNumber(inv.invoiceNo, id ? `INV-${id}` : '—')
                       const date = inv.invoiceDate || '—'
-                      const total = typeof inv.total === 'number' ? inv.total.toFixed(2) : inv.total ?? '—'
+                      const { subtotal, tax, total } = deriveAmounts(inv)
                       const status = inv.status || '—'
                       const wan = inv.workOrder?.wan || inv.woNo || '—'
                       const tone = statusTone(status)
@@ -139,7 +184,9 @@ export default function Invoices () {
                         <TableRow key={id} hover>
                           <TableCell>{code}</TableCell>
                           <TableCell>{date}</TableCell>
-                          <TableCell>{total}</TableCell>
+                          <TableCell align='right'>{formatAmount(subtotal)}</TableCell>
+                          <TableCell align='right'>{formatAmount(tax)}</TableCell>
+                          <TableCell align='right'>{formatAmount(total)}</TableCell>
                           <TableCell>
                             <Chip
                               size='small'

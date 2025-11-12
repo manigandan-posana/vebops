@@ -2,6 +2,7 @@ package com.vebops.service;
 
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,6 +72,7 @@ public class CustomerService {
     private final WorkOrderRepository workOrderRepo;
     private final WorkOrderProgressRepository workOrderProgressRepo;
     private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
+    private final com.vebops.repository.ServiceRepository serviceRepo;
 
     public CustomerService(ProposalRepository proposalRepo,
                            ProposalService proposals,
@@ -80,7 +82,8 @@ public class CustomerService {
                            CustomerPORepository customerPORepo,
                            WorkOrderRepository workOrderRepo,
                            WorkOrderProgressRepository workOrderProgressRepo,
-                           WorkOrderProgressAttachmentRepository progressAttachmentRepo) {
+                           WorkOrderProgressAttachmentRepository progressAttachmentRepo,
+                           com.vebops.repository.ServiceRepository serviceRepo) {
         this.proposalRepo = proposalRepo;
         this.proposals = proposals;
         this.invoiceRepo = invoiceRepo;
@@ -92,6 +95,7 @@ public class CustomerService {
         this.workOrderRepo = workOrderRepo;
         this.workOrderProgressRepo = workOrderProgressRepo;
         this.progressAttachmentRepo = progressAttachmentRepo;
+        this.serviceRepo = serviceRepo;
     }
 
     private Long tenant() { return TenantContext.getTenantId(); }
@@ -200,7 +204,7 @@ public class CustomerService {
         List<CustomerWorkOrderRow> rows = new ArrayList<>(list.size());
         for (WorkOrder wo : list) {
             touchWorkOrderGraph(wo);
-            rows.add(CustomerWorkOrderRow.from(wo));
+            rows.add(CustomerWorkOrderRow.from(wo, resolveSiteAddress(wo)));
         }
         return ResponseEntity.ok(rows);
     }
@@ -238,8 +242,9 @@ public class CustomerService {
             progressEntries.add(toProgressEntry(wo.getId(), entry, attachmentsByProgress));
         }
 
-        CustomerWorkOrderRow row = CustomerWorkOrderRow.from(wo);
-        ServiceInfoSummary service = ServiceInfoSummary.from(wo);
+        String siteAddress = resolveSiteAddress(wo);
+        CustomerWorkOrderRow row = CustomerWorkOrderRow.from(wo, siteAddress);
+        ServiceInfoSummary service = ServiceInfoSummary.from(wo, siteAddress);
         CustomerWorkOrderDetail detail = new CustomerWorkOrderDetail(row, service, progressEntries);
         return ResponseEntity.ok(detail);
     }
@@ -405,14 +410,15 @@ public class CustomerService {
         return new ProgressAttachmentView(id, filename, contentType, size, uploadedAt, downloadPath);
     }
 
-    private static String resolveSiteAddressStatic(WorkOrder wo) {
+    private String resolveSiteAddress(WorkOrder wo) {
         if (wo == null) {
             return null;
         }
         ServiceRequest sr = wo.getServiceRequest();
         String[] candidates = new String[] {
                 sr != null ? sr.getSiteAddress() : null,
-                (sr != null && sr.getCustomer() != null) ? sr.getCustomer().getAddress() : null
+                (sr != null && sr.getCustomer() != null) ? sr.getCustomer().getAddress() : null,
+                resolveConsigneeAddress(wo)
         };
         for (String candidate : candidates) {
             String trimmed = trimToNull(candidate);
@@ -421,6 +427,85 @@ public class CustomerService {
             }
         }
         return null;
+    }
+
+    private String resolveConsigneeAddress(WorkOrder wo) {
+        if (wo == null) {
+            return null;
+        }
+        ServiceRequest sr = wo.getServiceRequest();
+        Long tenantId = wo.getTenantId();
+        Long srId = sr != null ? sr.getId() : null;
+        Long woId = wo.getId();
+        com.vebops.domain.Service service = resolveLinkedService(tenantId, srId, woId);
+        return service != null ? trimToNull(service.getConsigneeAddress()) : null;
+    }
+
+    private com.vebops.domain.Service resolveLinkedService(Long tenantId, Long srId, Long woId) {
+        if (tenantId == null) {
+            return null;
+        }
+        List<com.vebops.domain.Service> candidates = serviceRepo.findTop50ByTenantIdOrderByCreatedAtDesc(tenantId);
+        com.vebops.domain.Service srMatch = null;
+        com.vebops.domain.Service woMatch = null;
+        for (com.vebops.domain.Service svc : candidates) {
+            if (svc == null) {
+                continue;
+            }
+            String meta = svc.getMetaJson();
+            String compact = meta != null ? meta.replaceAll("\\s+", "") : null;
+            boolean matchesSr = srId != null && metaContains(compact, srId, "serviceRequestId", "srId");
+            boolean matchesWo = woId != null && metaContains(compact, woId, "workOrderId", "woId");
+            if (matchesSr && matchesWo) {
+                return svc;
+            }
+            if (matchesSr && srMatch == null) {
+                srMatch = svc;
+            }
+            if (matchesWo && woMatch == null) {
+                woMatch = svc;
+            }
+        }
+        return srMatch != null ? srMatch : woMatch;
+    }
+
+    private boolean metaContains(String compactMeta, Long value, String... keys) {
+        if (compactMeta == null || value == null || keys == null || keys.length == 0) {
+            return false;
+        }
+        String str = value.toString();
+        for (String key : keys) {
+            if (key == null) {
+                continue;
+            }
+            String prefix = "\"" + key + "\":";
+            if (compactMeta.contains(prefix + str) || compactMeta.contains(prefix + "\"" + str + "\"")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static BigDecimal sanitizeAmount(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private static BigDecimal computeTotalAmount(BigDecimal explicit,
+                                                 BigDecimal subtotal,
+                                                 BigDecimal tax,
+                                                 boolean hadSubtotal,
+                                                 boolean hadTax) {
+        BigDecimal safeSubtotal = subtotal != null ? subtotal : BigDecimal.ZERO;
+        BigDecimal safeTax = tax != null ? tax : BigDecimal.ZERO;
+        BigDecimal sum = safeSubtotal.add(safeTax);
+        boolean hasComponents = hadSubtotal || hadTax;
+        if (explicit == null) {
+            return hasComponents ? sum : null;
+        }
+        if (hasComponents && explicit.compareTo(sum) != 0) {
+            return sum;
+        }
+        return explicit;
     }
 
     private static String trimToNull(String value) {
@@ -534,14 +619,18 @@ public class CustomerService {
         static CustomerProposalRow from(Proposal p, CustomerPO latestPo) {
             String code = (p.getId() != null) ? "P-" + p.getId() : null;
             CustomerPoSummary poSummary = CustomerPoSummary.from(latestPo);
+            java.math.BigDecimal subtotal = sanitizeAmount(p.getSubtotal());
+            java.math.BigDecimal tax = sanitizeAmount(p.getTax());
+            java.math.BigDecimal total = computeTotalAmount(p.getTotal(), subtotal, tax,
+                    p.getSubtotal() != null, p.getTax() != null);
             return new CustomerProposalRow(
                 p.getId(),
                 code,
                 code,
                 p.getStatus(),
-                p.getSubtotal(),
-                p.getTax(),
-                p.getTotal(),
+                subtotal,
+                tax,
+                total != null ? total : subtotal.add(tax),
                 p.getCreatedAt(),
                 CustomerSummary.from(p.getCustomer()),
                 poSummary,
@@ -567,7 +656,7 @@ public class CustomerService {
             boolean completionReportAvailable,
             String completionReportUrl
     ) {
-        static CustomerWorkOrderRow from(WorkOrder wo) {
+        static CustomerWorkOrderRow from(WorkOrder wo, String siteAddress) {
             if (wo == null) return null;
             ServiceRequest sr = wo.getServiceRequest();
             String status = wo.getStatus() != null ? wo.getStatus().name() : null;
@@ -586,7 +675,7 @@ public class CustomerService {
                     sr != null ? sr.getId() : null,
                     sr != null ? sr.getSrn() : null,
                     sr != null && sr.getServiceType() != null ? sr.getServiceType().name() : null,
-                    resolveSiteAddressStatic(wo),
+                    siteAddress,
                     wo.getCustomerPO() != null ? trimToNull(wo.getCustomerPO().getPoNumber()) : null,
                     completed,
                     completionUrl
@@ -605,7 +694,7 @@ public class CustomerService {
             String customerMobile,
             String customerPoNumber
     ) {
-        static ServiceInfoSummary from(WorkOrder wo) {
+        static ServiceInfoSummary from(WorkOrder wo, String siteAddress) {
             if (wo == null) return null;
             ServiceRequest sr = wo.getServiceRequest();
             Customer customer = sr != null ? sr.getCustomer() : null;
@@ -617,7 +706,7 @@ public class CustomerService {
                     sr != null ? sr.getSrn() : null,
                     sr != null && sr.getServiceType() != null ? sr.getServiceType().name() : null,
                     sr != null ? sr.getDescription() : null,
-                    resolveSiteAddressStatic(wo),
+                    siteAddress,
                     customer != null ? trimToNull(customer.getName()) : null,
                     customer != null ? trimToNull(customer.getEmail()) : null,
                     customer != null ? trimToNull(customer.getMobile()) : null,
@@ -673,13 +762,17 @@ public class CustomerService {
     ) {
         static CustomerInvoiceRow from(Invoice inv) {
             WorkOrderSummary workOrder = WorkOrderSummary.from(inv.getWorkOrder());
+            java.math.BigDecimal subtotal = sanitizeAmount(inv.getSubtotal());
+            java.math.BigDecimal tax = sanitizeAmount(inv.getTax());
+            java.math.BigDecimal total = computeTotalAmount(inv.getTotal(), subtotal, tax,
+                    inv.getSubtotal() != null, inv.getTax() != null);
             return new CustomerInvoiceRow(
                 inv.getId(),
                 inv.getInvoiceNo(),
                 inv.getInvoiceDate(),
-                inv.getSubtotal(),
-                inv.getTax(),
-                inv.getTotal(),
+                subtotal,
+                tax,
+                total != null ? total : subtotal.add(tax),
                 inv.getStatus(),
                 workOrder,
                 workOrder != null ? workOrder.wan() : null
