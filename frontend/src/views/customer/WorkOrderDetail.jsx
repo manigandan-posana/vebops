@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link as RouterLink, useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   Alert,
   Box,
@@ -113,7 +113,6 @@ export default function WorkOrderDetail () {
 
   return (
     <Stack spacing={3}>
-      <Toaster position='top-right' />
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent='space-between'>
         <Stack direction='row' spacing={1.2} alignItems='center'>

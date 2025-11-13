@@ -1,5 +1,5 @@
 import React from 'react'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import { useSelector } from 'react-redux'
 import {
   Alert,
@@ -110,7 +110,6 @@ export default function Invoices () {
 
   return (
     <Stack spacing={3}>
-      <Toaster position='top-right' />
 
       <Stack direction='row' spacing={1.2} alignItems='center'>
         <ReceiptLongRoundedIcon color='primary' />

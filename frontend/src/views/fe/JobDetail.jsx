@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   Card,
   CardContent,
@@ -221,7 +221,6 @@ export default function JobDetail () {
 
   return (
     <Stack spacing={3}>
-      <Toaster position='top-right' />
 
       <Stack direction='row' spacing={1} alignItems='center'>
         <AssignmentRoundedIcon color='primary' />

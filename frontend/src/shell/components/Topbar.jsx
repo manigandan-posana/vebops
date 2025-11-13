@@ -12,9 +12,7 @@ import {
   useTheme,
   useMediaQuery,
   Box,
-  Divider,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneRounded";
 
@@ -26,20 +24,20 @@ export default function Topbar({ onMenuClick }) {
 
   return (
     <AppBar position="sticky" sx={{ zIndex: (th) => th.zIndex.drawer + 1 }}>
-      <Toolbar sx={{ px: { xs: 2, sm: 3, lg: 4 } }}>
+      <Toolbar sx={{ px: { xs: 1.5, sm: 2.5, lg: 3 } }}>
         {!isDesktop ? (
           <IconButton
-            color="primary"
+            color="inherit"
             edge="start"
             onClick={onMenuClick}
+            size="small"
             sx={{
-              mr: 2,
-              borderRadius: 2,
+              mr: 1.5,
               border: `1px solid ${theme.palette.divider}`,
-              bgcolor: theme.palette.background.paper,
+              borderRadius: 4,
             }}
           >
-            <MenuRoundedIcon />
+            <MenuRoundedIcon fontSize="small" />
           </IconButton>
         ) : (
           <Box sx={{ width: 8 }} />
@@ -47,29 +45,29 @@ export default function Topbar({ onMenuClick }) {
 
         <Box sx={{ flexGrow: 1 }} />
 
-        <Stack direction="row" spacing={2} alignItems="center">
+        <Stack direction="row" spacing={1.5} alignItems="center">
           <Tooltip title="Notifications">
             <IconButton
+              size="small"
               sx={{
                 color: theme.palette.text.secondary,
-                borderRadius: 2,
-                border: `1px solid ${theme.palette.divider}`,
-                bgcolor: theme.palette.background.paper,
-                '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.04) },
+                borderRadius: 4,
               }}
             >
               <Badge color="secondary" variant="dot" overlap="circular">
-                <NotificationsNoneRoundedIcon />
+                <NotificationsNoneRoundedIcon fontSize="small" />
               </Badge>
             </IconButton>
           </Tooltip>
-          <Divider orientation="vertical" flexItem sx={{ height: 32 }} />
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
             <Tooltip title={user?.name || user?.email || "User"}>
               <Avatar
                 sx={{
-                  bgcolor: alpha(theme.palette.primary.main, 0.12),
-                  color: theme.palette.primary.main,
+                  bgcolor: theme.palette.primary.light,
+                  color: theme.palette.primary.contrastText,
+                  width: 32,
+                  height: 32,
+                  fontSize: '0.8125rem',
                   fontWeight: 600,
                 }}
               >
@@ -78,7 +76,7 @@ export default function Topbar({ onMenuClick }) {
             </Tooltip>
             {isDesktop && (
               <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
                   {user?.name || user?.email || "Welcome"}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">

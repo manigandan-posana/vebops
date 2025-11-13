@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   Alert,
   Button,
@@ -177,7 +177,6 @@ export default function Proposals () {
 
   return (
     <Stack spacing={3}>
-      <Toaster position='top-right' />
 
       <Stack direction='row' spacing={1.2} alignItems='center'>
         <GavelRoundedIcon color='primary' />

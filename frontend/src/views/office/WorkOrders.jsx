@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   useCreateWorkOrderFromRequestMutation,
   useGetFieldEngineersQuery,
@@ -321,8 +321,7 @@ export default function WorkOrders () {
   return (
     <Box sx={{ bgcolor: 'background.default', minHeight: '100%', py: 3 }}>
       <Container maxWidth='xl'>
-        <Toaster position='top-right' />
-        <Stack spacing={3}>
+          <Stack spacing={3}>
           <Stack spacing={1}>
             <Typography variant='h5' fontWeight={600}>Work orders</Typography>
             <Typography variant='body2' color='text.secondary'>Track proposals, convert approved requests and coordinate live jobs.</Typography>

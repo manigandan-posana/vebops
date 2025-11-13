@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   Alert,
   Button,
@@ -91,7 +91,6 @@ export default function WorkOrders () {
 
   return (
     <Stack spacing={3}>
-      <Toaster position='top-right' />
 
       <Stack direction='row' spacing={1.2} alignItems='center'>
         <AssignmentRoundedIcon color='primary' />

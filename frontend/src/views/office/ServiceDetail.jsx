@@ -10,7 +10,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom'
 import { IndianRupee, Send, Share2, FileDown } from 'lucide-react'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   Alert,
   Box,
@@ -518,7 +518,6 @@ export default function ServiceDetail () {
   if (isFetching) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
-        <Toaster />
         <Container maxWidth='lg'>
           <Stack alignItems='center' spacing={2} sx={{ py: 12 }}>
             <CircularProgress color='primary' />
@@ -534,7 +533,6 @@ export default function ServiceDetail () {
   if (error || !service) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
-        <Toaster />
         <Container maxWidth='md'>
           <Card>
             <CardContent>
@@ -712,7 +710,6 @@ export default function ServiceDetail () {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
-      <Toaster />
       <Container maxWidth='lg'>
         <Stack spacing={3}>
           <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent='space-between' spacing={2}>

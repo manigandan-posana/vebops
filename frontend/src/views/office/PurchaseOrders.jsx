@@ -35,7 +35,7 @@ import {
 } from '@mui/material'
 import Autocomplete from '@mui/material/Autocomplete'
 import { FileDown, Plus, RefreshCcw, Send, Eye } from 'lucide-react'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import { skipToken } from '@reduxjs/toolkit/query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -209,7 +209,6 @@ export default function PurchaseOrders () {
 
   return (
     <Box>
-      <Toaster position='top-right' />
       <Container maxWidth='xl' disableGutters>
         <Stack spacing={3}>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent='space-between' spacing={2} alignItems={{ md: 'center' }}>

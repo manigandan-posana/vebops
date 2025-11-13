@@ -25,7 +25,7 @@ import {
 } from '@mui/material'
 import { ArrowLeft, Plus, Save, Search } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   useCreatePurchaseOrderMutation,
   useGetCompanyQuery,
@@ -374,7 +374,6 @@ export default function PurchaseOrderCreate () {
 
   return (
     <Box sx={{ pb: 6 }}>
-      <Toaster position='top-right' />
       <Container maxWidth='xl' disableGutters>
         <Stack spacing={3}>
           <Stack direction='row' spacing={1} alignItems='center'>
