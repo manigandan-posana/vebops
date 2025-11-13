@@ -21,37 +21,45 @@ createRoot(document.getElementById('root')).render(
           <App />
           <Toaster
             position='top-right'
-            gutter={10}
-            containerStyle={{ top: 18, right: 18 }}
+            gutter={12}
+            containerStyle={{ top: 20, right: 20 }}
             toastOptions={{
               duration: 4200,
               style: {
                 fontSize: '0.75rem',
-                padding: '10px 16px',
-                borderRadius: 2,
-                border: '1px solid rgba(0,0,255,0.18)',
-                background: '#000033',
+                padding: '12px 18px',
+                borderRadius: 12,
+                border: '1px solid rgba(15,23,42,0.12)',
+                background: '#0F172A',
                 color: '#FFFFFF',
-                boxShadow: '0 18px 42px rgba(0,0,51,0.3)',
+                boxShadow: '0 16px 44px rgba(15, 23, 42, 0.35)',
               },
               success: {
                 iconTheme: {
-                  primary: '#003300',
-                  secondary: '#99FF99',
+                  primary: '#00FF00',
+                  secondary: '#0F172A',
                 },
                 style: {
                   background: '#00FF00',
                   color: '#003300',
+                  borderColor: 'rgba(0,51,0,0.24)',
                 },
               },
               error: {
                 iconTheme: {
-                  primary: '#FF3B30',
-                  secondary: '#FFE0DD',
+                  primary: '#FF0000',
+                  secondary: '#FFFFFF',
                 },
                 style: {
-                  background: '#FF3B30',
+                  background: '#FF0000',
                   color: '#FFFFFF',
+                  borderColor: 'rgba(255,255,255,0.24)',
+                },
+              },
+              loading: {
+                iconTheme: {
+                  primary: '#0000FF',
+                  secondary: '#FFFFFF',
                 },
               },
             }}

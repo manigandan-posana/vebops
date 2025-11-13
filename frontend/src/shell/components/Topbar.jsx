@@ -23,11 +23,15 @@ export default function Topbar({ onMenuClick }) {
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
 
   return (
-    <AppBar position="sticky" sx={{ zIndex: (th) => th.zIndex.drawer + 1 }}>
+    <AppBar
+      position="sticky"
+      color="inherit"
+      sx={{ zIndex: (th) => th.zIndex.drawer + 1, backgroundColor: '#FFFFFF' }}
+    >
       <Toolbar
         sx={{
           px: { xs: 1.5, sm: 2.5, lg: 3 },
-          minHeight: 54,
+          minHeight: 58,
         }}
       >
         {!isDesktop ? (
@@ -38,9 +42,9 @@ export default function Topbar({ onMenuClick }) {
             size="small"
             sx={{
               mr: 1.75,
-              border: '1px solid rgba(255,255,255,0.25)',
-              borderRadius: 1,
-              backgroundColor: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(15,23,42,0.12)',
+              borderRadius: 10,
+              backgroundColor: '#FFFFFF',
             }}
           >
             <MenuRoundedIcon fontSize="small" />
@@ -56,10 +60,10 @@ export default function Topbar({ onMenuClick }) {
             <IconButton
               size="small"
               sx={{
-                borderRadius: 1,
-                color: '#FFFFFF',
-                border: '1px solid rgba(255,255,255,0.16)',
-                background: 'rgba(0,0,0,0.12)',
+                borderRadius: 10,
+                color: theme.palette.primary.main,
+                border: '1px solid rgba(0,0,255,0.18)',
+                background: alpha(theme.palette.primary.main, 0.06),
               }}
             >
               <Badge color="secondary" variant="dot" overlap="circular">
@@ -71,12 +75,12 @@ export default function Topbar({ onMenuClick }) {
             <Tooltip title={user?.name || user?.email || "User"}>
               <Avatar
                 sx={{
-                  bgcolor: 'rgba(255,255,255,0.2)',
-                  color: '#FFFFFF',
-                  border: '1px solid rgba(255,255,255,0.35)',
-                  width: 32,
-                  height: 32,
-                  fontSize: '0.75rem',
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.primary.main,
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+                  width: 34,
+                  height: 34,
+                  fontSize: '0.8rem',
                   fontWeight: 700,
                 }}
               >
@@ -85,10 +89,16 @@ export default function Topbar({ onMenuClick }) {
             </Tooltip>
             {isDesktop && (
               <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.1, color: '#FFFFFF' }}>
+                <Typography
+                  variant="subtitle2"
+                  sx={{ fontWeight: 600, lineHeight: 1.1, color: theme.palette.text.primary }}
+                >
                   {user?.name || user?.email || "Welcome"}
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.72)', letterSpacing: '0.06em' }}>
+                <Typography
+                  variant="caption"
+                  sx={{ color: alpha(theme.palette.text.primary, 0.65), letterSpacing: '0.06em' }}
+                >
                   {user?.role || "User"}
                 </Typography>
               </Box>

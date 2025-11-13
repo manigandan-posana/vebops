@@ -36,7 +36,7 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import useLogout from "./hooks/useLogout";
 
 const drawerWidth = 236;
-const accentColors = ['#00FF00', '#0000FF', '#33FF33', '#6666FF'];
+const accentColors = ['#0000FF', '#FFFF00', '#00FF00', '#FF0000'];
 
 const iconFor = (label = "") => {
   const key = label.toLowerCase();
@@ -73,22 +73,22 @@ export default function Sidebar({ items = [], open = false, onClose }) {
       <Stack
         direction="row"
         alignItems="center"
-        spacing={1.5}
+        spacing={1.75}
         sx={{ px: 2.5, py: 2.25, minHeight: 68 }}
       >
         <Box
           component="img"
           src={logoSrc}
           alt="VebOps"
-          sx={{ width: 108, objectFit: "contain", filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))' }}
+          sx={{ width: 112, objectFit: "contain" }}
         />
         {!isDesktop && (
-          <IconButton onClick={onClose} sx={{ ml: "auto", color: alpha('#FFFFFF', 0.72) }}>
+          <IconButton onClick={onClose} sx={{ ml: "auto", color: alpha('#111827', 0.6) }}>
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         )}
       </Stack>
-      <Divider sx={{ borderColor: alpha('#FFFFFF', 0.1) }} />
+      <Divider sx={{ borderColor: alpha('#0F172A', 0.08) }} />
       <Box sx={{ flex: 1, overflowY: "auto" }}>
         <List sx={{ py: 1 }}>
           {items.map((item, index) => {
@@ -102,23 +102,24 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                 end={item.end}
                 onClick={!isDesktop ? onClose : undefined}
                 sx={{
-                  color: alpha('#FFFFFF', 0.72),
+                  color: alpha('#0F172A', 0.7),
                   fontWeight: 600,
+                  letterSpacing: '0.02em',
                   '& .MuiListItemIcon-root': {
                     color: accent,
                   },
                   '&.active': {
-                    background: alpha('#FFFFFF', 0.08),
-                    color: '#FFFFFF',
+                    background: alpha(accent, 0.12),
+                    color: '#0F172A',
                     '& .MuiListItemIcon-root': {
-                      color: '#FFFFFF',
+                      color: '#0F172A',
                     },
                   },
                   '&:hover': {
-                    background: alpha('#FFFFFF', 0.06),
-                    color: '#FFFFFF',
+                    background: alpha(accent, 0.08),
+                    color: '#0F172A',
                     '& .MuiListItemIcon-root': {
-                      color: '#FFFFFF',
+                      color: accent,
                     },
                   },
                 }}
@@ -126,13 +127,13 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                 <ListItemIcon sx={{ minWidth: 36 }}>
                   <Box
                     sx={{
-                      width: 28,
-                      height: 28,
+                      width: 30,
+                      height: 30,
                       display: 'grid',
                       placeItems: 'center',
-                      borderRadius: 1,
-                      border: `1px solid ${alpha(accent, 0.55)}`,
-                      background: alpha(accent, 0.15),
+                      borderRadius: 10,
+                      border: `1px solid ${alpha(accent, 0.35)}`,
+                      background: alpha(accent, 0.16),
                       color: accent,
                     }}
                   >
@@ -148,7 +149,7 @@ export default function Sidebar({ items = [], open = false, onClose }) {
           })}
         </List>
       </Box>
-      <Divider sx={{ borderColor: alpha('#FFFFFF', 0.1) }} />
+      <Divider sx={{ borderColor: alpha('#0F172A', 0.08) }} />
       <Box sx={{ p: 2.5 }}>
         <Button
           fullWidth
@@ -159,17 +160,18 @@ export default function Sidebar({ items = [], open = false, onClose }) {
             justifyContent: "flex-start",
             gap: 1,
             fontWeight: 600,
-            color: '#FFFFFF',
-            borderColor: alpha('#FFFFFF', 0.32),
+            color: '#0F172A',
+            borderColor: alpha('#0F172A', 0.18),
             '&:hover': {
-              borderColor: '#FFFFFF',
-              background: alpha('#FFFFFF', 0.1),
+              borderColor: '#0000FF',
+              background: alpha('#0000FF', 0.08),
+              color: '#0000FF',
             },
           }}
         >
           Logout
         </Button>
-        <Typography variant="caption" sx={{ mt: 1.5, display: "block", color: alpha('#FFFFFF', 0.6) }}>
+        <Typography variant="caption" sx={{ mt: 1.5, display: "block", color: alpha('#0F172A', 0.5) }}>
           Securely sign out of VebOps
         </Typography>
       </Box>

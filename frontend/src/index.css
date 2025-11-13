@@ -9,9 +9,8 @@ html, body, #root {
 body {
   margin: 0;
   font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-  background-color: #F4F6FB;
-  background-image: linear-gradient(135deg, rgba(0, 0, 255, 0.04) 0%, rgba(0, 255, 0, 0.04) 45%, rgba(255, 255, 255, 0.9) 100%);
-  color: #000033;
+  background-color: #ffffff;
+  color: #111827;
   -webkit-font-smoothing: antialiased;
 }
 
