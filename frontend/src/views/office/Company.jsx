@@ -25,25 +25,51 @@ import toast from 'react-hot-toast'
 import { useGetCompanyQuery, useUpdateCompanyMutation } from '../../features/office/officeApi'
 import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
+const shallowEqual = (a, b) => {
+  if (a === b) return true
+  if (!a || !b) return false
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) return false
+  for (const key of aKeys) {
+    const aVal = a[key]
+    const bVal = b[key]
+    if (Array.isArray(aVal) && Array.isArray(bVal)) {
+      if (aVal.length !== bVal.length) return false
+      for (let i = 0; i < aVal.length; i++) {
+        if (aVal[i] !== bVal[i]) return false
+      }
+    } else if (aVal !== bVal) {
+      return false
+    }
+  }
+  return true
+}
+
 
 export default function Company () {
   const navigate = useNavigate()
   const fileRef = useRef(null)
-  const { data: companyData = {}, isLoading } = useGetCompanyQuery()
+  const { data: companyData, isLoading } = useGetCompanyQuery()
   const [updateCompany, { isLoading: saving }] = useUpdateCompanyMutation()
   const [company, setCompany] = useState({})
 
   useEffect(() => {
-    if (companyData) {
-      const lines = []
-      if (companyData.addressLines && Array.isArray(companyData.addressLines)) {
-        lines.push(...companyData.addressLines)
-      } else {
-        if (companyData.addressLine1) lines[0] = companyData.addressLine1
-        if (companyData.addressLine2) lines[1] = companyData.addressLine2
-      }
-      setCompany({ ...companyData, addressLines: lines })
+    if (!companyData) return
+
+    const lines = []
+    if (Array.isArray(companyData.addressLines)) {
+      lines.push(...companyData.addressLines)
+    } else {
+      if (companyData.addressLine1) lines[0] = companyData.addressLine1
+      if (companyData.addressLine2) lines[1] = companyData.addressLine2
     }
+
+    const next = { ...companyData, addressLines: lines }
+    setCompany((prev) => {
+      if (shallowEqual(prev, next)) return prev
+      return next
+    })
   }, [companyData])
 
   const onChange = (key) => (event) => {

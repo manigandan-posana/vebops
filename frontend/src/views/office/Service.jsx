@@ -920,24 +920,14 @@ export default function Service () {
                       return (
                         <TableRow hover key={it.key}>
                           <TableCell>
-                            <Stack spacing={1.2}>
-                              <TextField
-                                size='small'
-                                value={it.name}
-                                onChange={(event) => updateItem(idx, { name: event.target.value })}
-                                onKeyDown={focusNextInputOnEnter}
-                                placeholder='Service / goods name'
-                                fullWidth
-                              />
-                              <TextField
-                                size='small'
-                                value={it.code}
-                                onChange={(event) => updateItem(idx, { code: event.target.value })}
-                                onKeyDown={focusNextInputOnEnter}
-                                placeholder='Code (optional)'
-                                sx={{ maxWidth: 180 }}
-                              />
-                            </Stack>
+                            <TextField
+                              size='small'
+                              value={it.name}
+                              onChange={(event) => updateItem(idx, { name: event.target.value })}
+                              onKeyDown={focusNextInputOnEnter}
+                              placeholder='Service / goods name'
+                              fullWidth
+                            />
                           </TableCell>
                           <TableCell>
                             <TextField
