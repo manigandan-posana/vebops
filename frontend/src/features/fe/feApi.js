@@ -22,14 +22,37 @@ export const feApi = baseApi.injectEndpoints({
           : [{ type: 'WorkOrders', id: 'LIST' }],
     }),
 
-    // body must be { status, byFeId, remarks, photoUrl }
+    // body must be { status, byFeId, remarks, photoUrl?, photoName?, photoContentType?, photoSize?, photoData? }
     postProgress: b.mutation({
       async queryFn (payload, _api, _extra, baseQuery) {
-        const { woId, status, byFeId, remarks, photoUrl } = payload || {}
+        const { woId, status, byFeId, remarks, photoUrl, photoFile } = payload || {}
         try {
           requireFields({ woId, status }, ['woId', 'status'])
         } catch (e) {
           return { error: { status: 0, data: { message: e.message } } }
+        }
+        let photoPayload = {}
+        if (photoFile instanceof File) {
+          try {
+            const base64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader()
+              reader.onload = () => {
+                const result = reader.result || ''
+                const commaIndex = typeof result === 'string' ? result.indexOf(',') : -1
+                resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result)
+              }
+              reader.onerror = () => reject(reader.error || new Error('Unable to read file'))
+              reader.readAsDataURL(photoFile)
+            })
+            photoPayload = {
+              photoName: photoFile.name,
+              photoContentType: photoFile.type,
+              photoSize: photoFile.size,
+              photoData: base64
+            }
+          } catch (err) {
+            return { error: { status: 0, data: { message: err?.message || 'Failed to read photo' } } }
+          }
         }
         const res = await baseQuery({
           url: `/fe/wo/${woId}/progress`,
@@ -38,7 +61,8 @@ export const feApi = baseApi.injectEndpoints({
             status,
             byFeId: byFeId || undefined,
             remarks: remarks || '',
-            photoUrl: photoUrl || null
+            photoUrl: photoUrl || null,
+            ...photoPayload
           }
         })
         return res.error ? { error: res.error } : { data: true }
@@ -52,6 +76,14 @@ export const feApi = baseApi.injectEndpoints({
     getCompletionReportPdf: b.query({
       query: (id) => ({
         url: `/fe/wo/${id}/completion-report.pdf`,
+        method: 'GET',
+        responseHandler: (response) => response.blob()
+      })
+    }),
+
+    getProgressAttachment: b.query({
+      query: ({ woId, progressId, attachmentId }) => ({
+        url: `/fe/wo/${woId}/progress/${progressId}/attachments/${attachmentId}`,
         method: 'GET',
         responseHandler: (response) => response.blob()
       })
@@ -71,4 +103,5 @@ export const {
   useLazyGetCompletionReportPdfQuery,
   usePostProgressMutation,
   useGetWorkOrderDetailQuery,
+  useLazyGetProgressAttachmentQuery,
 } = feApi

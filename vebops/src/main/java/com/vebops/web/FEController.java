@@ -55,4 +55,11 @@ public class FEController {
     public ResponseEntity<byte[]> completionReport(@PathVariable Long id) {
         return svc.completionReport(id);
     }
+
+    @GetMapping("/wo/{woId}/progress/{progressId}/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadProgressAttachment(@PathVariable Long woId,
+                                                              @PathVariable Long progressId,
+                                                              @PathVariable Long attachmentId) {
+        return svc.downloadProgressAttachment(woId, progressId, attachmentId);
+    }
 }
