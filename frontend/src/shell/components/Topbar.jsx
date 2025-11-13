@@ -12,9 +12,8 @@ import {
   useTheme,
   useMediaQuery,
   Box,
-  Divider,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha as muiAlpha } from "@mui/material/styles";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneRounded";
 
@@ -25,21 +24,31 @@ export default function Topbar({ onMenuClick }) {
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
 
   return (
-    <AppBar position="sticky" sx={{ zIndex: (th) => th.zIndex.drawer + 1 }}>
-      <Toolbar sx={{ px: { xs: 2, sm: 3, lg: 4 } }}>
+    <AppBar
+      position="sticky"
+      color="inherit"
+      sx={{ zIndex: (th) => th.zIndex.drawer + 1, backgroundColor: '#FFFFFF' }}
+    >
+      <Toolbar
+        sx={{
+          px: { xs: 1.5, sm: 2.5, lg: 3 },
+          minHeight: 58,
+        }}
+      >
         {!isDesktop ? (
           <IconButton
-            color="primary"
+            color="inherit"
             edge="start"
             onClick={onMenuClick}
+            size="small"
             sx={{
-              mr: 2,
-              borderRadius: 2,
-              border: `1px solid ${theme.palette.divider}`,
-              bgcolor: theme.palette.background.paper,
+              mr: 1.75,
+              border: '1px solid rgba(15,23,42,0.12)',
+              borderRadius: 10,
+              backgroundColor: '#FFFFFF',
             }}
           >
-            <MenuRoundedIcon />
+            <MenuRoundedIcon fontSize="small" />
           </IconButton>
         ) : (
           <Box sx={{ width: 8 }} />
@@ -47,30 +56,33 @@ export default function Topbar({ onMenuClick }) {
 
         <Box sx={{ flexGrow: 1 }} />
 
-        <Stack direction="row" spacing={2} alignItems="center">
+        <Stack direction="row" spacing={1.75} alignItems="center">
           <Tooltip title="Notifications">
             <IconButton
+              size="small"
               sx={{
-                color: theme.palette.text.secondary,
-                borderRadius: 2,
-                border: `1px solid ${theme.palette.divider}`,
-                bgcolor: theme.palette.background.paper,
-                '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.04) },
+                borderRadius: 10,
+                color: theme.palette.primary.main,
+                border: '1px solid rgba(0,0,255,0.18)',
+                background: muiAlpha(theme.palette.primary.main, 0.06),
               }}
             >
               <Badge color="secondary" variant="dot" overlap="circular">
-                <NotificationsNoneRoundedIcon />
+                <NotificationsNoneRoundedIcon fontSize="small" />
               </Badge>
             </IconButton>
           </Tooltip>
-          <Divider orientation="vertical" flexItem sx={{ height: 32 }} />
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.25} alignItems="center">
             <Tooltip title={user?.name || user?.email || "User"}>
               <Avatar
                 sx={{
-                  bgcolor: alpha(theme.palette.primary.main, 0.12),
+                  bgcolor: muiAlpha(theme.palette.primary.main, 0.1),
                   color: theme.palette.primary.main,
-                  fontWeight: 600,
+                  border: `1px solid ${muiAlpha(theme.palette.primary.main, 0.25)}`,
+                  width: 34,
+                  height: 34,
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
                 }}
               >
                 {initial}
@@ -78,10 +90,16 @@ export default function Topbar({ onMenuClick }) {
             </Tooltip>
             {isDesktop && (
               <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                <Typography
+                  variant="subtitle2"
+                  sx={{ fontWeight: 600, lineHeight: 1.1, color: theme.palette.text.primary }}
+                >
                   {user?.name || user?.email || "Welcome"}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography
+                  variant="caption"
+                  sx={{ color: muiAlpha(theme.palette.text.primary, 0.65), letterSpacing: '0.06em' }}
+                >
                   {user?.role || "User"}
                 </Typography>
               </Box>
