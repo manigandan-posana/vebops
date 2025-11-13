@@ -16,9 +16,6 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.vebops.domain.Document;
-import com.vebops.domain.Invoice;
-import com.vebops.domain.Proposal;
 import com.vebops.service.CustomerService;
 
 /**
@@ -38,7 +35,7 @@ public class CustomerController {
     }
 
     @GetMapping("/proposals")
-    public ResponseEntity<List<Proposal>> myProposals(@RequestParam(required = false) Long customerId) {
+    public ResponseEntity<List<CustomerService.CustomerProposalRow>> myProposals(@RequestParam(required = false) Long customerId) {
         return svc.myProposals(customerId);
     }
 
@@ -55,18 +52,40 @@ public class CustomerController {
     }
 
     @GetMapping("/proposals/{id}/documents")
-    public ResponseEntity<List<Document>> proposalDocs(@PathVariable Long id, @RequestParam(required = false) Long customerId) {
+    public ResponseEntity<List<CustomerService.ProposalDocumentRow>> proposalDocs(@PathVariable Long id, @RequestParam(required = false) Long customerId) {
         return svc.proposalDocuments(id, customerId);
     }
 
     @GetMapping("/invoices")
-    public ResponseEntity<List<Invoice>> myInvoices(@RequestParam(required = false) Long customerId) {
+    public ResponseEntity<List<CustomerService.CustomerInvoiceRow>> myInvoices(@RequestParam(required = false) Long customerId) {
         return svc.myInvoices(customerId);
+    }
+
+    @GetMapping("/work-orders")
+    public ResponseEntity<List<CustomerService.CustomerWorkOrderRow>> myWorkOrders(@RequestParam(required = false) Long customerId) {
+        return svc.myWorkOrders(customerId);
+    }
+
+    @GetMapping("/work-orders/{id}")
+    public ResponseEntity<CustomerService.CustomerWorkOrderDetail> workOrderDetail(@PathVariable Long id) {
+        return svc.workOrderDetail(id);
+    }
+
+    @GetMapping(value = "/work-orders/{id}/completion-report", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadCompletionReport(@PathVariable Long id) {
+        return svc.completionReport(id);
+    }
+
+    @GetMapping("/work-orders/{woId}/progress/{progressId}/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadProgressAttachment(@PathVariable Long woId,
+                                                             @PathVariable Long progressId,
+                                                             @PathVariable Long attachmentId) {
+        return svc.downloadProgressAttachment(woId, progressId, attachmentId);
     }
 
     // MULTIPART upload for PO PDF (separate from poNumber approval endpoint)
     @PostMapping(value = "/proposals/{id}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Document> uploadProposalDocFile(
+    public ResponseEntity<CustomerService.ProposalDocumentRow> uploadProposalDocFile(
             @PathVariable Long id,
             @RequestPart("file") MultipartFile file,
             @RequestPart(value = "type", required = false) String typeIgnored) {

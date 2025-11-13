@@ -35,7 +35,7 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import useLogout from "./hooks/useLogout";
 
-const drawerWidth = 280;
+const drawerWidth = 248;
 
 const iconFor = (label = "") => {
   const key = label.toLowerCase();
@@ -72,24 +72,24 @@ export default function Sidebar({ items = [], open = false, onClose }) {
       <Stack
         direction="row"
         alignItems="center"
-        spacing={2}
-        sx={{ px: 3, py: 2.5, minHeight: 80 }}
+        spacing={1.5}
+        sx={{ px: 2.5, py: 2, minHeight: 64 }}
       >
         <Box
           component="img"
           src={logoSrc}
           alt="VebOps"
-          sx={{ width: 140, objectFit: "contain" }}
+          sx={{ width: 112, objectFit: "contain" }}
         />
         {!isDesktop && (
           <IconButton onClick={onClose} sx={{ ml: "auto", color: theme.palette.text.secondary }}>
-            <CloseRoundedIcon />
+            <CloseRoundedIcon fontSize="small" />
           </IconButton>
         )}
       </Stack>
       <Divider />
-      <Box sx={{ flex: 1, overflowY: "auto", px: 2, py: 3 }}>
-        <List sx={{ display: "grid", gap: 0.5 }}>
+      <Box sx={{ flex: 1, overflowY: "auto" }}>
+        <List sx={{ py: 1 }}>
           {items.map((item) => {
             const Icon = iconFor(item.label);
             return (
@@ -100,23 +100,20 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                 end={item.end}
                 onClick={!isDesktop ? onClose : undefined}
                 sx={{
-                  borderRadius: 2,
                   color: theme.palette.text.secondary,
                   fontWeight: 600,
-                  minHeight: 48,
                   '& .MuiListItemIcon-root': {
-                    minWidth: 40,
                     color: theme.palette.text.secondary,
                   },
-                  '&:hover': {
-                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                  '&.active': {
+                    backgroundColor: alpha(theme.palette.primary.main, 0.12),
                     color: theme.palette.primary.main,
                     '& .MuiListItemIcon-root': {
                       color: theme.palette.primary.main,
                     },
                   },
-                  '&.active': {
-                    bgcolor: alpha(theme.palette.primary.main, 0.12),
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.primary.main, 0.08),
                     color: theme.palette.primary.main,
                     '& .MuiListItemIcon-root': {
                       color: theme.palette.primary.main,
@@ -137,22 +134,23 @@ export default function Sidebar({ items = [], open = false, onClose }) {
         </List>
       </Box>
       <Divider />
-      <Box sx={{ p: 3 }}>
+      <Box sx={{ p: 2.5 }}>
         <Button
           fullWidth
           variant="outlined"
           onClick={doLogout}
-          startIcon={<LogoutRoundedIcon />}
+          startIcon={<LogoutRoundedIcon fontSize="small" />}
           sx={{
-            borderRadius: 2,
             justifyContent: "flex-start",
             gap: 1,
             fontWeight: 600,
+            color: theme.palette.text.primary,
+            borderColor: theme.palette.divider,
           }}
         >
           Logout
         </Button>
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: "block" }}>
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: "block" }}>
           Securely sign out of VebOps
         </Typography>
       </Box>
@@ -177,3 +175,5 @@ export default function Sidebar({ items = [], open = false, onClose }) {
     </Drawer>
   );
 }
+
+export { drawerWidth as SIDEBAR_WIDTH };

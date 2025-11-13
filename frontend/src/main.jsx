@@ -19,7 +19,42 @@ createRoot(document.getElementById('root')).render(
         <CssBaseline />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <App />
-          <Toaster />
+          <Toaster
+            position='top-right'
+            gutter={8}
+            containerStyle={{ top: 16, right: 16 }}
+            toastOptions={{
+              duration: 4000,
+              style: {
+                fontSize: '0.75rem',
+                padding: '10px 14px',
+                borderRadius: 4,
+                background: '#111827',
+                color: '#F9FAFB',
+                boxShadow: '0 18px 36px rgba(15,23,42,0.25)',
+              },
+              success: {
+                iconTheme: {
+                  primary: '#0F766E',
+                  secondary: '#ECFDF5',
+                },
+                style: {
+                  background: '#0F766E',
+                  color: '#F9FAFB',
+                },
+              },
+              error: {
+                iconTheme: {
+                  primary: '#DC2626',
+                  secondary: '#FEE2E2',
+                },
+                style: {
+                  background: '#DC2626',
+                  color: '#F9FAFB',
+                },
+              },
+            }}
+          />
         </BrowserRouter>
       </ThemeProvider>
     </Provider>
