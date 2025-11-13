@@ -1043,6 +1043,7 @@ export const {
   useAutocompleteServiceBuyersQuery,
   useGetServicesQuery,
   useGetServiceQuery,
+  useLazyGetServiceQuery,
   useDownloadServiceInvoiceMutation,
   useSendServiceInvoiceMutation,
   useShareServiceProposalMutation,
