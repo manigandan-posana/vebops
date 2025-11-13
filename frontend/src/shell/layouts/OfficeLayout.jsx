@@ -13,12 +13,14 @@ import Preview from "../../views/office/Preview";
 import Users from "../../views/office/Users";
 import WorkOrders from "../../views/office/WorkOrders";
 import Company from "../../views/office/Company";
+import PurchaseOrders from "../../views/office/PurchaseOrders";
 
 const items = [
   { to: "/office/dashboard", label: "Activity" },
   { to: "/office/service", label: "New Service" },
   { to: "/office/service-history", label: "Service History" },
   { to: "/office/proposal-history", label: "Proposal History" },
+  { to: "/office/purchase-orders", label: "Purchase Orders" },
   { to: "/office/kits", label: "Kits" },
   { to: "/office/company", label: "Company" },
   { to: "/office/work-orders", label: "Work Orders" },
@@ -47,6 +49,7 @@ export default function OfficeLayout() {
               <Route path="service-history" element={<ServiceHistory />} />
               <Route path="service-history/:id" element={<ServiceDetail />} />
               <Route path="proposal-history" element={<ProposalHistory />} />
+              <Route path="purchase-orders" element={<PurchaseOrders />} />
               <Route path="kits" element={<Kits />} />
               <Route path="company" element={<Company />} />
               <Route path="preview" element={<Preview />} />

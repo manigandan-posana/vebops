@@ -44,6 +44,49 @@ import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
 const selectAuth = (s) => s?.auth || {}
 
+const parseAmount = (value) => {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[^0-9.-]/g, '')
+    if (!cleaned) return null
+    const parsed = Number(cleaned)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+const formatAmount = (value) => {
+  if (value === null || value === undefined) return '—'
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value)
+}
+
+const deriveAmounts = (proposal) => {
+  const subtotalRaw = parseAmount(proposal?.subtotal)
+  const taxRaw = parseAmount(proposal?.tax)
+  const explicitTotal = parseAmount(proposal?.total)
+  const subtotal = subtotalRaw ?? 0
+  const tax = taxRaw ?? 0
+  const computed = subtotal + tax
+  const hasComponents = subtotalRaw !== null || taxRaw !== null
+  let total = explicitTotal
+  if (total === null && hasComponents) {
+    total = computed
+  }
+  if (total !== null && hasComponents && Math.abs(total - computed) > 0.01) {
+    total = computed
+  }
+  if (total === null) {
+    total = computed
+  }
+  return { subtotal, tax, total }
+}
+
 const statusTone = (status) => {
   const value = (status || '').toUpperCase()
   switch (value) {
@@ -168,6 +211,9 @@ export default function Proposals () {
                   <TableCell>Proposal</TableCell>
                   <TableCell>Customer</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell align='right'>Subtotal</TableCell>
+                  <TableCell align='right'>GST</TableCell>
+                  <TableCell align='right'>Total (incl. GST)</TableCell>
                   <TableCell>PO Number</TableCell>
                   <TableCell>Documents</TableCell>
                   <TableCell align='right'>Actions</TableCell>
@@ -176,7 +222,7 @@ export default function Proposals () {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} sx={{ p: 0 }}>
+                    <TableCell colSpan={9} sx={{ p: 0 }}>
                       <LinearProgress color='primary' />
                     </TableCell>
                   </TableRow>
@@ -184,7 +230,7 @@ export default function Proposals () {
 
                 {!isLoading && proposals.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align='center' sx={{ py: 6 }}>
+                    <TableCell colSpan={9} align='center' sx={{ py: 6 }}>
                       <Typography variant='body2' color='text.secondary'>
                         No proposals yet.
                       </Typography>
@@ -197,6 +243,7 @@ export default function Proposals () {
                       const code = p.code || p.proposalNo || (p.id ? `P-${p.id}` : '—')
                       const status = p.status || p.proposalStatus || '—'
                       const customerName = p.customer?.name || p.customer?.displayName || p.customerName || '—'
+                      const { subtotal, tax, total } = deriveAmounts(p)
                       const poNumber = p.customerPoNumber || p.customerPO?.poNumber || '—'
                       const tone = statusTone(status)
 
@@ -217,6 +264,13 @@ export default function Proposals () {
                               label={tone.label}
                               variant={tone.color === 'default' ? 'outlined' : 'soft'}
                             />
+                          </TableCell>
+                          <TableCell align='right'>{formatAmount(subtotal)}</TableCell>
+                          <TableCell align='right'>{formatAmount(tax)}</TableCell>
+                          <TableCell align='right'>
+                            <Typography variant='body2' fontWeight={600}>
+                              {formatAmount(total)}
+                            </Typography>
                           </TableCell>
                           <TableCell>
                             <Typography variant='body2' color='text.secondary'>
