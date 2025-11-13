@@ -189,6 +189,7 @@ export default function Sidebar({ items = [], open = false, onClose }) {
           width: drawerWidth,
           boxSizing: "border-box",
           p: 0,
+          backgroundImage: `linear-gradient(195deg, ${alpha('#0000FF', 0.92)} 0%, ${alpha('#000033', 0.98)} 70%)`,
         },
       }}
     >

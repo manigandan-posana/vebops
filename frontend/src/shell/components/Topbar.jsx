@@ -13,7 +13,6 @@ import {
   useMediaQuery,
   Box,
 } from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneRounded";
 
