@@ -1056,6 +1056,7 @@ export const {
   useBulkCreateKitsMutation,
   useAutocompleteServiceBuyersQuery,
   useGetServicesQuery,
+  useLazyGetServicesQuery,
   useGetServiceQuery,
   useLazyGetServiceQuery,
   useDownloadServiceInvoiceMutation,
