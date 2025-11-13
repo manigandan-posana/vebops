@@ -248,7 +248,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiListItemButton: {
+    MuiTableRow: {
       styleOverrides: {
         root: {
           '& .MuiTableCell-head': {
@@ -271,10 +271,6 @@ const theme = createTheme({
           },
           '&:not(.MuiTableRow-head):hover': {
             backgroundColor: alpha(paletteBlue, 0.04),
-          },
-          '&:hover': {
-            backgroundColor: alpha(paletteWhite, 0.08),
-            color: paletteWhite,
           },
         },
       },

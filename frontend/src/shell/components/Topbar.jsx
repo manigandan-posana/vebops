@@ -13,6 +13,7 @@ import {
   useMediaQuery,
   Box,
 } from "@mui/material";
+import { alpha as muiAlpha } from "@mui/material/styles";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import NotificationsNoneRoundedIcon from "@mui/icons-material/NotificationsNoneRounded";
 
@@ -63,7 +64,7 @@ export default function Topbar({ onMenuClick }) {
                 borderRadius: 10,
                 color: theme.palette.primary.main,
                 border: '1px solid rgba(0,0,255,0.18)',
-                background: alpha(theme.palette.primary.main, 0.06),
+                background: muiAlpha(theme.palette.primary.main, 0.06),
               }}
             >
               <Badge color="secondary" variant="dot" overlap="circular">
@@ -75,9 +76,9 @@ export default function Topbar({ onMenuClick }) {
             <Tooltip title={user?.name || user?.email || "User"}>
               <Avatar
                 sx={{
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  bgcolor: muiAlpha(theme.palette.primary.main, 0.1),
                   color: theme.palette.primary.main,
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+                  border: `1px solid ${muiAlpha(theme.palette.primary.main, 0.25)}`,
                   width: 34,
                   height: 34,
                   fontSize: '0.8rem',
@@ -97,7 +98,7 @@ export default function Topbar({ onMenuClick }) {
                 </Typography>
                 <Typography
                   variant="caption"
-                  sx={{ color: alpha(theme.palette.text.primary, 0.65), letterSpacing: '0.06em' }}
+                  sx={{ color: muiAlpha(theme.palette.text.primary, 0.65), letterSpacing: '0.06em' }}
                 >
                   {user?.role || "User"}
                 </Typography>
