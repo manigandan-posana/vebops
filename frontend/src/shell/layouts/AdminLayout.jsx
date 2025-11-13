@@ -29,7 +29,13 @@ export default function AdminLayout() {
         }}
       >
         <Topbar onMenuClick={() => setOpen(true)} />
-        <Box component="main" sx={{ py: 2.5, px: { xs: 1.5, sm: 2, lg: 4 } }}>
+        <Box
+          component="main"
+          sx={{
+            py: 2,
+            px: { xs: 1.25, sm: 2, lg: 3.5 },
+          }}
+        >
           <Container maxWidth="xl" disableGutters>
             <Routes>
               <Route path="/" element={<Navigate to="dashboard" replace />} />

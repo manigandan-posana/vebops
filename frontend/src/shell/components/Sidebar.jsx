@@ -35,7 +35,8 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import useLogout from "./hooks/useLogout";
 
-const drawerWidth = 248;
+const drawerWidth = 236;
+const accentColors = ['#00FF00', '#0000FF', '#33FF33', '#6666FF'];
 
 const iconFor = (label = "") => {
   const key = label.toLowerCase();
@@ -73,25 +74,26 @@ export default function Sidebar({ items = [], open = false, onClose }) {
         direction="row"
         alignItems="center"
         spacing={1.5}
-        sx={{ px: 2.5, py: 2, minHeight: 64 }}
+        sx={{ px: 2.5, py: 2.25, minHeight: 68 }}
       >
         <Box
           component="img"
           src={logoSrc}
           alt="VebOps"
-          sx={{ width: 112, objectFit: "contain" }}
+          sx={{ width: 108, objectFit: "contain", filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))' }}
         />
         {!isDesktop && (
-          <IconButton onClick={onClose} sx={{ ml: "auto", color: theme.palette.text.secondary }}>
+          <IconButton onClick={onClose} sx={{ ml: "auto", color: alpha('#FFFFFF', 0.72) }}>
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         )}
       </Stack>
-      <Divider />
+      <Divider sx={{ borderColor: alpha('#FFFFFF', 0.1) }} />
       <Box sx={{ flex: 1, overflowY: "auto" }}>
         <List sx={{ py: 1 }}>
-          {items.map((item) => {
+          {items.map((item, index) => {
             const Icon = iconFor(item.label);
+            const accent = accentColors[index % accentColors.length];
             return (
               <ListItemButton
                 key={item.to}
@@ -100,32 +102,45 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                 end={item.end}
                 onClick={!isDesktop ? onClose : undefined}
                 sx={{
-                  color: theme.palette.text.secondary,
+                  color: alpha('#FFFFFF', 0.72),
                   fontWeight: 600,
                   '& .MuiListItemIcon-root': {
-                    color: theme.palette.text.secondary,
+                    color: accent,
                   },
                   '&.active': {
-                    backgroundColor: alpha(theme.palette.primary.main, 0.12),
-                    color: theme.palette.primary.main,
+                    background: alpha('#FFFFFF', 0.08),
+                    color: '#FFFFFF',
                     '& .MuiListItemIcon-root': {
-                      color: theme.palette.primary.main,
+                      color: '#FFFFFF',
                     },
                   },
                   '&:hover': {
-                    backgroundColor: alpha(theme.palette.primary.main, 0.08),
-                    color: theme.palette.primary.main,
+                    background: alpha('#FFFFFF', 0.06),
+                    color: '#FFFFFF',
                     '& .MuiListItemIcon-root': {
-                      color: theme.palette.primary.main,
+                      color: '#FFFFFF',
                     },
                   },
                 }}
               >
-                <ListItemIcon>
-                  <Icon fontSize="small" />
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  <Box
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      display: 'grid',
+                      placeItems: 'center',
+                      borderRadius: 1,
+                      border: `1px solid ${alpha(accent, 0.55)}`,
+                      background: alpha(accent, 0.15),
+                      color: accent,
+                    }}
+                  >
+                    <Icon sx={{ fontSize: 18 }} />
+                  </Box>
                 </ListItemIcon>
                 <ListItemText
-                  primaryTypographyProps={{ variant: "body2", fontWeight: 600 }}
+                  primaryTypographyProps={{ variant: "body2", fontWeight: 600, letterSpacing: '0.04em' }}
                   primary={item.label}
                 />
               </ListItemButton>
@@ -133,7 +148,7 @@ export default function Sidebar({ items = [], open = false, onClose }) {
           })}
         </List>
       </Box>
-      <Divider />
+      <Divider sx={{ borderColor: alpha('#FFFFFF', 0.1) }} />
       <Box sx={{ p: 2.5 }}>
         <Button
           fullWidth
@@ -144,13 +159,17 @@ export default function Sidebar({ items = [], open = false, onClose }) {
             justifyContent: "flex-start",
             gap: 1,
             fontWeight: 600,
-            color: theme.palette.text.primary,
-            borderColor: theme.palette.divider,
+            color: '#FFFFFF',
+            borderColor: alpha('#FFFFFF', 0.32),
+            '&:hover': {
+              borderColor: '#FFFFFF',
+              background: alpha('#FFFFFF', 0.1),
+            },
           }}
         >
           Logout
         </Button>
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, display: "block" }}>
+        <Typography variant="caption" sx={{ mt: 1.5, display: "block", color: alpha('#FFFFFF', 0.6) }}>
           Securely sign out of VebOps
         </Typography>
       </Box>
@@ -168,6 +187,7 @@ export default function Sidebar({ items = [], open = false, onClose }) {
           width: drawerWidth,
           boxSizing: "border-box",
           p: 0,
+          backgroundImage: `linear-gradient(195deg, ${alpha('#0000FF', 0.92)} 0%, ${alpha('#000033', 0.98)} 70%)`,
         },
       }}
     >

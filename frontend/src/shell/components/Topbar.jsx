@@ -24,7 +24,12 @@ export default function Topbar({ onMenuClick }) {
 
   return (
     <AppBar position="sticky" sx={{ zIndex: (th) => th.zIndex.drawer + 1 }}>
-      <Toolbar sx={{ px: { xs: 1.5, sm: 2.5, lg: 3 } }}>
+      <Toolbar
+        sx={{
+          px: { xs: 1.5, sm: 2.5, lg: 3 },
+          minHeight: 54,
+        }}
+      >
         {!isDesktop ? (
           <IconButton
             color="inherit"
@@ -32,9 +37,10 @@ export default function Topbar({ onMenuClick }) {
             onClick={onMenuClick}
             size="small"
             sx={{
-              mr: 1.5,
-              border: `1px solid ${theme.palette.divider}`,
-              borderRadius: 4,
+              mr: 1.75,
+              border: '1px solid rgba(255,255,255,0.25)',
+              borderRadius: 1,
+              backgroundColor: 'rgba(255,255,255,0.08)',
             }}
           >
             <MenuRoundedIcon fontSize="small" />
@@ -45,13 +51,15 @@ export default function Topbar({ onMenuClick }) {
 
         <Box sx={{ flexGrow: 1 }} />
 
-        <Stack direction="row" spacing={1.5} alignItems="center">
+        <Stack direction="row" spacing={1.75} alignItems="center">
           <Tooltip title="Notifications">
             <IconButton
               size="small"
               sx={{
-                color: theme.palette.text.secondary,
-                borderRadius: 4,
+                borderRadius: 1,
+                color: '#FFFFFF',
+                border: '1px solid rgba(255,255,255,0.16)',
+                background: 'rgba(0,0,0,0.12)',
               }}
             >
               <Badge color="secondary" variant="dot" overlap="circular">
@@ -59,16 +67,17 @@ export default function Topbar({ onMenuClick }) {
               </Badge>
             </IconButton>
           </Tooltip>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1.25} alignItems="center">
             <Tooltip title={user?.name || user?.email || "User"}>
               <Avatar
                 sx={{
-                  bgcolor: theme.palette.primary.light,
-                  color: theme.palette.primary.contrastText,
+                  bgcolor: 'rgba(255,255,255,0.2)',
+                  color: '#FFFFFF',
+                  border: '1px solid rgba(255,255,255,0.35)',
                   width: 32,
                   height: 32,
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
                 }}
               >
                 {initial}
@@ -76,10 +85,10 @@ export default function Topbar({ onMenuClick }) {
             </Tooltip>
             {isDesktop && (
               <Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.1, color: '#FFFFFF' }}>
                   {user?.name || user?.email || "Welcome"}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.72)', letterSpacing: '0.06em' }}>
                   {user?.role || "User"}
                 </Typography>
               </Box>
