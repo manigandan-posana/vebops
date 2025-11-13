@@ -100,7 +100,7 @@ const theme = createTheme({
     MuiAppBar: {
       defaultProps: {
         elevation: 0,
-        color: 'inherit',
+        color: 'primary',
       },
       styleOverrides: {
         root: {
@@ -135,6 +135,8 @@ const theme = createTheme({
         disableElevation: true,
         size: 'small',
       },
+    },
+    MuiIconButton: {
       styleOverrides: {
         root: {
           borderRadius: 999,
@@ -246,7 +248,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiTableHead: {
+    MuiTableRow: {
       styleOverrides: {
         root: {
           '& .MuiTableCell-head': {
@@ -270,6 +272,27 @@ const theme = createTheme({
           '&:not(.MuiTableRow-head):hover': {
             backgroundColor: alpha(paletteBlue, 0.04),
           },
+        },
+      },
+    },
+    MuiListItemIcon: {
+      styleOverrides: {
+        root: {
+          minWidth: 32,
+        },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: {
+          padding: '6px 10px',
+        },
+        head: {
+          fontSize: '0.6875rem',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          fontWeight: 600,
+          color: textSecondary,
         },
       },
     },
