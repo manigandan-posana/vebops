@@ -183,10 +183,18 @@ public class PdfUtil {
       totals.getDefaultCell().setBorder(Rectangle.NO_BORDER);
       totals.addCell(totalsLabel("Subtotal", label));
       totals.addCell(totalsValue(formatMoney(po.getSubTotal()), value));
-      totals.addCell(totalsLabel("CGST " + rateLabel(po.getCgstRate()) + "%", label));
-      totals.addCell(totalsValue(formatMoney(po.getCgstAmount()), value));
-      totals.addCell(totalsLabel("SGST " + rateLabel(po.getSgstRate()) + "%", label));
-      totals.addCell(totalsValue(formatMoney(po.getSgstAmount()), value));
+      if (hasAmount(po.getCgstAmount())) {
+        totals.addCell(totalsLabel("CGST " + rateLabel(po.getCgstRate()) + "%", label));
+        totals.addCell(totalsValue(formatMoney(po.getCgstAmount()), value));
+      }
+      if (hasAmount(po.getSgstAmount())) {
+        totals.addCell(totalsLabel("SGST " + rateLabel(po.getSgstRate()) + "%", label));
+        totals.addCell(totalsValue(formatMoney(po.getSgstAmount()), value));
+      }
+      if (hasAmount(po.getIgstAmount())) {
+        totals.addCell(totalsLabel("IGST " + rateLabel(po.getIgstRate()) + "%", label));
+        totals.addCell(totalsValue(formatMoney(po.getIgstAmount()), value));
+      }
       PdfPCell grandLabel = totalsLabel("Grand Total (₹)", label);
       grandLabel.setBorder(Rectangle.TOP);
       grandLabel.setBorderColor(border);
@@ -900,6 +908,10 @@ public class PdfUtil {
       return "Code: " + c;
     }
     return n + " – Code: " + c;
+  }
+
+  private static boolean hasAmount(BigDecimal value) {
+    return value != null && value.compareTo(BigDecimal.ZERO) > 0;
   }
 
   private static PdfPCell totalsLabel(String text, Font font) {

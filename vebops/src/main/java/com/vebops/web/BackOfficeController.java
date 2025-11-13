@@ -294,6 +294,15 @@ public class BackOfficeController {
         return bo.listPurchaseOrders(serviceId, page, size, sort);
     }
 
+    @GetMapping("/purchase-orders/kits")
+    public ResponseEntity<Page<PurchaseOrderDtos.KitOption>> purchaseOrderKits(
+            @RequestParam(name = "q", required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "updatedAt,desc") String sort) {
+        return bo.purchaseOrderKits(keyword, page, size, sort);
+    }
+
     @GetMapping("/purchase-orders/{id}")
     public ResponseEntity<PurchaseOrderDtos.Detail> getPurchaseOrder(@PathVariable Long id) {
         return bo.getPurchaseOrder(id);

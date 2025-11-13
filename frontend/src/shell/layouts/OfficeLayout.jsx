@@ -14,6 +14,7 @@ import Users from "../../views/office/Users";
 import WorkOrders from "../../views/office/WorkOrders";
 import Company from "../../views/office/Company";
 import PurchaseOrders from "../../views/office/PurchaseOrders";
+import PurchaseOrderCreate from "../../views/office/purchaseOrders/PurchaseOrderCreate";
 
 const items = [
   { to: "/office/dashboard", label: "Activity" },
@@ -50,6 +51,7 @@ export default function OfficeLayout() {
               <Route path="service-history/:id" element={<ServiceDetail />} />
               <Route path="proposal-history" element={<ProposalHistory />} />
               <Route path="purchase-orders" element={<PurchaseOrders />} />
+              <Route path="purchase-orders/new" element={<PurchaseOrderCreate />} />
               <Route path="kits" element={<Kits />} />
               <Route path="company" element={<Company />} />
               <Route path="preview" element={<Preview />} />

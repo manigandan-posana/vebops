@@ -55,6 +55,8 @@ public final class PurchaseOrderDtos {
         public BigDecimal cgstAmount;
         public BigDecimal sgstRate;
         public BigDecimal sgstAmount;
+        public BigDecimal igstRate;
+        public BigDecimal igstAmount;
         public BigDecimal grandTotal;
     }
 
@@ -98,5 +100,18 @@ public final class PurchaseOrderDtos {
         public String amountInWords;
         public String companyPan;
         public List<PurchaseOrderDtos.Item> items = new ArrayList<>();
+    }
+
+    public static class KitOption {
+        public Long id;
+        public String code;
+        public String name;
+        public String description;
+        public String hsnSac;
+        public String brand;
+        public String voltageKV;
+        public String cores;
+        public String material;
+        public BigDecimal price;
     }
 }

@@ -48,18 +48,112 @@ export const isoDate = (value = new Date()) => {
   }
 }
 
-export const makeInitialPoForm = (service = {}) => ({
+export const INDIA_STATES = [
+  { code: '01', name: 'Jammu & Kashmir' },
+  { code: '02', name: 'Himachal Pradesh' },
+  { code: '03', name: 'Punjab' },
+  { code: '04', name: 'Chandigarh' },
+  { code: '05', name: 'Uttarakhand' },
+  { code: '06', name: 'Haryana' },
+  { code: '07', name: 'Delhi' },
+  { code: '08', name: 'Rajasthan' },
+  { code: '09', name: 'Uttar Pradesh' },
+  { code: '10', name: 'Bihar' },
+  { code: '11', name: 'Sikkim' },
+  { code: '12', name: 'Arunachal Pradesh' },
+  { code: '13', name: 'Nagaland' },
+  { code: '14', name: 'Manipur' },
+  { code: '15', name: 'Mizoram' },
+  { code: '16', name: 'Tripura' },
+  { code: '17', name: 'Meghalaya' },
+  { code: '18', name: 'Assam' },
+  { code: '19', name: 'West Bengal' },
+  { code: '20', name: 'Jharkhand' },
+  { code: '21', name: 'Odisha' },
+  { code: '22', name: 'Chhattisgarh' },
+  { code: '23', name: 'Madhya Pradesh' },
+  { code: '24', name: 'Gujarat' },
+  { code: '25', name: 'Daman & Diu' },
+  { code: '26', name: 'Dadra and Nagar Haveli and Daman and Diu' },
+  { code: '27', name: 'Maharashtra' },
+  { code: '28', name: 'Andhra Pradesh (Old)' },
+  { code: '29', name: 'Karnataka' },
+  { code: '30', name: 'Goa' },
+  { code: '31', name: 'Lakshadweep' },
+  { code: '32', name: 'Kerala' },
+  { code: '33', name: 'Tamil Nadu' },
+  { code: '34', name: 'Puducherry' },
+  { code: '35', name: 'Andaman and Nicobar Islands' },
+  { code: '36', name: 'Telangana' },
+  { code: '37', name: 'Andhra Pradesh' },
+  { code: '38', name: 'Ladakh' },
+  { code: '97', name: 'Other Territory' }
+]
+
+const isTamilNadu = (stateName = '', stateCode = '') => {
+  const code = String(stateCode || '').trim()
+  if (code === '33') return true
+  const name = String(stateName || '').toLowerCase()
+  return name.includes('tamil nadu') || name.includes('tamilnadu')
+}
+
+export const calculateTaxSplit = (subTotal, supplierStateName, supplierStateCode) => {
+  const amount = Number(subTotal) || 0
+  if (amount <= 0) {
+    return {
+      cgstRate: 0,
+      cgstAmount: 0,
+      sgstRate: 0,
+      sgstAmount: 0,
+      igstRate: 0,
+      igstAmount: 0
+    }
+  }
+
+  if (isTamilNadu(supplierStateName, supplierStateCode)) {
+    const rate = 8
+    const cgstAmount = round2(amount * (rate / 100))
+    const sgstAmount = round2(amount * (rate / 100))
+    return {
+      cgstRate: rate,
+      cgstAmount,
+      sgstRate: rate,
+      sgstAmount,
+      igstRate: 0,
+      igstAmount: 0
+    }
+  }
+
+  const igstRate = 18
+  const igstAmount = round2(amount * (igstRate / 100))
+  return {
+    cgstRate: 0,
+    cgstAmount: 0,
+    sgstRate: 0,
+    sgstAmount: 0,
+    igstRate,
+    igstAmount
+  }
+}
+
+const formatCompanyAddress = (company = {}) => {
+  const lines = [company.addressLine1, company.addressLine2]
+    .filter((line) => typeof line === 'string' && line.trim() !== '')
+  return lines.join('\n')
+}
+
+export const makeInitialPoForm = (service = {}, company = {}) => ({
   voucherNumber: '',
   date: isoDate(),
   buyer: {
-    name: service?.buyerName || '',
-    address: service?.buyerAddress || '',
-    phone: service?.buyerContact || '',
-    gstin: service?.buyerGst || '',
-    stateName: service?.buyerState || '',
-    stateCode: '',
-    email: service?.buyerEmail || '',
-    website: ''
+    name: company?.name || '',
+    address: formatCompanyAddress(company) || service?.buyerAddress || '',
+    phone: company?.phone || '',
+    gstin: company?.gstin || '',
+    stateName: company?.state || '',
+    stateCode: company?.stateCode || '',
+    email: company?.email || '',
+    website: company?.website || ''
   },
   supplier: {
     name: '',
@@ -80,10 +174,11 @@ export const makeInitialPoForm = (service = {}) => ({
   },
   totals: {
     cgstRate: 0,
-    sgstRate: 0
+    sgstRate: 0,
+    igstRate: 0
   },
   amountInWords: '',
-  companyPan: ''
+  companyPan: company?.pan || ''
 })
 
 export const makeInitialPoItems = (items) => {
@@ -104,7 +199,7 @@ export const makeInitialPoItems = (items) => {
 }
 
 export const mapDetailToForm = (detail) => {
-  if (!detail) return makeInitialPoForm({})
+  if (!detail) return makeInitialPoForm({}, {})
   return {
     voucherNumber: detail?.header?.voucherNumber || '',
     date: detail?.header?.date ? isoDate(detail.header.date) : isoDate(),
@@ -137,7 +232,8 @@ export const mapDetailToForm = (detail) => {
     },
     totals: {
       cgstRate: detail?.totals?.cgstRate ?? 0,
-      sgstRate: detail?.totals?.sgstRate ?? 0
+      sgstRate: detail?.totals?.sgstRate ?? 0,
+      igstRate: detail?.totals?.igstRate ?? 0
     },
     amountInWords: detail?.amountInWords || '',
     companyPan: detail?.companyPan || ''

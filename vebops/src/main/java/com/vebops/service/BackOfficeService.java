@@ -738,6 +738,8 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         totals.cgstAmount = po.getCgstAmount();
         totals.sgstRate = po.getSgstRate();
         totals.sgstAmount = po.getSgstAmount();
+        totals.igstRate = po.getIgstRate();
+        totals.igstAmount = po.getIgstAmount();
         totals.grandTotal = po.getGrandTotal();
         detail.totals = totals;
 
@@ -756,6 +758,21 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
             detail.items.add(dto);
         }
         return detail;
+    }
+
+    private PurchaseOrderDtos.KitOption toPurchaseOrderKitOption(Kit kit) {
+        PurchaseOrderDtos.KitOption dto = new PurchaseOrderDtos.KitOption();
+        dto.id = kit.getId();
+        dto.code = trimToNull(kit.getCode());
+        dto.name = trimToNull(kit.getName());
+        dto.description = trimToNull(kit.getDescription());
+        dto.hsnSac = trimToNull(kit.getHsnSac());
+        dto.brand = trimToNull(kit.getBrand());
+        dto.voltageKV = trimToNull(kit.getVoltageKV());
+        dto.cores = trimToNull(kit.getCores());
+        dto.material = trimToNull(kit.getMaterial());
+        dto.price = kit.getPrice();
+        return dto;
     }
 
     private LocalDate parsePoDate(String value) {
@@ -1415,6 +1432,8 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         po.setCgstAmount(normalizeAmount(totals.cgstAmount));
         po.setSgstRate(normalizeRate(totals.sgstRate));
         po.setSgstAmount(normalizeAmount(totals.sgstAmount));
+        po.setIgstRate(normalizeRate(totals.igstRate));
+        po.setIgstAmount(normalizeAmount(totals.igstAmount));
         po.setGrandTotal(normalizeAmount(totals.grandTotal));
         po.setAmountInWords(trimToNull(req.amountInWords));
         po.setCompanyPan(trimToNull(req.companyPan));
@@ -1442,6 +1461,20 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         }
 
         return ResponseEntity.ok(toPurchaseOrderDetail(saved, lines));
+    }
+
+    public ResponseEntity<Page<PurchaseOrderDtos.KitOption>> purchaseOrderKits(String keyword, int page, int size, String sort) {
+        Long tenantId = tenant();
+        Pageable pageable = buildPageRequest(page, size, sort, "createdAt");
+        Page<Kit> kits;
+        if (keyword != null && !keyword.isBlank()) {
+            String term = keyword.trim();
+            kits = kitRepo.searchByKeyword(tenantId, term, pageable);
+        } else {
+            kits = kitRepo.findByTenantId(tenantId, pageable);
+        }
+        Page<PurchaseOrderDtos.KitOption> mapped = kits.map(this::toPurchaseOrderKitOption);
+        return ResponseEntity.ok(mapped);
     }
 
     public ResponseEntity<Page<PurchaseOrderDtos.ListItem>> listPurchaseOrders(Long serviceId, int page, int size, String sort) {

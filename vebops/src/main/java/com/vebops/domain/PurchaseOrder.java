@@ -88,6 +88,10 @@ public class PurchaseOrder extends BaseTenantEntity {
     private BigDecimal sgstRate;
     @Column(precision = 18, scale = 2)
     private BigDecimal sgstAmount;
+    @Column(precision = 6, scale = 2)
+    private BigDecimal igstRate;
+    @Column(precision = 18, scale = 2)
+    private BigDecimal igstAmount;
     @Column(precision = 18, scale = 2)
     private BigDecimal grandTotal;
 
@@ -182,6 +186,12 @@ public class PurchaseOrder extends BaseTenantEntity {
 
     public BigDecimal getSgstAmount() { return sgstAmount; }
     public void setSgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; }
+
+    public BigDecimal getIgstRate() { return igstRate; }
+    public void setIgstRate(BigDecimal igstRate) { this.igstRate = igstRate; }
+
+    public BigDecimal getIgstAmount() { return igstAmount; }
+    public void setIgstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; }
 
     public BigDecimal getGrandTotal() { return grandTotal; }
     public void setGrandTotal(BigDecimal grandTotal) { this.grandTotal = grandTotal; }

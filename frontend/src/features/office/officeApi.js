@@ -391,6 +391,20 @@ export const officeApi = baseApi.injectEndpoints({
       }
     }),
 
+    listPurchaseOrderKits: b.query({
+      query: ({ q, page = 0, size = 10, sort = 'updatedAt,desc' } = {}) => ({
+        url: '/office/purchase-orders/kits',
+        method: 'GET',
+        params: {
+          q: q && q.trim() !== '' ? q : undefined,
+          page,
+          size,
+          sort
+        }
+      }),
+      transformResponse: (res) => normalisePage(res)
+    }),
+
     getPurchaseOrder: b.query({
       query: (id) => ({ url: `/office/purchase-orders/${id}`, method: 'GET' }),
       providesTags: (_r,_e,id) => [{ type: 'PurchaseOrders', id }]
@@ -1049,6 +1063,7 @@ export const {
   useShareServiceProposalMutation,
   useCreatePurchaseOrderMutation,
   useListPurchaseOrdersQuery,
+  useListPurchaseOrderKitsQuery,
   useGetPurchaseOrderQuery,
   useDownloadPurchaseOrderPdfMutation,
   useSendPurchaseOrderMutation,
