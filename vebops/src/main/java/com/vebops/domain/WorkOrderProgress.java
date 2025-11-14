@@ -1,7 +1,21 @@
 package com.vebops.domain;
 
-import jakarta.persistence.*;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+
 import com.vebops.domain.enums.WOProgressStatus;
 
 @Entity
@@ -34,6 +48,9 @@ public class WorkOrderProgress extends BaseTenantEntity {
     @Column(length = 512)
     private String photoUrl;
 
+    @OneToMany(mappedBy = "progress", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<WorkOrderProgressAttachment> attachments = new ArrayList<>();
+
     public String getPhotoUrl() { return photoUrl; }
     public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
     public WorkOrder getWorkOrder() { return workOrder; }
@@ -46,4 +63,12 @@ public class WorkOrderProgress extends BaseTenantEntity {
     public void setRemarks(String remarks) { this.remarks = remarks; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public List<WorkOrderProgressAttachment> getAttachments() { return attachments; }
+    public void setAttachments(List<WorkOrderProgressAttachment> attachments) { this.attachments = attachments; }
+    public void addAttachment(WorkOrderProgressAttachment attachment) {
+        if (attachment == null) return;
+        attachments.add(attachment);
+        attachment.setProgress(this);
+    }
 }
