@@ -40,6 +40,7 @@ import com.vebops.domain.BaseTenantEntity;
 import com.vebops.domain.Customer;
 import com.vebops.domain.CustomerPO;
 import com.vebops.domain.Document;
+import com.vebops.domain.DocumentSequence;
 import com.vebops.domain.FieldEngineer;
 import com.vebops.domain.Invoice;
 import com.vebops.domain.Item;
@@ -157,6 +158,7 @@ public class BackOfficeService {
     private final FileStorageService fileStorageService;
     private final ProposalDocumentService proposalDocs;
     private final ProposalSharingService proposalShare;
+    private final DocumentSequenceService sequenceService;
     // Removed unused customerRepo: customers repository is injected separately
     private final TenantGuard tenantGuard;
     private final EmailTemplateRepository emailTemplateRepo;
@@ -195,7 +197,7 @@ public class BackOfficeService {
                              ServiceRepository serviceRepo,
                              PortalAccountManager portalAccountManager,
                              InventoryService inventoryService
-                             , DocumentRepository docRepo, FileStorageService fileStorageService,
+                             , DocumentSequenceService sequenceService, DocumentRepository docRepo, FileStorageService fileStorageService,
                              ProposalDocumentService proposalDocs, ProposalSharingService proposalShare,
                              /* removed unused customerRepo */ TenantGuard tenantGuard, EmailTemplateRepository emailTemplateRepo) {
         this.intake = intake;
@@ -232,6 +234,7 @@ public class BackOfficeService {
         this.serviceRepo = serviceRepo;
         this.portalAccountManager = portalAccountManager;
         this.inventoryService = inventoryService;
+        this.sequenceService = sequenceService;
         this.docRepo = docRepo;
         this.fileStorageService = fileStorageService;
         this.proposalDocs = proposalDocs;
@@ -1396,8 +1399,13 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
             po.setService(service);
         }
 
-        po.setVoucherNumber(trimToNull(req.voucherNumber));
-        po.setOrderDate(parsePoDate(req.date));
+        LocalDate orderDate = parsePoDate(req.date);
+        po.setOrderDate(orderDate);
+        String voucherNumber = trimToNull(req.voucherNumber);
+        if (voucherNumber == null) {
+            voucherNumber = sequenceService.nextNumber(tenantId, DocumentSequence.Scope.PURCHASE_ORDER, orderDate, "PO-", 3);
+        }
+        po.setVoucherNumber(voucherNumber);
 
         PurchaseOrderDtos.Party buyer = req.buyer != null ? req.buyer : new PurchaseOrderDtos.Party();
         po.setBuyerName(trimToNull(buyer.name));

@@ -47,6 +47,7 @@ import com.vebops.repository.WorkOrderProgressAttachmentRepository;
 import com.vebops.repository.WorkOrderProgressRepository;
 import com.vebops.repository.WorkOrderQueryRepository;
 import com.vebops.repository.WorkOrderRepository;
+import com.vebops.service.DocumentSequenceService;
 import com.vebops.service.EmailService;
 import com.vebops.service.FileStorageService;
 import com.vebops.service.InventoryService;
@@ -100,6 +101,7 @@ class BackOfficeServiceDownloadAttachmentTest {
                 mock(ServiceRepository.class),
                 mock(PortalAccountManager.class),
                 mock(InventoryService.class),
+                mock(DocumentSequenceService.class),
                 mock(DocumentRepository.class),
                 mock(FileStorageService.class),
                 mock(ProposalDocumentService.class),

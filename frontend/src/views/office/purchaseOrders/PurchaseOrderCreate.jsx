@@ -41,7 +41,6 @@ import {
   fmtINR,
   isoDate,
   makeInitialPoForm,
-  makeInitialPoItems,
   mapDetailToForm,
   mapDetailToItems,
   round2
@@ -59,6 +58,16 @@ const serviceLabel = (service) => {
   const buyer = service.buyerName || service.buyer?.name
   if (buyer) parts.push(buyer)
   return parts.join(' • ')
+}
+
+const serviceSubtitle = (service) => {
+  if (!service) return ''
+  const consignee = service.consigneeName || service.consignee?.name
+  const address = service.consigneeAddress || service.siteAddress || service.siteLocation || ''
+  const pieces = []
+  if (consignee) pieces.push(consignee)
+  if (address) pieces.push(address)
+  return pieces.join(' • ')
 }
 
 const templateLabel = (detail) => {
@@ -85,8 +94,8 @@ export default function PurchaseOrderCreate () {
   const [serviceSearch, setServiceSearch] = useState('')
   const [serviceInput, setServiceInput] = useState('')
   const [selectedService, setSelectedService] = useState(null)
-  const [fetchServices] = useLazyGetServicesQuery()
-  const [fetchService] = useLazyGetServiceQuery()
+const [fetchServices, { isFetching: servicesLoading }] = useLazyGetServicesQuery()
+const [fetchService] = useLazyGetServiceQuery()
 
   const { data: companyDetails } = useGetCompanyQuery()
   const [poForm, setPoForm] = useState(() => makeInitialPoForm({}, companyDetails || {}))
@@ -151,8 +160,7 @@ export default function PurchaseOrderCreate () {
             totals: prev.totals,
             companyPan: companyDetails?.pan || prev.companyPan
           }))
-          const rawItems = makeInitialPoItems(parseServiceItems(svc))
-          setPoItems(rawItems)
+          setPoItems([])
         }
       } catch (err) {
         console.error('Failed to bootstrap service', err)
@@ -164,7 +172,7 @@ export default function PurchaseOrderCreate () {
   }, [])
 
   const [templateQuery, setTemplateQuery] = useState('')
-  const { data: templateOptions = [] } = usePurchaseOrderSuggestionsQuery(
+const { data: templateOptions = [], isFetching: templatesLoading } = usePurchaseOrderSuggestionsQuery(
     { q: templateQuery, limit: 8 },
     { skip: templateQuery.trim().length < 2 }
   )
@@ -217,10 +225,8 @@ export default function PurchaseOrderCreate () {
       return
     }
     try {
-      const res = await fetchService(value.id).unwrap()
-      const svc = res?.service ?? res ?? value
-      const rawItems = makeInitialPoItems(parseServiceItems(svc))
-      setPoItems(rawItems)
+      await fetchService(value.id).unwrap()
+      setPoItems([])
     } catch (err) {
       console.error('Failed to fetch service', err)
       toast.error('Unable to load service details')
@@ -414,6 +420,28 @@ export default function PurchaseOrderCreate () {
                   }}
                   getOptionLabel={serviceLabel}
                   isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                  filterOptions={(options) => options}
+                  loading={servicesLoading}
+                  loadingText='Loading services…'
+                  noOptionsText={serviceSearch ? 'No matching services' : 'Start typing to search services'}
+                  renderOption={(props, option) => {
+                    const primary = serviceLabel(option)
+                    const secondary = serviceSubtitle(option)
+                    return (
+                      <li {...props}>
+                        <Stack spacing={0.25}>
+                          <Typography variant='body2' fontWeight={600}>
+                            {primary || 'Service'}
+                          </Typography>
+                          {secondary && (
+                            <Typography variant='caption' color='text.secondary'>
+                              {secondary}
+                            </Typography>
+                          )}
+                        </Stack>
+                      </li>
+                    )
+                  }}
                   renderInput={(params) => (
                     <TextField
                       {...params}
@@ -430,6 +458,26 @@ export default function PurchaseOrderCreate () {
                   getOptionLabel={templateLabel}
                   onChange={handleTemplateSelect}
                   onInputChange={(_event, value) => setTemplateQuery(value || '')}
+                  filterOptions={(options) => options}
+                  loading={templatesLoading}
+                  loadingText='Loading recent orders…'
+                  noOptionsText={templateQuery ? 'No matching purchase orders' : 'Type to search previous orders'}
+                  renderOption={(props, option) => {
+                    const header = option?.header || option || {}
+                    const supplierName = header?.supplierName || option?.supplier?.name || ''
+                    const supplierAddress = header?.supplierAddress || option?.supplier?.address || ''
+                    const secondary = [supplierName, supplierAddress].filter(Boolean).join(' • ')
+                    return (
+                      <li {...props}>
+                        <Stack spacing={0.25}>
+                          <Typography variant='body2' fontWeight={600}>{templateLabel(option)}</Typography>
+                          {secondary && (
+                            <Typography variant='caption' color='text.secondary'>{secondary}</Typography>
+                          )}
+                        </Stack>
+                      </li>
+                    )
+                  }}
                   renderInput={(params) => (
                     <TextField
                       {...params}
@@ -599,6 +647,7 @@ export default function PurchaseOrderCreate () {
                     label='Voucher number'
                     value={poForm.voucherNumber ?? ''}
                     onChange={(event) => handlePoFormChange('voucherNumber', event.target.value)}
+                    helperText='Auto-generated on save if left blank'
                   />
                 </Grid>
                 <Grid item xs={12} md={6}>
@@ -883,17 +932,4 @@ export default function PurchaseOrderCreate () {
       </Container>
     </Box>
   )
-}
-
-function parseServiceItems (service) {
-  if (!service) return []
-  const raw = service.itemsJson
-  if (!raw) return []
-  try {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
-    return Array.isArray(parsed) ? parsed : []
-  } catch (err) {
-    console.error('Failed to parse service items', err)
-    return []
-  }
 }

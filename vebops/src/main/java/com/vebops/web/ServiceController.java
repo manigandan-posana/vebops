@@ -11,6 +11,7 @@ import com.vebops.domain.Service;
 import com.vebops.domain.enums.DocumentEntityType;
 import com.vebops.domain.enums.DocumentKind;
 import com.vebops.domain.enums.ProposalStatus;
+import com.vebops.domain.DocumentSequence;
 import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderAssignment;
@@ -44,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import com.vebops.service.DocumentSequenceService;
 import com.vebops.service.FileStorageService;
 
 
@@ -75,6 +77,7 @@ public class ServiceController {
     private final com.vebops.repository.CompanyDetailsRepository companyRepo;
     private final org.springframework.mail.javamail.JavaMailSender mailSender;
     private final com.vebops.service.EmailService emailService;
+    private final DocumentSequenceService sequenceService;
 
     // Storage for persisting generated invoice PDFs.  Files are stored on
     // disk rather than encoded into the database.  Injected via the
@@ -94,6 +97,7 @@ public class ServiceController {
                              com.vebops.repository.CompanyDetailsRepository companyRepo,
                              org.springframework.mail.javamail.JavaMailSender mailSender,
                              com.vebops.service.EmailService emailService,
+                             DocumentSequenceService sequenceService,
                              FileStorageService fileStorage) {
         this.repository = repository;
         this.objectMapper = objectMapper;
@@ -108,6 +112,7 @@ public class ServiceController {
         this.companyRepo = companyRepo;
         this.mailSender = mailSender;
         this.emailService = emailService;
+        this.sequenceService = sequenceService;
         this.fileStorage = fileStorage;
     }
 
@@ -863,14 +868,31 @@ public class ServiceController {
         Map<String, Object> meta = toMap(payload.get("meta"));
         Object totals = payload.get("totals");
 
+        Long tenantId = TenantContext.getTenantId();
+
         // Normalise frequently used meta fields up-front so that both the
         // persisted JSON and the downstream PDF generation have cleaned
         // document numbers without stray hash prefixes.
-        if (meta.containsKey("invoiceNo")) {
-            meta.put("invoiceNo", sanitizeDocCode(meta.get("invoiceNo")));
+        String invoiceNo = sanitizeDocCode(meta.get("invoiceNo"));
+        String proformaNo = sanitizeDocCode(meta.get("pinvNo"));
+        java.time.LocalDate invoiceDateRef = parseIsoDate(meta.get("invoiceDate"));
+        java.time.LocalDate proformaDateRef = parseIsoDate(meta.get("pinvDate"));
+        if (tenantId != null) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            if (invoiceNo.isEmpty()) {
+                java.time.LocalDate target = invoiceDateRef != null ? invoiceDateRef : today;
+                invoiceNo = sequenceService.nextNumber(tenantId, DocumentSequence.Scope.INVOICE, target, "INV-", 3);
+            }
+            if (proformaNo.isEmpty()) {
+                java.time.LocalDate target = proformaDateRef != null ? proformaDateRef : today;
+                proformaNo = sequenceService.nextNumber(tenantId, DocumentSequence.Scope.PROFORMA, target, "PINV-", 3);
+            }
         }
-        if (meta.containsKey("pinvNo")) {
-            meta.put("pinvNo", sanitizeDocCode(meta.get("pinvNo")));
+        if (!invoiceNo.isEmpty()) {
+            meta.put("invoiceNo", invoiceNo);
+        }
+        if (!proformaNo.isEmpty()) {
+            meta.put("pinvNo", proformaNo);
         }
 
         // Extract canonical buyer fields:
@@ -879,7 +901,6 @@ public class ServiceController {
         String buyerContact = stringOrNull(buyer.get("contact"));
         String buyerEmail   = stringOrNull(buyer.get("email"));
         Service svc = new Service();
-        Long tenantId = TenantContext.getTenantId();
         if (tenantId != null) svc.setTenantId(tenantId);
         // Set buyer fields
         svc.setBuyerName(buyerName);
@@ -1367,6 +1388,21 @@ public class ServiceController {
             code = code.substring(1).trim();
         }
         return code;
+    }
+    private java.time.LocalDate parseIsoDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof java.time.LocalDate ld) {
+            return ld;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return java.time.LocalDate.parse(text);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
     private String computeFileName(Map<String,Object> meta, Long id, boolean proforma) {
         String inv = sanitizeDocCode(meta.get("invoiceNo"));

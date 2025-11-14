@@ -334,7 +334,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiChip: {
+    MuiOutlinedInput: {
       styleOverrides: {
         indicator: {
           height: 3,
