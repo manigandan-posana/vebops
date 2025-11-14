@@ -92,6 +92,7 @@ export default function Sidebar({ items = [], open = false, onClose }) {
         <List sx={{ py: 1 }}>
           {items.map((item) => {
             const Icon = iconFor(item.label);
+            const accent = accentColors[index % accentColors.length];
             return (
               <ListItemButton
                 key={item.to}
@@ -110,7 +111,7 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                     background: muiAlpha(theme.palette.primary.main, 0.12),
                     color: theme.palette.primary.main,
                     '& .MuiListItemIcon-root': {
-                      color: theme.palette.primary.main,
+                      color: '#0F172A',
                     },
                   },
                   '&:hover': {
@@ -184,6 +185,7 @@ export default function Sidebar({ items = [], open = false, onClose }) {
           width: drawerWidth,
           boxSizing: "border-box",
           p: 0,
+          backgroundImage: `linear-gradient(195deg, ${alpha('#0000FF', 0.92)} 0%, ${alpha('#000033', 0.98)} 70%)`,
         },
       }}
     >

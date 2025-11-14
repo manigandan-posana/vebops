@@ -40,6 +40,7 @@ const theme = createTheme({
       default: '#FFFFFF',
       paper: '#FFFFFF',
     },
+    divider: neutral200,
     text: {
       primary: grey900,
       secondary: grey500,
@@ -110,7 +111,7 @@ const theme = createTheme({
     MuiAppBar: {
       defaultProps: {
         elevation: 0,
-        color: 'inherit',
+        color: 'primary',
       },
       styleOverrides: {
         root: {
@@ -144,6 +145,8 @@ const theme = createTheme({
         disableElevation: true,
         size: 'medium',
       },
+    },
+    MuiIconButton: {
       styleOverrides: {
         root: {
           borderRadius: 8,
@@ -262,7 +265,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiTableHead: {
+    MuiCard: {
       styleOverrides: {
         root: {
           backgroundColor: grey50,
@@ -331,7 +334,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiTabs: {
+    MuiChip: {
       styleOverrides: {
         indicator: {
           height: 3,
