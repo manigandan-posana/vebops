@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.function.Predicate;
 
 import com.vebops.service.WorkOrderService;
+import com.vebops.service.WorkOrderService.ProgressAttachment;
 import com.vebops.service.TenantGuard;
 import com.vebops.service.InventoryService;
 import com.vebops.service.InvoiceService;
@@ -32,9 +33,12 @@ public class WorkOrderServiceImpl implements WorkOrderService {
     private final KitItemRepository kitItemRepo;
     private final WorkOrderProgressRepository woProgRepo;
     private final WorkOrderAssignmentRepository woAssignRepo;
+    private final WorkOrderProgressAttachmentRepository woProgAttachmentRepo;
 
     // Repository for linking the most recent customer purchase order to a work order
     private final CustomerPORepository customerPORepo;
+
+    private static final long MAX_PROGRESS_ATTACHMENT_BYTES = 8L * 1024 * 1024;
 
     public WorkOrderServiceImpl(
         TenantGuard tenantGuard,
@@ -46,7 +50,9 @@ public class WorkOrderServiceImpl implements WorkOrderService {
         WorkOrderItemRepository woItemRepo,
         KitItemRepository kitItemRepo,
         WorkOrderProgressRepository woProgRepo,
-        CustomerPORepository customerPORepo,WorkOrderAssignmentRepository woAssignRepo
+        CustomerPORepository customerPORepo,
+        WorkOrderAssignmentRepository woAssignRepo,
+        WorkOrderProgressAttachmentRepository woProgAttachmentRepo
     ) {
         this.tenantGuard = tenantGuard;
         this.inventoryService = inventoryService;
@@ -59,6 +65,7 @@ public class WorkOrderServiceImpl implements WorkOrderService {
         this.woProgRepo = woProgRepo;
         this.customerPORepo = customerPORepo;
         this.woAssignRepo = woAssignRepo;
+        this.woProgAttachmentRepo = woProgAttachmentRepo;
     }
 
     @Override
@@ -75,12 +82,12 @@ public class WorkOrderServiceImpl implements WorkOrderService {
         boolean requiresProposal = sr.getServiceType() == ServiceTypeCode.SUPPLY
             || sr.getServiceType() == ServiceTypeCode.SUPPLY_INSTALL;
         if (requiresProposal) {
-        if (sr.getProposal() == null) {
-            throw new BusinessException("Proposal required for SUPPLY/SUPPLY_INSTALL service types");
-        }
-        if (sr.getProposal().getStatus() != ProposalStatus.APPROVED) {
-            throw new BusinessException("SR Proposal must be APPROVED for SUPPLY-related jobs");
-        }
+            if (sr.getProposal() == null) {
+                throw new BusinessException("Proposal required for SUPPLY/SUPPLY_INSTALL service types");
+            }
+            if (sr.getProposal().getStatus() != ProposalStatus.APPROVED) {
+                throw new BusinessException("SR Proposal must be APPROVED for SUPPLY-related jobs");
+            }
         }
         WorkOrder wo = new WorkOrder();
         wo.setTenantId(tenantId);
@@ -185,10 +192,15 @@ public class WorkOrderServiceImpl implements WorkOrderService {
 
     @Override
     @Transactional
-    public void addProgress(Long tenantId, Long woId, String status, Long byFeId, String remarks, String photoUrl) {
+    public void addProgress(Long tenantId, Long woId, String status, Long byFeId, String remarks, String photoUrl, ProgressAttachment attachment) {
         tenantGuard.assertActive(tenantId);
         WorkOrder wo = woRepo.findById(woId).orElseThrow(() -> new NotFoundException("WO not found"));
-        // Simple status bump; production app should add WorkOrderProgress entity (already exists), but kept minimal here
+        if (wo.getStatus() == WOStatus.COMPLETED) {
+            throw new BusinessException("Work order is already completed and cannot be updated");
+        }
+        // Persist a timeline entry for the work order and optionally store a binary
+        // attachment. Attachments are stored as BLOBs on the progress entity so
+        // the back office can review photo evidence of installation progress.
         // 1) Persist timeline entry
         WorkOrderProgress p = new WorkOrderProgress();
         p.setTenantId(tenantId);
@@ -210,6 +222,25 @@ public class WorkOrderServiceImpl implements WorkOrderService {
         p.setRemarks(remarks);
         woProgRepo.save(p);
 
+        if (attachment != null && attachment.hasContent()) {
+            byte[] data = attachment.data();
+            long actualSize = data.length;
+            long declared = attachment.size() != null ? attachment.size() : actualSize;
+            long effectiveSize = Math.max(actualSize, declared);
+            if (effectiveSize > MAX_PROGRESS_ATTACHMENT_BYTES) {
+                throw new BusinessException("Progress attachment exceeds the 8 MB limit");
+            }
+            WorkOrderProgressAttachment photo = new WorkOrderProgressAttachment();
+            photo.setTenantId(tenantId);
+            photo.setProgress(p);
+            photo.setFilename(sanitiseFilename(attachment.filename()));
+            photo.setContentType(normaliseContentType(attachment.contentType()));
+            photo.setSize(actualSize);
+            photo.setData(data);
+            woProgAttachmentRepo.save(photo);
+            p.addAttachment(photo);
+        }
+
         // Synchronize the higher level WorkOrder status based on progress.  The
         // transitions below follow the FE mobile flow defined in the spec:
         // ASSIGNED → ACCEPTED → STARTED → MATERIAL_RECEIVED → INSTALLATION_STARTED → COMPLETED.
@@ -221,7 +252,7 @@ public class WorkOrderServiceImpl implements WorkOrderService {
                 // After acceptance the work order remains in ASSIGNED state until
                 // actual work begins (STARTED).  Do not advance to IN_PROGRESS yet.
                 wo.setStatus(WOStatus.ASSIGNED);
-                        // Auto-issue materials to FE’s home store (van) if configured
+                // Auto-issue materials to FE’s home store (van) if configured
                 FieldEngineer fe = wo.getAssignedFE();
                 if (fe != null && fe.getHomeStore() != null) {
                     Long storeId = fe.getHomeStore().getId();
@@ -251,6 +282,20 @@ public class WorkOrderServiceImpl implements WorkOrderService {
                 // modify the high‑level work order status.
             }
         }
+    }
+
+    private String sanitiseFilename(String original) {
+        if (original == null || original.trim().isEmpty()) {
+            return "progress-photo";
+        }
+        return original.replaceAll("[\\\\/:*?\"<>|]+", "_");
+    }
+
+    private String normaliseContentType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            return "application/octet-stream";
+        }
+        return contentType;
     }
 
     @Override
