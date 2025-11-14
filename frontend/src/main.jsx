@@ -26,39 +26,39 @@ createRoot(document.getElementById('root')).render(
             toastOptions={{
               duration: 4200,
               style: {
-                fontSize: '0.75rem',
-                padding: '12px 18px',
-                borderRadius: 12,
-                border: '1px solid rgba(15,23,42,0.12)',
-                background: '#0F172A',
-                color: '#FFFFFF',
-                boxShadow: '0 16px 44px rgba(15, 23, 42, 0.35)',
+                fontSize: '0.85rem',
+                padding: '10px 16px',
+                borderRadius: 8,
+                border: '1px solid rgba(32,33,36,0.16)',
+                background: '#FFFFFF',
+                color: '#202124',
+                boxShadow: '0 8px 24px rgba(32, 33, 36, 0.18)',
               },
               success: {
                 iconTheme: {
-                  primary: '#00FF00',
-                  secondary: '#0F172A',
+                  primary: '#1A73E8',
+                  secondary: '#FFFFFF',
                 },
                 style: {
-                  background: '#00FF00',
-                  color: '#003300',
-                  borderColor: 'rgba(0,51,0,0.24)',
+                  background: '#E8F0FE',
+                  color: '#1A73E8',
+                  borderColor: 'rgba(26,115,232,0.2)',
                 },
               },
               error: {
                 iconTheme: {
-                  primary: '#FF0000',
+                  primary: '#D93025',
                   secondary: '#FFFFFF',
                 },
                 style: {
-                  background: '#FF0000',
-                  color: '#FFFFFF',
-                  borderColor: 'rgba(255,255,255,0.24)',
+                  background: '#FCE8E6',
+                  color: '#D93025',
+                  borderColor: 'rgba(217,48,37,0.2)',
                 },
               },
               loading: {
                 iconTheme: {
-                  primary: '#0000FF',
+                  primary: '#1A73E8',
                   secondary: '#FFFFFF',
                 },
               },

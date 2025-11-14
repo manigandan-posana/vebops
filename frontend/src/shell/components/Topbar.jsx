@@ -27,7 +27,10 @@ export default function Topbar({ onMenuClick }) {
     <AppBar
       position="sticky"
       color="inherit"
-      sx={{ zIndex: (th) => th.zIndex.drawer + 1, backgroundColor: '#FFFFFF' }}
+      sx={{
+        zIndex: (th) => th.zIndex.drawer + 1,
+        backgroundColor: theme.palette.background.paper,
+      }}
     >
       <Toolbar
         sx={{
@@ -43,9 +46,9 @@ export default function Topbar({ onMenuClick }) {
             size="small"
             sx={{
               mr: 1.75,
-              border: '1px solid rgba(15,23,42,0.12)',
-              borderRadius: 10,
-              backgroundColor: '#FFFFFF',
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+              borderRadius: 8,
+              backgroundColor: theme.palette.background.paper,
             }}
           >
             <MenuRoundedIcon fontSize="small" />
@@ -61,10 +64,10 @@ export default function Topbar({ onMenuClick }) {
             <IconButton
               size="small"
               sx={{
-                borderRadius: 10,
+                borderRadius: 8,
                 color: theme.palette.primary.main,
-                border: '1px solid rgba(0,0,255,0.18)',
-                background: muiAlpha(theme.palette.primary.main, 0.06),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+                backgroundColor: alpha(theme.palette.primary.main, 0.08),
               }}
             >
               <Badge color="secondary" variant="dot" overlap="circular">
@@ -76,13 +79,13 @@ export default function Topbar({ onMenuClick }) {
             <Tooltip title={user?.name || user?.email || "User"}>
               <Avatar
                 sx={{
-                  bgcolor: muiAlpha(theme.palette.primary.main, 0.1),
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
                   color: theme.palette.primary.main,
-                  border: `1px solid ${muiAlpha(theme.palette.primary.main, 0.25)}`,
-                  width: 34,
-                  height: 34,
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                  width: 36,
+                  height: 36,
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
                 }}
               >
                 {initial}
@@ -92,13 +95,13 @@ export default function Topbar({ onMenuClick }) {
               <Box>
                 <Typography
                   variant="subtitle2"
-                  sx={{ fontWeight: 600, lineHeight: 1.1, color: theme.palette.text.primary }}
+                  sx={{ fontWeight: 500, lineHeight: 1.2, color: theme.palette.text.primary }}
                 >
                   {user?.name || user?.email || "Welcome"}
                 </Typography>
                 <Typography
                   variant="caption"
-                  sx={{ color: muiAlpha(theme.palette.text.primary, 0.65), letterSpacing: '0.06em' }}
+                  sx={{ color: alpha(theme.palette.text.primary, 0.6), letterSpacing: '0.05em' }}
                 >
                   {user?.role || "User"}
                 </Typography>

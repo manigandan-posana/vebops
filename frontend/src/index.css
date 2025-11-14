@@ -8,9 +8,9 @@ html, body, #root {
 
 body {
   margin: 0;
-  font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
   background-color: #ffffff;
-  color: #111827;
+  color: #202124;
   -webkit-font-smoothing: antialiased;
 }
 
