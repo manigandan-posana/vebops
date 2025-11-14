@@ -265,7 +265,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiTableRow: {
+    MuiCard: {
       styleOverrides: {
         root: {
           backgroundColor: grey50,
@@ -334,7 +334,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiOutlinedInput: {
+    MuiChip: {
       styleOverrides: {
         indicator: {
           height: 3,
