@@ -60,6 +60,10 @@ export default function Sidebar({ items = [], open = false, onClose }) {
   const doLogout = useLogout();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("lg"));
+  const accentColors = React.useMemo(
+    () => [theme.palette.primary.main],
+    [theme.palette.primary.main]
+  );
 
   const logoSrc =
     (typeof import.meta !== "undefined" &&
@@ -90,9 +94,9 @@ export default function Sidebar({ items = [], open = false, onClose }) {
       <Divider sx={{ borderColor: muiAlpha(theme.palette.text.primary, 0.08) }} />
       <Box sx={{ flex: 1, overflowY: "auto" }}>
         <List sx={{ py: 1 }}>
-          {items.map((item) => {
+          {items.map((item, index) => {
             const Icon = iconFor(item.label);
-            const accent = accentColors[index % accentColors.length];
+            const accent = accentColors[index % accentColors.length] || theme.palette.primary.main;
             return (
               <ListItemButton
                 key={item.to}
@@ -105,18 +109,18 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                   fontWeight: 500,
                   letterSpacing: '0.01em',
                   '& .MuiListItemIcon-root': {
-                    color: muiAlpha(theme.palette.primary.main, 0.85),
+                    color: muiAlpha(accent, 0.85),
                   },
                   '&.active': {
-                    background: muiAlpha(theme.palette.primary.main, 0.12),
-                    color: theme.palette.primary.main,
+                    background: muiAlpha(accent, 0.12),
+                    color: accent,
                     '& .MuiListItemIcon-root': {
-                      color: '#0F172A',
+                      color: accent,
                     },
                   },
                   '&:hover': {
-                    background: muiAlpha(theme.palette.primary.main, 0.08),
-                    color: theme.palette.primary.main,
+                    background: muiAlpha(accent, 0.08),
+                    color: accent,
                   },
                 }}
               >
@@ -128,9 +132,9 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                       display: 'grid',
                       placeItems: 'center',
                       borderRadius: 8,
-                      border: `1px solid ${muiAlpha(theme.palette.primary.main, 0.2)}`,
-                      background: muiAlpha(theme.palette.primary.main, 0.1),
-                      color: theme.palette.primary.main,
+                      border: `1px solid ${muiAlpha(accent, 0.2)}`,
+                      background: muiAlpha(accent, 0.1),
+                      color: accent,
                     }}
                   >
                     <Icon sx={{ fontSize: 18 }} />
