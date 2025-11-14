@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   useCreateWorkOrderFromRequestMutation,
   useGetFieldEngineersQuery,
@@ -11,8 +11,12 @@ import {
   useProposalRejectMutation,
   useWoAssignMutation,
   useWoCompleteMutation,
-  useWoTimelineQuery
+  useWoTimelineQuery,
+  useLazyGetWoProgressAttachmentQuery,
+  useLazyGetWoCompletionReportQuery,
+  useWoSummaryQuery
 } from '../../features/office/officeApi'
+import { downloadBlob } from '../../utils/file'
 import {
   Alert,
   Box,
@@ -27,6 +31,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Grid,
   IconButton,
   LinearProgress,
   Link,
@@ -54,6 +59,12 @@ import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
 import LaunchRoundedIcon from '@mui/icons-material/LaunchRounded'
 import EventNoteRoundedIcon from '@mui/icons-material/EventNoteRounded'
 import NoteAltRoundedIcon from '@mui/icons-material/NoteAltRounded'
+import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded'
+import PendingActionsRoundedIcon from '@mui/icons-material/PendingActionsRounded'
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
+import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded'
+import GroupsRoundedIcon from '@mui/icons-material/GroupsRounded'
+import TrendingUpRoundedIcon from '@mui/icons-material/TrendingUpRounded'
 import { alpha } from '@mui/material/styles'
 import { focusNextInputOnEnter } from '../../utils/enterKeyNavigation'
 
@@ -97,6 +108,7 @@ export default function WorkOrders () {
   const { data: feData } = useGetFieldEngineersQuery({ status: 'AVAILABLE', size: 100 })
   const { data: srData, isFetching: srLoading, refetch: refetchSrs } = useGetServiceRequestsQuery(srParams)
   const { data: proposalData = { content: [] }, isFetching: proposalLoading, refetch: refetchProposals } = useListProposalsQuery(proposalParams)
+  const { data: summaryData = {}, isFetching: summaryLoading, refetch: refetchSummary } = useWoSummaryQuery()
 
   const [assignWo] = useWoAssignMutation()
   const [completeWo, { isLoading: completing }] = useWoCompleteMutation()
@@ -124,6 +136,91 @@ export default function WorkOrders () {
 
   const pendingProposals = proposals.filter((p) => p.status === 'SENT')
   const availableFEs = fieldEngineers.filter((fe) => (fe.status ? fe.status === 'AVAILABLE' : true))
+
+  const summary = summaryData || {}
+  const counts = summary.counts || {}
+  const upcomingDue = Array.isArray(summary.upcomingDue) ? summary.upcomingDue : []
+  const engineerLoads = Array.isArray(summary.engineerLoads) ? summary.engineerLoads : []
+  const upcomingRows = useMemo(() => upcomingDue.slice(0, 6), [upcomingDue])
+  const engineerRows = useMemo(() => engineerLoads.slice(0, 6), [engineerLoads])
+
+  const numberFormatter = useMemo(() => new Intl.NumberFormat('en-IN'), [])
+  const percentFormatter = useMemo(() => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), [])
+  const dayFormatter = useMemo(() => new Intl.NumberFormat('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), [])
+
+  const formatCount = useCallback((value) => numberFormatter.format(Number.isFinite(Number(value)) ? Number(value) : 0), [numberFormatter])
+  const formatPercent = useCallback((value) => percentFormatter.format(Number.isFinite(Number(value)) ? Number(value) : 0), [percentFormatter])
+  const formatDays = useCallback((value) => dayFormatter.format(Number.isFinite(Number(value)) ? Number(value) : 0), [dayFormatter])
+
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short' }), [])
+  const dateTimeFormatter = useMemo(
+    () => new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    []
+  )
+  const lastUpdatedLabel = summary.lastUpdatedAt ? dateTimeFormatter.format(new Date(summary.lastUpdatedAt)) : 'No updates yet'
+
+  const metricCards = useMemo(() => [
+    {
+      key: 'total',
+      label: 'Total work orders',
+      value: formatCount(summary.total),
+      helper: summary.lastUpdatedWan ? `Latest ${summary.lastUpdatedWan}` : lastUpdatedLabel,
+      color: 'primary',
+      Icon: InsightsRoundedIcon
+    },
+    {
+      key: 'active',
+      label: 'In progress',
+      value: formatCount(summary.active),
+      helper: `${formatCount(counts.IN_PROGRESS || 0)} in progress, ${formatCount(counts.ASSIGNED || 0)} assigned`,
+      color: 'warning',
+      Icon: PendingActionsRoundedIcon
+    },
+    {
+      key: 'overdue',
+      label: 'Overdue',
+      value: formatCount(summary.overdue),
+      helper: summary.overdue > 0 ? 'Attention required' : 'All on schedule',
+      color: 'error',
+      Icon: WarningAmberRoundedIcon
+    },
+    {
+      key: 'completionRate',
+      label: 'Completion rate',
+      value: `${formatPercent(summary.completionRate)}%`,
+      helper: `${formatCount(counts.COMPLETED || 0)} closed overall`,
+      color: 'success',
+      Icon: TrendingUpRoundedIcon
+    },
+    {
+      key: 'avgCompletion',
+      label: 'Avg. completion days',
+      value: formatDays(summary.avgCompletionDays),
+      helper: 'Based on last 25 closures',
+      color: 'info',
+      Icon: AccessTimeRoundedIcon
+    }
+  ], [counts, formatCount, formatDays, formatPercent, lastUpdatedLabel, summary])
+
+  const statusChipColor = useCallback((status) => {
+    const value = String(status || '').toUpperCase()
+    if (value === 'COMPLETED') return 'success'
+    if (value === 'IN_PROGRESS') return 'primary'
+    if (value === 'ASSIGNED') return 'info'
+    if (value === 'ON_HOLD') return 'warning'
+    if (value === 'NEW') return 'default'
+    return 'default'
+  }, [])
+
+  const statusLabel = useCallback((status) => {
+    if (!status) return '—'
+    return String(status)
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/(^|\s)\w/g, (match) => match.toUpperCase())
+  }, [])
+
+  const maxEngineerLoad = useMemo(() => engineerLoads.reduce((max, row) => Math.max(max, Number(row.activeCount) || 0), 0), [engineerLoads])
 
   const openAssignModal = (wo) => {
     setAssignModal({ open: true, wo })
@@ -155,6 +252,7 @@ export default function WorkOrders () {
       toast.success('Work order assigned');
       closeAssignModal();
       refetchWos();
+      refetchSummary();
     } catch (err) {
       toast.error(String(err?.data?.message || err?.error || 'Unable to assign work order'));
     }
@@ -166,6 +264,7 @@ export default function WorkOrders () {
       await completeWo({ woId }).unwrap();
       toast.success('Marked as completed');
       refetchWos();
+      refetchSummary();
     } catch (err) {
       toast.error(String(err?.data?.message || err?.error || 'Unable to complete work order'));
     }
@@ -180,11 +279,13 @@ export default function WorkOrders () {
       toast.success(`Work order ${label} created`)
       refetchWos()
       refetchSrs()
+      refetchSummary()
     } catch (err) {
       const message = String(err?.data?.message || err?.error || 'Unable to create work order');
       if (message.toLowerCase().includes('exist')) {
         toast.success('Work order already exists for this request');
         refetchWos();
+        refetchSummary();
       } else {
         toast.error(message);
       }
@@ -200,6 +301,7 @@ export default function WorkOrders () {
       refetchProposals();
       refetchSrs();
       refetchWos();
+      refetchSummary();
     } catch (err) {
       toast.error(String(err?.data?.message || err?.error || 'Unable to approve proposal'));
     }
@@ -219,12 +321,189 @@ export default function WorkOrders () {
   return (
     <Box sx={{ bgcolor: 'background.default', minHeight: '100%', py: 3 }}>
       <Container maxWidth='xl'>
-        <Toaster position='top-right' />
-        <Stack spacing={3}>
+          <Stack spacing={3}>
           <Stack spacing={1}>
             <Typography variant='h5' fontWeight={600}>Work orders</Typography>
             <Typography variant='body2' color='text.secondary'>Track proposals, convert approved requests and coordinate live jobs.</Typography>
           </Stack>
+
+          {summaryLoading && <LinearProgress color='secondary' />}
+          <Grid container spacing={3} alignItems='stretch'>
+            <Grid item xs={12} lg={8}>
+              <Grid container spacing={2} alignItems='stretch'>
+                {metricCards.map((metric) => {
+                  const Icon = metric.Icon
+                  return (
+                    <Grid item xs={12} sm={6} md={4} key={metric.key}>
+                      <Card variant='outlined' sx={{ borderRadius: 2, height: '100%' }}>
+                        <CardContent>
+                          <Stack direction='row' spacing={2} alignItems='flex-start'>
+                            <Box
+                              sx={{
+                                p: 1.25,
+                                borderRadius: 2,
+                                bgcolor: (theme) => alpha(theme.palette[metric.color || 'primary'].main, 0.12),
+                                color: (theme) => theme.palette[metric.color || 'primary'].main
+                              }}
+                            >
+                              <Icon fontSize='small' />
+                            </Box>
+                            <Stack spacing={0.5}>
+                              <Typography variant='body2' color='text.secondary'>
+                                {metric.label}
+                              </Typography>
+                              <Typography variant='h5' fontWeight={600} color='text.primary'>
+                                {metric.value}
+                              </Typography>
+                              {metric.helper && (
+                                <Typography variant='caption' color='text.secondary'>
+                                  {metric.helper}
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  )
+                })}
+              </Grid>
+
+              <Card variant='outlined' sx={{ borderRadius: 2, mt: 2 }}>
+                <CardHeader
+                  title={<Typography variant='subtitle1'>Upcoming deadlines</Typography>}
+                  subheader={
+                    <Typography variant='body2' color='text.secondary'>
+                      {upcomingRows.length
+                        ? `Next ${upcomingRows.length} jobs by due date`
+                        : 'No deadlines in the next window.'}
+                    </Typography>
+                  }
+                  action={
+                    <Tooltip title='Refresh summary'>
+                      <span>
+                        <IconButton size='small' onClick={() => refetchSummary()} disabled={summaryLoading}>
+                          <RefreshRoundedIcon fontSize='small' />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  }
+                />
+                <CardContent sx={{ pt: 0 }}>
+                  {upcomingRows.length === 0 ? (
+                    <Typography variant='body2' color='text.secondary'>
+                      Track assignments to see upcoming deadlines here.
+                    </Typography>
+                  ) : (
+                    <Table size='small'>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Work order</TableCell>
+                          <TableCell>Due</TableCell>
+                          <TableCell>Engineer</TableCell>
+                          <TableCell align='right'>Status</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {upcomingRows.map((row) => {
+                          const dueDate = row.dueDate ? dateFormatter.format(new Date(row.dueDate)) : '—'
+                          return (
+                            <TableRow key={row.id} hover>
+                              <TableCell>
+                                <Stack spacing={0.25}>
+                                  <Link component={RouterLink} to={`/office/preview?woId=${row.id}`} underline='hover'>
+                                    {row.wan || `WO-${row.id}`}
+                                  </Link>
+                                  <Typography variant='caption' color='text.secondary'>
+                                    {row.customer || '—'}
+                                  </Typography>
+                                </Stack>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant='body2'>{dueDate}</Typography>
+                                {row.overdue ? (
+                                  <Typography variant='caption' color='error.main'>
+                                    Overdue
+                                  </Typography>
+                                ) : null}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant='body2'>{row.assignedFe || 'Unassigned'}</Typography>
+                              </TableCell>
+                              <TableCell align='right'>
+                                <Chip
+                                  size='small'
+                                  label={statusLabel(row.status)}
+                                  color={statusChipColor(row.status)}
+                                  variant={statusChipColor(row.status) === 'default' ? 'outlined' : 'filled'}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} lg={4}>
+              <Card variant='outlined' sx={{ borderRadius: 2, height: '100%' }}>
+                <CardHeader
+                  title={<Typography variant='subtitle1'>Engineer load</Typography>}
+                  subheader={
+                    <Typography variant='body2' color='text.secondary'>
+                      Balance assignments across available engineers.
+                    </Typography>
+                  }
+                />
+                <CardContent>
+                  {engineerRows.length === 0 ? (
+                    <Typography variant='body2' color='text.secondary'>
+                      Assign work orders to field engineers to populate this view.
+                    </Typography>
+                  ) : (
+                    <Stack spacing={2}>
+                      {engineerRows.map((row) => {
+                        const activeCount = Number(row.activeCount) || 0
+                        const overdueCount = Number(row.overdueCount) || 0
+                        const percent = maxEngineerLoad ? Math.round((activeCount / maxEngineerLoad) * 100) : 0
+                        return (
+                          <Stack key={row.feId} spacing={1}>
+                            <Stack direction='row' alignItems='center' justifyContent='space-between'>
+                              <Stack spacing={0}>
+                                <Stack direction='row' spacing={1} alignItems='center'>
+                                  <GroupsRoundedIcon fontSize='small' color='primary' />
+                                  <Typography variant='subtitle2'>{row.name || `Engineer #${row.feId}`}</Typography>
+                                </Stack>
+                                <Typography variant='caption' color='text.secondary'>
+                                  Updated {row.latestUpdate ? dateTimeFormatter.format(new Date(row.latestUpdate)) : 'recently'}
+                                </Typography>
+                              </Stack>
+                              <Chip size='small' label={`${formatCount(activeCount)} active`} color='primary' variant='outlined' />
+                            </Stack>
+                            <LinearProgress
+                              variant='determinate'
+                              value={percent > 100 ? 100 : percent}
+                              sx={{ height: 6, borderRadius: 999 }}
+                            />
+                            <Stack direction='row' justifyContent='space-between'>
+                              <Typography variant='caption' color='text.secondary'>
+                                Next due: {row.nextDue ? dateFormatter.format(new Date(row.nextDue)) : '—'}
+                              </Typography>
+                              <Typography variant='caption' color={overdueCount > 0 ? 'error.main' : 'text.secondary'}>
+                                {overdueCount > 0 ? `${formatCount(overdueCount)} overdue` : 'On track'}
+                              </Typography>
+                            </Stack>
+                          </Stack>
+                        )
+                      })}
+                    </Stack>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
 
           <Card variant='outlined' sx={{ borderRadius: 2 }}>
             {woLoading && <LinearProgress />}
@@ -568,12 +847,15 @@ function TimelineDialog ({ open, onClose, workOrder }) {
   const woId = workOrder?.id
   const skip = !open || !woId
   const { data, isFetching, error, refetch } = useWoTimelineQuery(woId, { skip })
+  const [downloadProgressAttachment, { isFetching: isDownloadingAttachment }] = useLazyGetWoProgressAttachmentQuery()
+  const [downloadCompletionReport, { isFetching: isDownloadingReport }] = useLazyGetWoCompletionReportQuery()
 
   const timelineWo = data?.workOrder || workOrder || {}
   const sr = timelineWo?.serviceRequest || workOrder?.serviceRequest || {}
   const fe = timelineWo?.assignedFE || workOrder?.assignedFE || {}
   const progress = Array.isArray(data?.progress) ? data.progress : []
   const assignments = Array.isArray(data?.assignments) ? data.assignments : []
+  const progressSummary = data?.progressSummary || {}
 
   const statusLabel = (status) => {
     if (!status) return 'Update'
@@ -608,6 +890,35 @@ function TimelineDialog ({ open, onClose, workOrder }) {
     }
   }
 
+  const summaryTotal = progressSummary?.totalUpdates ?? progress.length
+  const summaryPhotos = progressSummary?.photoCount ?? 0
+  const summaryLastAt = progressSummary?.lastUpdatedAt ? formatDate(progressSummary.lastUpdatedAt) : (progress.length ? formatDate(progress[progress.length - 1]?.createdAt) : '—')
+  const summaryLastStatus = progressSummary?.lastStatus ? statusLabel(progressSummary.lastStatus) : (progress.length ? statusLabel(progress[progress.length - 1]?.status) : 'Update')
+  const canDownloadReport = String(timelineWo?.status || workOrder?.status || '').toUpperCase() === 'COMPLETED'
+
+  async function handleDownloadAttachment (progressId, attachment) {
+    if (!woId || !progressId || !attachment?.id) return
+    try {
+      const blob = await downloadProgressAttachment({ woId, progressId, attachmentId: attachment.id }).unwrap()
+      const filename = attachment.filename || `progress-photo-${attachment.id}`
+      downloadBlob(blob, filename)
+    } catch (err) {
+      toast.error(String(err?.data?.message || err?.error || 'Unable to download attachment'))
+    }
+  }
+
+  async function handleDownloadCompletionReport () {
+    if (!woId) return
+    try {
+      const blob = await downloadCompletionReport(woId).unwrap()
+      const filename = `completion-report-${timelineWo?.wan || workOrder?.wan || woId}.pdf`
+      downloadBlob(blob, filename)
+      toast.success('Downloaded')
+    } catch (err) {
+      toast.error(String(err?.data?.message || err?.error || 'Unable to download certificate'))
+    }
+  }
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth='md' fullWidth>
       <DialogTitle>{timelineWo?.wan ? `Timeline • ${timelineWo.wan}` : 'Work order timeline'}</DialogTitle>
@@ -625,7 +936,10 @@ function TimelineDialog ({ open, onClose, workOrder }) {
           </Card>
 
           <Card variant='outlined' sx={{ borderRadius: 2 }}>
-            <CardHeader title='Progress updates' />
+            <CardHeader
+              title='Progress updates'
+              subheader={`Last update ${summaryLastAt} • ${summaryTotal} update${summaryTotal === 1 ? '' : 's'} • ${summaryPhotos} photo${summaryPhotos === 1 ? '' : 's'}`}
+            />
             <CardContent>
               {progress.length === 0 ? (
                 <Typography variant='body2' color='text.secondary'>No updates posted yet.</Typography>
@@ -649,9 +963,24 @@ function TimelineDialog ({ open, onClose, workOrder }) {
                         </Stack>
                         {entry.remarks && <Typography variant='body2' sx={{ mt: 1 }}>{entry.remarks}</Typography>}
                         <Stack direction='row' spacing={2} sx={{ mt: 1 }}>
-                          {entry.byFE?.user?.displayName && <Typography variant='caption' color='text.secondary'>By {entry.byFE.user.displayName}</Typography>}
+                          {(entry.byFE?.displayName || entry.byFE?.name) && <Typography variant='caption' color='text.secondary'>By {entry.byFE?.displayName || entry.byFE?.name}</Typography>}
                           {entry.photoUrl && <Link href={entry.photoUrl} target='_blank' rel='noreferrer' variant='caption'>View photo evidence</Link>}
                         </Stack>
+                        {Array.isArray(entry.attachments) && entry.attachments.length > 0 && (
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                            {entry.attachments.map((attachment) => (
+                              <Button
+                                key={attachment.id || attachment.downloadPath}
+                                size='small'
+                                variant='text'
+                                onClick={() => handleDownloadAttachment(entry.id, attachment)}
+                                disabled={isDownloadingAttachment}
+                              >
+                                {attachment.filename || 'Download photo'}
+                              </Button>
+                            ))}
+                          </Stack>
+                        )}
                       </Box>
                     )
                   })}
@@ -686,6 +1015,14 @@ function TimelineDialog ({ open, onClose, workOrder }) {
         </Stack>
       </DialogContent>
       <DialogActions>
+        <Button
+          variant='outlined'
+          startIcon={<DownloadRoundedIcon fontSize='small' />}
+          onClick={handleDownloadCompletionReport}
+          disabled={!canDownloadReport || isDownloadingReport}
+        >
+          {isDownloadingReport ? 'Preparing…' : 'Completion PDF'}
+        </Button>
         <Button variant='outlined' color='inherit' onClick={() => refetch()} disabled={isFetching || skip} startIcon={<RefreshRoundedIcon fontSize='small' />}> {isFetching ? 'Refreshing…' : 'Refresh'} </Button>
         <Button variant='contained' onClick={onClose}>Close</Button>
       </DialogActions>

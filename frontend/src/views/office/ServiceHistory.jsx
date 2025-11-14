@@ -36,7 +36,7 @@ import {
   Typography
 } from '@mui/material'
 import { FileDown, Search, Send, Share2 } from 'lucide-react'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   useDownloadServiceInvoiceMutation,
   useGetServicesQuery,
@@ -272,7 +272,6 @@ export default function ServiceHistory () {
   return (
     <Box sx={{ bgcolor: 'background.default', minHeight: '100%', py: 3 }}>
       <Container maxWidth='xl'>
-        <Toaster />
         <Card variant='outlined' sx={{ borderRadius: 2 }}>
           <CardHeader
             title={<Typography variant='h5' fontWeight={600}>Service History</Typography>}

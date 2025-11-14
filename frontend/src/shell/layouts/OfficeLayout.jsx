@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Box, Container, useMediaQuery, useTheme } from "@mui/material";
 import Topbar from "../components/Topbar";
-import Sidebar from "../components/Sidebar";
+import Sidebar, { SIDEBAR_WIDTH } from "../components/Sidebar";
 import OfficeDashboard from "../../views/office/Dashboard";
 import Service from "../../views/office/Service";
 import ServiceHistory from "../../views/office/ServiceHistory";
@@ -13,19 +13,20 @@ import Preview from "../../views/office/Preview";
 import Users from "../../views/office/Users";
 import WorkOrders from "../../views/office/WorkOrders";
 import Company from "../../views/office/Company";
+import PurchaseOrders from "../../views/office/PurchaseOrders";
+import PurchaseOrderCreate from "../../views/office/purchaseOrders/PurchaseOrderCreate";
 
 const items = [
   { to: "/office/dashboard", label: "Activity" },
   { to: "/office/service", label: "New Service" },
   { to: "/office/service-history", label: "Service History" },
   { to: "/office/proposal-history", label: "Proposal History" },
+  { to: "/office/purchase-orders", label: "Purchase Orders" },
   { to: "/office/kits", label: "Kits" },
   { to: "/office/company", label: "Company" },
   { to: "/office/work-orders", label: "Work Orders" },
   { to: "/office/users", label: "Users" },
 ];
-
-const drawerWidth = 280;
 
 export default function OfficeLayout() {
   const [open, setOpen] = useState(false);
@@ -35,9 +36,20 @@ export default function OfficeLayout() {
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
       <Sidebar items={items} open={open} onClose={() => setOpen(false)} />
-      <Box sx={{ ml: isDesktop ? `${drawerWidth}px` : 0, transition: theme.transitions.create("margin") }}>
+      <Box
+        sx={{
+          ml: isDesktop ? `${SIDEBAR_WIDTH}px` : 0,
+          transition: theme.transitions.create("margin"),
+        }}
+      >
         <Topbar onMenuClick={() => setOpen(true)} />
-        <Box component="main" sx={{ py: 4, px: { xs: 2, sm: 3, lg: 6 } }}>
+        <Box
+          component="main"
+          sx={{
+            py: 2,
+            px: { xs: 1.25, sm: 2, lg: 3.5 },
+          }}
+        >
           <Container maxWidth="xl" disableGutters>
             <Routes>
               <Route path="/" element={<Navigate to="dashboard" replace />} />
@@ -47,6 +59,8 @@ export default function OfficeLayout() {
               <Route path="service-history" element={<ServiceHistory />} />
               <Route path="service-history/:id" element={<ServiceDetail />} />
               <Route path="proposal-history" element={<ProposalHistory />} />
+              <Route path="purchase-orders" element={<PurchaseOrders />} />
+              <Route path="purchase-orders/new" element={<PurchaseOrderCreate />} />
               <Route path="kits" element={<Kits />} />
               <Route path="company" element={<Company />} />
               <Route path="preview" element={<Preview />} />
