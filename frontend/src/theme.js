@@ -15,6 +15,14 @@ const grey500 = '#5F6368';
 const grey600 = '#3C4043';
 const grey900 = '#202124';
 
+// Backwards-compatible aliases for older palette helpers referenced during the
+// recent design refresh. These ensure runtime imports that still expect the
+// previous naming scheme continue to work without throwing reference errors.
+export const paletteBlue = primaryMain;
+export const paletteBlueDark = primaryDark;
+export const neutral50 = grey50;
+export const neutral200 = grey200;
+
 const theme = createTheme({
   palette: {
     mode: 'light',
@@ -266,30 +274,6 @@ const theme = createTheme({
             fontWeight: 600,
             letterSpacing: '0.04em',
           },
-          '&:not(.MuiTableRow-head):hover': {
-            backgroundColor: alpha(paletteBlue, 0.04),
-          },
-        },
-      },
-    },
-    MuiListItemIcon: {
-      styleOverrides: {
-        root: {
-          minWidth: 32,
-        },
-      },
-    },
-    MuiTableCell: {
-      styleOverrides: {
-        root: {
-          padding: '6px 10px',
-        },
-        head: {
-          fontSize: '0.6875rem',
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          fontWeight: 600,
-          color: textSecondary,
         },
       },
     },
@@ -350,7 +334,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiFormLabel: {
+    MuiOutlinedInput: {
       styleOverrides: {
         indicator: {
           height: 3,
