@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.vebops.dto.CustomerDashboardSummary;
 import com.vebops.service.CustomerService;
 
 /**
@@ -37,6 +38,11 @@ public class CustomerController {
     @GetMapping("/proposals")
     public ResponseEntity<List<CustomerService.CustomerProposalRow>> myProposals(@RequestParam(required = false) Long customerId) {
         return svc.myProposals(customerId);
+    }
+
+    @GetMapping("/dashboard")
+    public ResponseEntity<CustomerDashboardSummary> dashboard(@RequestParam(required = false) Long customerId) {
+        return svc.dashboard(customerId);
     }
 
     @PostMapping("/proposals/{id}/po-upload")

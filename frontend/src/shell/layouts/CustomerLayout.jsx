@@ -3,12 +3,14 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { Box, Container, useMediaQuery, useTheme } from "@mui/material";
 import Topbar from "../components/Topbar";
 import Sidebar, { SIDEBAR_WIDTH } from "../components/Sidebar";
+import Dashboard from "../../views/customer/Dashboard";
 import CProposals from "../../views/customer/Proposals";
 import WorkOrders from "../../views/customer/WorkOrders";
 import WorkOrderDetail from "../../views/customer/WorkOrderDetail";
 import Invoices from "../../views/customer/Invoices";
 
 const items = [
+  { to: "/customer/overview", label: "Overview" },
   { to: "/customer/proposals", label: "Proposals" },
   { to: "/customer/work-orders", label: "Work Orders" },
   { to: "/customer/invoices", label: "Invoices" },
@@ -38,7 +40,8 @@ export default function CustomerLayout() {
         >
           <Container maxWidth="xl" disableGutters>
             <Routes>
-              <Route path="/" element={<Navigate to="proposals" replace />} />
+              <Route path="/" element={<Navigate to="overview" replace />} />
+              <Route path="overview" element={<Dashboard />} />
               <Route path="proposals" element={<CProposals />} />
               <Route path="work-orders" element={<WorkOrders />} />
               <Route path="work-orders/:id" element={<WorkOrderDetail />} />

@@ -6,6 +6,8 @@ import {
   CardHeader,
   Chip,
   CircularProgress,
+  Grid,
+  Skeleton,
   Stack,
   Table,
   TableBody,
@@ -18,7 +20,28 @@ import {
 } from '@mui/material'
 import AssignmentTurnedInRoundedIcon from '@mui/icons-material/AssignmentTurnedInRounded'
 import LaunchRoundedIcon from '@mui/icons-material/LaunchRounded'
-import { useGetAssignedQuery } from '../../features/fe/feApi'
+import { useGetAssignedQuery, useGetDashboardQuery } from '../../features/fe/feApi'
+
+const numberFormatter = new Intl.NumberFormat('en-IN')
+const formatCount = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? numberFormatter.format(num) : '0'
+}
+
+const SummaryTile = ({ label, value, loading, tone = 'text.primary' }) => (
+  <Card variant='outlined' sx={{ height: '100%', borderRadius: 3 }}>
+    <CardContent>
+      <Stack spacing={1} alignItems='flex-start'>
+        <Typography variant='caption' color='text.secondary'>
+          {label}
+        </Typography>
+        <Typography variant='h5' color={tone}>
+          {loading ? <Skeleton width={48} /> : formatCount(value)}
+        </Typography>
+      </Stack>
+    </CardContent>
+  </Card>
+)
 
 const statusTone = (status) => {
   const value = (status || '').toUpperCase()
@@ -40,6 +63,15 @@ const statusTone = (status) => {
 
 export default function Assigned () {
   const { data = [], isFetching } = useGetAssignedQuery()
+  const { data: dashboardSummary = {}, isFetching: dashboardLoading } = useGetDashboardQuery()
+
+  const metrics = {
+    totalAssignments: Number(dashboardSummary?.totalAssignments ?? 0),
+    inProgress: Number(dashboardSummary?.inProgress ?? 0),
+    dueToday: Number(dashboardSummary?.dueToday ?? 0),
+    overdue: Number(dashboardSummary?.overdue ?? 0),
+    awaitingMaterials: Number(dashboardSummary?.awaitingMaterials ?? 0)
+  }
 
   const rows = Array.isArray(data) ? data : []
 
@@ -51,6 +83,24 @@ export default function Assigned () {
           Assigned Work Orders
         </Typography>
       </Stack>
+
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
+          <SummaryTile label='Active assignments' value={metrics.totalAssignments} loading={dashboardLoading} tone='primary.main' />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
+          <SummaryTile label='In progress' value={metrics.inProgress} loading={dashboardLoading} tone='info.main' />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
+          <SummaryTile label='Due today' value={metrics.dueToday} loading={dashboardLoading} tone='warning.main' />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
+          <SummaryTile label='Overdue' value={metrics.overdue} loading={dashboardLoading} tone='error.main' />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4} lg={3} xl={2}>
+          <SummaryTile label='Awaiting materials' value={metrics.awaitingMaterials} loading={dashboardLoading} tone='text.primary' />
+        </Grid>
+      </Grid>
 
       <Card elevation={0}>
         <CardHeader

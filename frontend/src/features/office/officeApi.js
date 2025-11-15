@@ -31,6 +31,12 @@ export const officeApi = baseApi.injectEndpoints({
           : [{ type: 'FieldEngineers', id: 'LIST' }]
     }),
 
+    getFieldEngineerPerformance: b.query({
+      query: () => ({ url: '/office/field-engineers/performance', method: 'GET' }),
+      transformResponse: (res) => normaliseArray(res),
+      providesTags: ['FieldEngineers'],
+    }),
+
     // POST /office/field-engineers { displayName, email }
     createFieldEngineer: b.mutation({
       async queryFn (body, _api, _extra, baseQuery) {
@@ -800,6 +806,16 @@ export const officeApi = baseApi.injectEndpoints({
       providesTags: ['WorkOrders']
     }),
 
+    getDispatchBoard: b.query({
+      query: ({ limit = 15 } = {}) => ({
+        url: '/office/wo/dispatch-board',
+        method: 'GET',
+        params: { limit }
+      }),
+      transformResponse: (res) => normaliseArray(res),
+      providesTags: ['WorkOrders'],
+    }),
+
     // POST /office/wo/{id}/assign { feId, note? }
     woAssign: b.mutation({
       async queryFn ({ id, feId, note }, _api, _extra, baseQuery) {
@@ -994,6 +1010,7 @@ export const officeApi = baseApi.injectEndpoints({
 
 export const {
   useGetFieldEngineersQuery,
+  useGetFieldEngineerPerformanceQuery,
   useCreateFieldEngineerMutation,
   useUpdateFieldEngineerMutation,
   useOfficeDeleteFieldEngineerMutation,
@@ -1049,6 +1066,7 @@ export const {
   useGetWoCompletionReportQuery,
   useLazyGetWoCompletionReportQuery,
   useWoSummaryQuery,
+  useGetDispatchBoardQuery,
   useWoAssignMutation,
   useWoProgressMutation,
   useLazyGetWoProgressAttachmentQuery,

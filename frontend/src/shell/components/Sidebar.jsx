@@ -15,7 +15,7 @@ import {
   useMediaQuery,
   Typography,
 } from "@mui/material";
-import { alpha as muiAlpha } from "@mui/material/styles";
+import { alpha } from "@mui/material/styles";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import PeopleOutlineRoundedIcon from "@mui/icons-material/PeopleOutlineRounded";
@@ -33,9 +33,12 @@ import CreditCardRoundedIcon from "@mui/icons-material/CreditCardRounded";
 import FiberManualRecordRoundedIcon from "@mui/icons-material/FiberManualRecordRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import HandymanOutlinedIcon from "@mui/icons-material/HandymanOutlined";
+import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
+import BusinessIcon from "@mui/icons-material/Business";
 import useLogout from "./hooks/useLogout";
 
-const drawerWidth = 236;
+const drawerWidth = 256;
 
 const iconFor = (label = "") => {
   const key = label.toLowerCase();
@@ -53,6 +56,9 @@ const iconFor = (label = "") => {
   if (key.includes("job")) return WorkOutlineRoundedIcon;
   if (key.includes("operations")) return LayersRoundedIcon;
   if (key.includes("subscription")) return CreditCardRoundedIcon;
+  if (key.includes("kit")) return HandymanOutlinedIcon;
+  if (key.includes("purchase")) return ShoppingCartIcon;
+  if (key.includes("company")) return BusinessIcon;
   return FiberManualRecordRoundedIcon;
 };
 
@@ -73,30 +79,49 @@ export default function Sidebar({ items = [], open = false, onClose }) {
 
   const drawerContent = (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      {/* Header / Logo */}
       <Stack
         direction="row"
         alignItems="center"
         spacing={1.75}
-        sx={{ px: 2.5, py: 2.25, minHeight: 68 }}
+        sx={{
+          px: 2.5,
+          py: 2,
+          minHeight: 68,
+        }}
       >
         <Box
           component="img"
           src={logoSrc}
           alt="VebOps"
-          sx={{ width: 112, objectFit: "contain" }}
+          sx={{
+            width: 120,
+            objectFit: "contain",
+          }}
         />
         {!isDesktop && (
-          <IconButton onClick={onClose} sx={{ ml: "auto", color: alpha(theme.palette.text.primary, 0.6) }}>
+          <IconButton
+            onClick={onClose}
+            sx={{
+              ml: "auto",
+              color: alpha(theme.palette.text.primary, 0.6),
+            }}
+          >
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         )}
       </Stack>
-      <Divider sx={{ borderColor: alpha(theme.palette.text.primary, 0.08) }} />
-      <Box sx={{ flex: 1, overflowY: "auto" }}>
-        <List sx={{ py: 1 }}>
+
+      <Divider sx={{ borderColor: alpha(theme.palette.divider, 0.8) }} />
+
+      {/* Nav items */}
+      <Box sx={{ flex: 1, overflowY: "auto", py: 1 }}>
+        <List sx={{ py: 0, px: 1 }}>
           {items.map((item, index) => {
             const Icon = iconFor(item.label);
-            const accent = accentColors[index % accentColors.length] || theme.palette.primary.main;
+            const accent =
+              accentColors[index % accentColors.length] || theme.palette.primary.main;
+
             return (
               <ListItemButton
                 key={item.to}
@@ -105,35 +130,42 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                 end={item.end}
                 onClick={!isDesktop ? onClose : undefined}
                 sx={{
+                  mx: 1,
+                  my: 0.25,
+                  borderRadius: 1.5,
+                  px: 1.75,
+                  py: 0.85,
                   color: alpha(theme.palette.text.primary, 0.8),
                   fontWeight: 500,
-                  letterSpacing: '0.01em',
-                  '& .MuiListItemIcon-root': {
-                    color: alpha(accent, 0.85),
+                  letterSpacing: "0.01em",
+                  transition: "background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease",
+                  "& .MuiListItemIcon-root": {
+                    color: alpha(accent, 0.9),
                   },
-                  '&.active': {
-                    background: alpha(accent, 0.12),
+                  "&.active": {
+                    backgroundColor: alpha(accent, 0.08),
                     color: accent,
-                    '& .MuiListItemIcon-root': {
+                    boxShadow: `0 0 0 1px ${alpha(accent, 0.18)}`,
+                    "& .MuiListItemIcon-root": {
                       color: accent,
                     },
                   },
-                  '&:hover': {
-                    background: alpha(accent, 0.08),
+                  "&:hover": {
+                    backgroundColor: alpha(accent, 0.04),
                     color: accent,
                   },
                 }}
               >
-                <ListItemIcon sx={{ minWidth: 36 }}>
+                <ListItemIcon sx={{ minWidth: 40 }}>
                   <Box
                     sx={{
                       width: 30,
                       height: 30,
-                      display: 'grid',
-                      placeItems: 'center',
-                      borderRadius: 8,
-                      border: `1px solid ${alpha(accent, 0.2)}`,
-                      background: alpha(accent, 0.1),
+                      display: "grid",
+                      placeItems: "center",
+                      borderRadius: 1,
+                      border: `1px solid ${alpha(accent, 0.24)}`,
+                      background: alpha(accent, 0.06),
                       color: accent,
                     }}
                   >
@@ -141,7 +173,12 @@ export default function Sidebar({ items = [], open = false, onClose }) {
                   </Box>
                 </ListItemIcon>
                 <ListItemText
-                  primaryTypographyProps={{ variant: 'body2', fontWeight: 500, letterSpacing: '0.02em' }}
+                  primaryTypographyProps={{
+                    variant: "body2",
+                    fontWeight: 500,
+                    letterSpacing: "0.02em",
+                    noWrap: true,
+                  }}
                   primary={item.label}
                 />
               </ListItemButton>
@@ -149,7 +186,10 @@ export default function Sidebar({ items = [], open = false, onClose }) {
           })}
         </List>
       </Box>
-      <Divider sx={{ borderColor: alpha(theme.palette.text.primary, 0.08) }} />
+
+      <Divider sx={{ borderColor: alpha(theme.palette.divider, 0.8) }} />
+
+      {/* Logout section */}
       <Box sx={{ p: 2.5 }}>
         <Button
           fullWidth
@@ -157,21 +197,30 @@ export default function Sidebar({ items = [], open = false, onClose }) {
           onClick={doLogout}
           startIcon={<LogoutRoundedIcon fontSize="small" />}
           sx={{
-            justifyContent: 'flex-start',
+            justifyContent: "flex-start",
             gap: 1,
             fontWeight: 500,
-            color: theme.palette.text.primary,
-            borderColor: alpha(theme.palette.primary.main, 0.2),
-            '&:hover': {
+            textTransform: "none",
+            borderRadius: 1.5,
+            color: alpha(theme.palette.text.primary, 0.9),
+            borderColor: alpha(theme.palette.primary.main, 0.25),
+            "&:hover": {
               borderColor: theme.palette.primary.main,
-              background: alpha(theme.palette.primary.main, 0.1),
+              backgroundColor: alpha(theme.palette.primary.main, 0.06),
               color: theme.palette.primary.main,
             },
           }}
         >
           Logout
         </Button>
-        <Typography variant="caption" sx={{ mt: 1.5, display: 'block', color: alpha(theme.palette.text.primary, 0.6) }}>
+        <Typography
+          variant="caption"
+          sx={{
+            mt: 1.5,
+            display: "block",
+            color: alpha(theme.palette.text.primary, 0.6),
+          }}
+        >
           Securely sign out of VebOps
         </Typography>
       </Box>
@@ -185,11 +234,16 @@ export default function Sidebar({ items = [], open = false, onClose }) {
       onClose={onClose}
       ModalProps={{ keepMounted: true }}
       sx={{
-        '& .MuiDrawer-paper': {
+        "& .MuiDrawer-paper": {
           width: drawerWidth,
           boxSizing: "border-box",
           p: 0,
-          backgroundImage: `linear-gradient(195deg, ${alpha('#0000FF', 0.92)} 0%, ${alpha('#000033', 0.98)} 70%)`,
+          backgroundColor: theme.palette.background.paper,
+          color: theme.palette.text.primary,
+          borderRight: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+          boxShadow: isDesktop
+            ? "0 0 24px rgba(15,23,42,0.06)"
+            : "0 0 18px rgba(15,23,42,0.12)",
         },
       }}
     >
