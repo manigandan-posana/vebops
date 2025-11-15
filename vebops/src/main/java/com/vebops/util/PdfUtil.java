@@ -16,222 +16,706 @@ import com.vebops.domain.PurchaseOrderLine;
 // openhtmltopdf-pdfbox module and provides a fluent API for converting HTML
 // content into a PDF document.  See: https://github.com/danfickle/openhtmltopdf
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
-import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.Locale;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 public class PdfUtil {
 
+  private static final Logger log = Logger.getLogger(PdfUtil.class.getName());
+  private static final String ROBOTO_REGULAR_ALIAS = "vebops-roboto-regular";
+  private static final String ROBOTO_BOLD_ALIAS = "vebops-roboto-bold";
+  private static volatile boolean ROBOTO_REGISTERED = false;
+
+  private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
+  private static final DateTimeFormatter DATE_TIME_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm");
+
+  private static Font fontRegular(float size) {
+    ensureRobotoRegistered();
+    Font font = FontFactory.getFont(ROBOTO_REGULAR_ALIAS, BaseFont.IDENTITY_H, BaseFont.EMBEDDED, size, Font.NORMAL, Color.BLACK);
+    if (font == null || font.getBaseFont() == null) {
+      font = new Font(Font.HELVETICA, size, Font.NORMAL, Color.BLACK);
+    }
+    return font;
+  }
+
+  private static Font fontBold(float size) {
+    ensureRobotoRegistered();
+    Font font = FontFactory.getFont(ROBOTO_BOLD_ALIAS, BaseFont.IDENTITY_H, BaseFont.EMBEDDED, size, Font.BOLD, Color.BLACK);
+    if (font == null || font.getBaseFont() == null) {
+      font = new Font(Font.HELVETICA, size, Font.BOLD, Color.BLACK);
+    }
+    return font;
+  }
+
+  private static synchronized void ensureRobotoRegistered() {
+    if (ROBOTO_REGISTERED) {
+      return;
+    }
+    boolean regular = registerFontCandidate(ROBOTO_REGULAR_ALIAS,
+        "fonts/Roboto-Regular.ttf",
+        "src/main/resources/fonts/Roboto-Regular.ttf",
+        "vebops/src/main/resources/fonts/Roboto-Regular.ttf",
+        "Roboto-Regular.ttf");
+    boolean bold = registerFontCandidate(ROBOTO_BOLD_ALIAS,
+        "fonts/Roboto-Bold.ttf",
+        "src/main/resources/fonts/Roboto-Bold.ttf",
+        "vebops/src/main/resources/fonts/Roboto-Bold.ttf",
+        "Roboto-Bold.ttf");
+    if (!regular || !bold) {
+      log.log(Level.FINE, "Roboto font files not found on classpath; falling back to Helvetica");
+    }
+    ROBOTO_REGISTERED = true;
+  }
+
+  private static boolean registerFontCandidate(String alias, String... candidates) {
+    ClassLoader cl = PdfUtil.class.getClassLoader();
+    for (String candidate : candidates) {
+      if (candidate == null || candidate.isBlank()) {
+        continue;
+      }
+      String normalized = candidate.startsWith("/") ? candidate.substring(1) : candidate;
+      try (InputStream resource = cl.getResourceAsStream(normalized)) {
+        if (resource != null) {
+          Path temp = Files.createTempFile("vebops-font-", ".ttf");
+          Files.copy(resource, temp, StandardCopyOption.REPLACE_EXISTING);
+          FontFactory.register(temp.toAbsolutePath().toString(), alias);
+          Files.deleteIfExists(temp);
+          return true;
+        }
+      } catch (Exception ex) {
+        log.log(Level.FINEST, "Unable to register Roboto font from classpath candidate {0}", candidate);
+      }
+
+      try {
+        Path absolute = pathJoin(normalized).toAbsolutePath();
+        if (Files.exists(absolute)) {
+          FontFactory.register(absolute.toString(), alias);
+          return true;
+        }
+      } catch (Exception ex) {
+        log.log(Level.FINEST, "Unable to register Roboto font from filesystem candidate {0}", candidate);
+      }
+    }
+    return false;
+  }
+
+  private static Path pathJoin(String first, String... more) {
+    if (first == null) {
+      first = "";
+    }
+    Path path = Path.of(first);
+    if (more != null) {
+      for (String part : more) {
+        if (part != null && !part.isBlank()) {
+          path = path.resolve(part);
+        }
+      }
+    }
+    if (!path.isAbsolute()) {
+      path = Path.of(System.getProperty("user.dir", ".")).resolve(path);
+    }
+    return path;
+  }
+
+  private static PdfPCell infoBlock(String title, Map<String, String> rows, Font titleFont, Font labelFont, Font valueFont) {
+    PdfPCell container = new PdfPCell();
+    container.setBorderColor(new Color(222, 226, 230));
+    container.setBorderWidth(0.6f);
+    container.setPadding(10f);
+
+    Paragraph heading = new Paragraph(displayLabel(title), titleFont);
+    heading.setSpacingAfter(6f);
+    container.addElement(heading);
+
+    PdfPTable inner = new PdfPTable(new float[]{1f, 1.4f});
+    inner.setWidthPercentage(100);
+    inner.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+    if (rows != null) {
+      for (Map.Entry<String, String> entry : rows.entrySet()) {
+        inner.addCell(detailLabelCell(entry.getKey(), labelFont));
+        inner.addCell(detailValueCell(entry.getValue(), valueFont));
+      }
+    }
+    container.addElement(inner);
+    return container;
+  }
+
+  private static PdfPCell detailLabelCell(String label, Font labelFont) {
+    PdfPCell cell = new PdfPCell(new Phrase(displayLabel(label), labelFont));
+    cell.setBorder(Rectangle.NO_BORDER);
+    cell.setPadding(2f);
+    return cell;
+  }
+
+  private static PdfPCell detailValueCell(String value, Font valueFont) {
+    PdfPCell cell = new PdfPCell(new Phrase(valueOrDash(value), valueFont));
+    cell.setBorder(Rectangle.NO_BORDER);
+    cell.setPadding(2f);
+    return cell;
+  }
+
+  private static String combineAddress(String... parts) {
+    if (parts == null) {
+      return "";
+    }
+    StringBuilder sb = new StringBuilder();
+    for (String part : parts) {
+      String cleaned = safe(part);
+      if (cleaned.isEmpty()) {
+        continue;
+      }
+      if (sb.length() > 0) {
+        sb.append('\n');
+      }
+      sb.append(cleaned);
+    }
+    return sb.toString();
+  }
+
+  private static String displayLabel(String raw) {
+    return safe(raw).isEmpty() ? "—" : safe(raw);
+  }
+
+  private static String valueOrDash(String raw) {
+    String value = safe(raw);
+    return value.isEmpty() ? "—" : value;
+  }
+
+  private static String formatDate(Object value) {
+    if (value == null) {
+      return "—";
+    }
+    if (value instanceof java.util.Date date) {
+      return DATE_FMT.format(date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate());
+    }
+    if (value instanceof LocalDate localDate) {
+      return DATE_FMT.format(localDate);
+    }
+    if (value instanceof LocalDateTime localDateTime) {
+      return DATE_FMT.format(localDateTime);
+    }
+    if (value instanceof OffsetDateTime offset) {
+      return DATE_FMT.format(offset.toLocalDate());
+    }
+    if (value instanceof Instant instant) {
+      return DATE_FMT.format(ZonedDateTime.ofInstant(instant, ZoneId.systemDefault()));
+    }
+    return safe(value);
+  }
+
+  private static String formatDateTime(Object value) {
+    if (value == null) {
+      return "—";
+    }
+    if (value instanceof java.util.Date date) {
+      return DATE_TIME_FMT.format(date.toInstant().atZone(ZoneId.systemDefault()));
+    }
+    if (value instanceof LocalDateTime localDateTime) {
+      return DATE_TIME_FMT.format(localDateTime);
+    }
+    if (value instanceof OffsetDateTime offset) {
+      return DATE_TIME_FMT.format(offset.atZoneSameInstant(ZoneId.systemDefault()));
+    }
+    if (value instanceof Instant instant) {
+      return DATE_TIME_FMT.format(ZonedDateTime.ofInstant(instant, ZoneId.systemDefault()));
+    }
+    if (value instanceof LocalDate localDate) {
+      return DATE_TIME_FMT.format(localDate.atStartOfDay());
+    }
+    return safe(value);
+  }
+
+  private static void addTableHeader(PdfPTable table, Font font, String... headers) {
+    if (headers == null) {
+      return;
+    }
+    for (String header : headers) {
+      PdfPCell cell = new PdfPCell(new Phrase(displayLabel(header), font));
+      cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+      cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+      cell.setBackgroundColor(new Color(242, 242, 242));
+      cell.setPadding(6f);
+      cell.setBorderColor(new Color(214, 219, 223));
+      table.addCell(cell);
+    }
+  }
+
+  private static PdfPCell bodyCell(String text, Font font, int align) {
+    PdfPCell cell = new PdfPCell(new Phrase(valueOrDash(text), font));
+    cell.setHorizontalAlignment(align);
+    cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+    cell.setPadding(6f);
+    cell.setBorderColor(new Color(230, 230, 230));
+    return cell;
+  }
+
+  private static PdfPCell summaryLabel(String text, Font font) {
+    PdfPCell cell = new PdfPCell(new Phrase(displayLabel(text), font));
+    cell.setBorderColor(new Color(224, 224, 224));
+    cell.setPadding(6f);
+    cell.setHorizontalAlignment(Element.ALIGN_LEFT);
+    return cell;
+  }
+
+  private static PdfPCell summaryValue(String text, Font font) {
+    PdfPCell cell = new PdfPCell(new Phrase(valueOrDash(text), font));
+    cell.setBorderColor(new Color(224, 224, 224));
+    cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+    cell.setPadding(6f);
+    return cell;
+  }
+
+  private static String formatQuantity(BigDecimal qty) {
+    if (qty == null) {
+      return "0";
+    }
+    BigDecimal normalized = qty.stripTrailingZeros();
+    if (normalized.scale() < 0) {
+      normalized = normalized.setScale(0, RoundingMode.UNNECESSARY);
+    }
+    return normalized.toPlainString();
+  }
+
+  private static String formatCurrency(BigDecimal value) {
+    if (value == null) {
+      value = BigDecimal.ZERO;
+    }
+    BigDecimal scaled = value.setScale(2, RoundingMode.HALF_UP);
+    NumberFormat fmt = NumberFormat.getCurrencyInstance(new Locale("en", "IN"));
+    fmt.setMinimumFractionDigits(2);
+    fmt.setMaximumFractionDigits(2);
+    return fmt.format(scaled);
+  }
+
+  private static String formatPercent(BigDecimal value) {
+    if (value == null) {
+      return "0%";
+    }
+    BigDecimal scaled = value.setScale(2, RoundingMode.HALF_UP).stripTrailingZeros();
+    return scaled.toPlainString() + "%";
+  }
+
+  private static BigDecimal parseDecimal(Object value) {
+    if (value == null) {
+      return BigDecimal.ZERO;
+    }
+    if (value instanceof BigDecimal decimal) {
+      return decimal;
+    }
+    if (value instanceof Number number) {
+      return new BigDecimal(number.toString());
+    }
+    if (value instanceof String str) {
+      String cleaned = str.replaceAll("[^0-9.-]", "");
+      if (cleaned.isBlank()) {
+        return BigDecimal.ZERO;
+      }
+      try {
+        return new BigDecimal(cleaned);
+      } catch (NumberFormatException ignored) {
+        return BigDecimal.ZERO;
+      }
+    }
+    return BigDecimal.ZERO;
+  }
+
+  private static boolean hasAmount(BigDecimal value) {
+    return value != null && value.compareTo(BigDecimal.ZERO) != 0;
+  }
+
+  private static String rateLabel(BigDecimal rate) {
+    if (rate == null) {
+      return "0";
+    }
+    BigDecimal normalized = rate.stripTrailingZeros();
+    return normalized.toPlainString();
+  }
+
+  private static String formatState(String stateName, String stateCode) {
+    String name = safe(stateName);
+    String code = safe(stateCode).replaceAll("[^0-9A-Z]", "");
+    if (!name.isEmpty() && !code.isEmpty()) {
+      return name + " (" + code + ")";
+    }
+    if (!name.isEmpty()) {
+      return name;
+    }
+    if (!code.isEmpty()) {
+      return code;
+    }
+    return "—";
+  }
+
+  private static void addDetailRow(PdfPTable table, String label, String value, Font labelFont, Font valueFont) {
+    table.addCell(detailLabelCell(label, labelFont));
+    table.addCell(detailValueCell(value, valueFont));
+  }
+
+  private static String assignedEngineerName(WorkOrder wo) {
+    if (wo == null) {
+      return "";
+    }
+    if (wo.getAssignedFE() != null) {
+      String name = safe(wo.getAssignedFE().getName());
+      if (!name.isEmpty()) {
+        return name;
+      }
+      if (wo.getAssignedFE().getUser() != null) {
+        return safe(wo.getAssignedFE().getUser().getDisplayName());
+      }
+    }
+    if (wo.getAssignedTeam() != null) {
+      return safe(wo.getAssignedTeam().getName());
+    }
+    return "";
+  }
+
+  private static String resolveSiteAddress(WorkOrder wo, ServiceRequest sr) {
+    ServiceRequest effective = sr != null ? sr : (wo != null ? wo.getServiceRequest() : null);
+    if (effective != null) {
+      String site = safe(effective.getSiteAddress());
+      if (!site.isEmpty()) {
+        return site;
+      }
+      if (effective.getCustomer() != null) {
+        String addr = safe(effective.getCustomer().getAddress());
+        if (!addr.isEmpty()) {
+          return addr;
+        }
+      }
+    }
+    return "—";
+  }
+
+  private static String safe(Object value) {
+    if (value == null) {
+      return "";
+    }
+    return value.toString().trim();
+  }
+
   public static byte[] buildInvoicePdf(Invoice inv, List<InvoiceLine> lines) {
+    if (inv == null) {
+      return new byte[0];
+    }
     try {
       ByteArrayOutputStream bout = new ByteArrayOutputStream();
-      Document doc = new Document(PageSize.A4, 36,36,36,36);
+      Document doc = new Document(PageSize.A4, 36, 36, 48, 36);
       PdfWriter.getInstance(doc, bout);
       doc.open();
 
-      Font h1 = new Font(Font.HELVETICA, 16, Font.BOLD);
-      Font h2 = new Font(Font.HELVETICA, 12, Font.BOLD);
-      Font text = new Font(Font.HELVETICA, 10);
+      Font titleFont = fontBold(16f);
+      Font sectionFont = fontBold(11f);
+      Font labelFont = fontBold(9f);
+      Font valueFont = fontRegular(9f);
+      Font noteFont = fontRegular(8f);
 
-      doc.add(new Paragraph("INVOICE " + inv.getInvoiceNo(), h1));
-      doc.add(new Paragraph("Customer: " + inv.getCustomer().getName(), text));
-      doc.add(new Paragraph("Work Order: " + inv.getWorkOrder().getWan(), text));
-      doc.add(new Paragraph("Date: " + inv.getInvoiceDate(), text));
-      doc.add(Chunk.NEWLINE);
+      WorkOrder wo = inv.getWorkOrder();
+      ServiceRequest sr = wo != null ? wo.getServiceRequest() : null;
+      Customer customer = inv.getCustomer();
 
-      PdfPTable table = new PdfPTable(5);
-      table.setWidthPercentage(100);
-      table.setWidths(new float[]{40f, 10f, 15f, 15f, 20f});
-      addHeader(table, "Description", "Qty", "Rate", "Amount", "Source");
+      Paragraph heading = new Paragraph("TAX INVOICE", titleFont);
+      heading.setAlignment(Element.ALIGN_RIGHT);
+      heading.setSpacingAfter(12f);
+      doc.add(heading);
+
+      PdfPTable header = new PdfPTable(new float[]{1.2f, 1f});
+      header.setWidthPercentage(100);
+      header.setSpacingAfter(12f);
+
+      Map<String, String> billTo = new LinkedHashMap<>();
+      billTo.put("Customer", customer != null ? customer.getName() : "");
+      billTo.put("Address", customer != null ? customer.getAddress() : "");
+      billTo.put("Email", customer != null ? customer.getEmail() : "");
+      billTo.put("Phone", customer != null ? customer.getMobile() : "");
+      header.addCell(infoBlock("Bill To", billTo, sectionFont, labelFont, valueFont));
+
+      Map<String, String> meta = new LinkedHashMap<>();
+      meta.put("Invoice No.", inv.getInvoiceNo());
+      meta.put("Invoice Date", formatDate(inv.getInvoiceDate()));
+      meta.put("Status", inv.getStatus() != null ? inv.getStatus().name().replace('_', ' ') : "");
+      meta.put("Work Order", wo != null ? wo.getWan() : "");
+      meta.put("Service Request", sr != null ? sr.getSrn() : "");
+      header.addCell(infoBlock("Invoice Details", meta, sectionFont, labelFont, valueFont));
+      doc.add(header);
+
+      if (wo != null || sr != null) {
+        PdfPTable references = new PdfPTable(new float[]{1f, 1f});
+        references.setWidthPercentage(100);
+        references.setSpacingAfter(14f);
+
+        Map<String, String> project = new LinkedHashMap<>();
+        project.put("Service Type", sr != null && sr.getServiceType() != null
+            ? sr.getServiceType().name().replace('_', ' ')
+            : "");
+        project.put("Site Address", resolveSiteAddress(wo, sr));
+        project.put("Customer PO", wo != null && wo.getCustomerPO() != null
+            ? wo.getCustomerPO().getPoNumber()
+            : "");
+        references.addCell(infoBlock("Project Reference", project, sectionFont, labelFont, valueFont));
+
+        Map<String, String> contacts = new LinkedHashMap<>();
+        contacts.put("Assigned Engineer", assignedEngineerName(wo));
+        contacts.put("Generated On", formatDateTime(java.time.LocalDateTime.now()));
+        references.addCell(infoBlock("Coordination", contacts, sectionFont, labelFont, valueFont));
+        doc.add(references);
+      }
+
+      PdfPTable lineTable = new PdfPTable(new float[]{3.6f, 0.8f, 1.1f, 1.1f});
+      lineTable.setWidthPercentage(100);
+      addTableHeader(lineTable, labelFont,
+          "Description", "Qty", "Rate (₹)", "Amount (₹)");
 
       BigDecimal subtotal = BigDecimal.ZERO;
-      for (InvoiceLine l : lines) {
-        addRow(table,
-          safe(l.getDescription()),
-          l.getQty().toPlainString(),
-          invoicemoney(l.getRate()),
-          invoicemoney(l.getAmount()),
-          safe(l.getSource()));
-        subtotal = subtotal.add(l.getAmount());
-      }
-      doc.add(table);
-      doc.add(Chunk.NEWLINE);
+      if (lines != null && !lines.isEmpty()) {
+        for (InvoiceLine l : lines) {
+          BigDecimal qty = l.getQty() != null ? l.getQty() : BigDecimal.ZERO;
+          BigDecimal rate = l.getRate() != null ? l.getRate() : BigDecimal.ZERO;
+          BigDecimal amount = l.getAmount() != null ? l.getAmount() : qty.multiply(rate);
+          subtotal = subtotal.add(amount);
 
-      Paragraph tot = new Paragraph("Total: " + invoicemoney(subtotal), h2);
-      tot.setAlignment(Element.ALIGN_RIGHT);
-      doc.add(tot);
+          lineTable.addCell(bodyCell(l.getDescription(), valueFont, Element.ALIGN_LEFT));
+          lineTable.addCell(bodyCell(formatQuantity(qty), valueFont, Element.ALIGN_RIGHT));
+          lineTable.addCell(bodyCell(formatCurrency(rate), valueFont, Element.ALIGN_RIGHT));
+          lineTable.addCell(bodyCell(formatCurrency(amount), valueFont, Element.ALIGN_RIGHT));
+        }
+      } else {
+        PdfPCell empty = bodyCell("No invoice lines available", valueFont, Element.ALIGN_LEFT);
+        empty.setColspan(4);
+        lineTable.addCell(empty);
+      }
+      lineTable.setSpacingAfter(12f);
+      doc.add(lineTable);
+
+      BigDecimal tax = inv.getTax() != null ? inv.getTax() : BigDecimal.ZERO;
+      BigDecimal recordedSubtotal = inv.getSubtotal() != null ? inv.getSubtotal() : subtotal;
+      if (recordedSubtotal.compareTo(BigDecimal.ZERO) > 0) {
+        subtotal = recordedSubtotal;
+      }
+      BigDecimal total = inv.getTotal() != null ? inv.getTotal() : subtotal.add(tax);
+
+      PdfPTable totals = new PdfPTable(new float[]{1.4f, 1f});
+      totals.setWidthPercentage(45);
+      totals.setHorizontalAlignment(Element.ALIGN_RIGHT);
+      totals.setSpacingAfter(8f);
+      totals.addCell(summaryLabel("Subtotal", labelFont));
+      totals.addCell(summaryValue(formatCurrency(subtotal), valueFont));
+      totals.addCell(summaryLabel("GST", labelFont));
+      totals.addCell(summaryValue(formatCurrency(tax), valueFont));
+      totals.addCell(summaryLabel("Grand Total", labelFont));
+      totals.addCell(summaryValue(formatCurrency(total), valueFont));
+      doc.add(totals);
+
+      Paragraph wordsHeading = new Paragraph("Amount in words", sectionFont);
+      wordsHeading.setSpacingBefore(6f);
+      wordsHeading.setSpacingAfter(2f);
+      doc.add(wordsHeading);
+      String amountWords = com.vebops.util.Words.inIndianSystem(total.setScale(2, RoundingMode.HALF_UP));
+      doc.add(new Paragraph(amountWords + " only", valueFont));
+
+      Paragraph note = new Paragraph(
+          "All cabling and wiring installations have been completed to the agreed specifications. " +
+          "Please review the bill of quantities above and remit payment within the agreed credit period.",
+          noteFont);
+      note.setSpacingBefore(12f);
+      note.setSpacingAfter(18f);
+      doc.add(note);
+
+      PdfPTable signature = new PdfPTable(new float[]{1f, 1f});
+      signature.setWidthPercentage(100);
+      signature.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+
+      Paragraph assurance = new Paragraph(
+          "Certified by: Cable & Wiring Installation Team",
+          valueFont);
+      assurance.setSpacingAfter(6f);
+      PdfPCell assuranceCell = new PdfPCell(assurance);
+      assuranceCell.setBorder(Rectangle.NO_BORDER);
+      signature.addCell(assuranceCell);
+
+      Paragraph sign = new Paragraph("Authorised Signatory", labelFont);
+      sign.setAlignment(Element.ALIGN_RIGHT);
+      Paragraph line = new Paragraph("______________________________", valueFont);
+      line.setAlignment(Element.ALIGN_RIGHT);
+      PdfPCell signCell = new PdfPCell();
+      signCell.setBorder(Rectangle.NO_BORDER);
+      signCell.addElement(line);
+      signCell.addElement(sign);
+      signature.addCell(signCell);
+      doc.add(signature);
 
       doc.close();
       return bout.toByteArray();
-    } catch(Exception e){
+    } catch (Exception e) {
       throw new RuntimeException("Failed to build invoice PDF", e);
     }
   }
 
   public static byte[] buildPurchaseOrderPdf(PurchaseOrder po, List<PurchaseOrderLine> lines) {
+    if (po == null) {
+      return new byte[0];
+    }
     try {
       ByteArrayOutputStream bout = new ByteArrayOutputStream();
-      Document doc = new Document(PageSize.A4, 40, 40, 48, 40);
+      Document doc = new Document(PageSize.A4, 40, 40, 54, 40);
       PdfWriter.getInstance(doc, bout);
       doc.open();
 
-      Color accent = new Color(36, 123, 160);
-      Color subtle = new Color(240, 243, 245);
-      Color border = new Color(222, 228, 232);
-      Font title = new Font(Font.HELVETICA, 18, Font.BOLD, accent);
-      Font label = new Font(Font.HELVETICA, 9, Font.BOLD, new Color(87, 96, 111));
-      Font value = new Font(Font.HELVETICA, 9, Font.NORMAL, new Color(55, 65, 81));
-      Font tiny = new Font(Font.HELVETICA, 8, Font.NORMAL, new Color(87, 96, 111));
-      Font tableHead = new Font(Font.HELVETICA, 9, Font.BOLD, Color.WHITE);
-      Font tableBody = new Font(Font.HELVETICA, 9, Font.NORMAL, new Color(55, 65, 81));
+      Font titleFont = fontBold(16f);
+      Font sectionFont = fontBold(11f);
+      Font labelFont = fontBold(9f);
+      Font valueFont = fontRegular(9f);
+      Font noteFont = fontRegular(8f);
 
-      java.time.format.DateTimeFormatter dateFmt = java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy");
-      String orderDate = po.getOrderDate() != null ? po.getOrderDate().format(dateFmt) : "";
-
-      PdfPTable header = new PdfPTable(new float[]{1f, 1f});
-      header.setWidthPercentage(100);
-      PdfPCell logo = new PdfPCell();
-      logo.setMinimumHeight(48f);
-      logo.setBorder(Rectangle.NO_BORDER);
-      logo.setBackgroundColor(subtle);
-      logo.setPadding(12f);
-      Paragraph logoText = new Paragraph("Company Logo", value);
-      logoText.setAlignment(Element.ALIGN_LEFT);
-      logo.addElement(logoText);
-      header.addCell(logo);
-
-      PdfPCell headerRight = new PdfPCell();
-      headerRight.setBorder(Rectangle.NO_BORDER);
-      Paragraph titlePara = new Paragraph("PURCHASE ORDER", title);
-      titlePara.setAlignment(Element.ALIGN_RIGHT);
-      headerRight.addElement(titlePara);
-      Paragraph voucherPara = new Paragraph("Voucher No.: " + safe(po.getVoucherNumber()), label);
-      voucherPara.setAlignment(Element.ALIGN_RIGHT);
-      headerRight.addElement(voucherPara);
-      Paragraph datePara = new Paragraph("Date: " + orderDate, label);
-      datePara.setAlignment(Element.ALIGN_RIGHT);
-      headerRight.addElement(datePara);
-      header.addCell(headerRight);
-
-      doc.add(header);
-      doc.add(Chunk.NEWLINE);
+      Paragraph heading = new Paragraph("PURCHASE ORDER", titleFont);
+      heading.setAlignment(Element.ALIGN_RIGHT);
+      heading.setSpacingAfter(12f);
+      doc.add(heading);
 
       PdfPTable parties = new PdfPTable(new float[]{1f, 1f});
       parties.setWidthPercentage(100);
-      parties.addCell(partyCard("Invoice To", border, label, value,
-          safe(po.getBuyerName()), safe(po.getBuyerAddress()), safe(po.getBuyerPhone()),
-          safe(po.getBuyerGstin()), safe(po.getBuyerStateName()), safe(po.getBuyerStateCode()),
-          safe(po.getBuyerEmail()), safe(po.getBuyerWebsite())));
-      parties.addCell(supplierCard(border, label, value,
-          safe(po.getSupplierName()), safe(po.getSupplierAddress()), safe(po.getSupplierGstin()),
-          safe(po.getSupplierStateName()), safe(po.getSupplierStateCode())));
+      parties.setSpacingAfter(12f);
+
+      Map<String, String> buyer = new LinkedHashMap<>();
+      buyer.put("Company", po.getBuyerName());
+      buyer.put("Address", po.getBuyerAddress());
+      buyer.put("GSTIN", po.getBuyerGstin());
+      buyer.put("State", formatState(po.getBuyerStateName(), po.getBuyerStateCode()));
+      buyer.put("Phone", po.getBuyerPhone());
+      buyer.put("Email", po.getBuyerEmail());
+      parties.addCell(infoBlock("Buyer", buyer, sectionFont, labelFont, valueFont));
+
+      Map<String, String> supplier = new LinkedHashMap<>();
+      supplier.put("Supplier", po.getSupplierName());
+      supplier.put("Address", po.getSupplierAddress());
+      supplier.put("GSTIN", po.getSupplierGstin());
+      supplier.put("State", formatState(po.getSupplierStateName(), po.getSupplierStateCode()));
+      supplier.put("Email", po.getSupplierEmail());
+      supplier.put("Whatsapp", po.getSupplierWhatsapp());
+      parties.addCell(infoBlock("Supplier", supplier, sectionFont, labelFont, valueFont));
       doc.add(parties);
-      doc.add(Chunk.NEWLINE);
 
-      PdfPTable meta = new PdfPTable(new float[]{1f, 1f});
-      meta.setWidthPercentage(100);
-      meta.getDefaultCell().setBorder(Rectangle.NO_BORDER);
-      meta.addCell(poMetaCell("Reference No. & Date", safe(po.getReferenceNumberAndDate()), label, value));
-      meta.addCell(poMetaCell("Mode/Terms of Payment", safe(po.getPaymentTerms()), label, value));
-      meta.addCell(poMetaCell("Dispatched Through", safe(po.getDispatchedThrough()), label, value));
-      meta.addCell(poMetaCell("Destination", safe(po.getDestination()), label, value));
-      meta.addCell(poMetaCell("Other References", safe(po.getOtherReferences()), label, value));
-      meta.addCell(poMetaCell("Terms of Delivery", safe(po.getTermsOfDelivery()), label, value));
-      doc.add(meta);
-      doc.add(Chunk.NEWLINE);
+      PdfPTable references = new PdfPTable(new float[]{1f, 1f});
+      references.setWidthPercentage(100);
+      references.setSpacingAfter(14f);
 
-      PdfPTable lineTable = new PdfPTable(new float[]{0.7f, 3.6f, 1f, 0.9f, 1.1f, 1.2f});
+      Map<String, String> orderDetails = new LinkedHashMap<>();
+      orderDetails.put("Voucher No.", po.getVoucherNumber());
+      orderDetails.put("Order Date", formatDate(po.getOrderDate()));
+      orderDetails.put("Reference", po.getReferenceNumberAndDate());
+      orderDetails.put("Payment Terms", po.getPaymentTerms());
+      references.addCell(infoBlock("Order Details", orderDetails, sectionFont, labelFont, valueFont));
+
+      Map<String, String> logistics = new LinkedHashMap<>();
+      logistics.put("Dispatched Through", po.getDispatchedThrough());
+      logistics.put("Destination", po.getDestination());
+      logistics.put("Other References", po.getOtherReferences());
+      logistics.put("Terms of Delivery", po.getTermsOfDelivery());
+      references.addCell(infoBlock("Logistics", logistics, sectionFont, labelFont, valueFont));
+      doc.add(references);
+
+      PdfPTable lineTable = new PdfPTable(new float[]{0.7f, 3.6f, 0.9f, 0.9f, 1.1f, 1.2f});
       lineTable.setWidthPercentage(100);
-      addPoHeaderCell(lineTable, "Sl No.", tableHead, accent);
-      addPoHeaderCell(lineTable, "Description of Goods", tableHead, accent);
-      addPoHeaderCell(lineTable, "Quantity", tableHead, accent);
-      addPoHeaderCell(lineTable, "Unit", tableHead, accent);
-      addPoHeaderCell(lineTable, "Rate (₹ per unit)", tableHead, accent);
-      addPoHeaderCell(lineTable, "Amount (₹)", tableHead, accent);
+      addTableHeader(lineTable, labelFont,
+          "#", "Description", "Quantity", "Unit", "Rate (₹)", "Amount (₹)");
 
       int index = 1;
-      if (lines != null) {
+      if (lines != null && !lines.isEmpty()) {
         for (PurchaseOrderLine line : lines) {
-          lineTable.addCell(lineCell(String.valueOf(index++), tableBody, Element.ALIGN_CENTER));
-          lineTable.addCell(lineCell(safe(line.getDescription()), tableBody, Element.ALIGN_LEFT));
-          lineTable.addCell(lineCell(formatQuantity(line.getQuantity()), tableBody, Element.ALIGN_RIGHT));
-          lineTable.addCell(lineCell(safe(line.getUnit()), tableBody, Element.ALIGN_CENTER));
-          lineTable.addCell(lineCell(formatMoney(line.getRate()), tableBody, Element.ALIGN_RIGHT));
-          lineTable.addCell(lineCell(formatMoney(line.getAmount()), tableBody, Element.ALIGN_RIGHT));
+          lineTable.addCell(bodyCell(String.valueOf(index++), valueFont, Element.ALIGN_CENTER));
+          lineTable.addCell(bodyCell(line.getDescription(), valueFont, Element.ALIGN_LEFT));
+          lineTable.addCell(bodyCell(formatQuantity(line.getQuantity()), valueFont, Element.ALIGN_RIGHT));
+          lineTable.addCell(bodyCell(line.getUnit(), valueFont, Element.ALIGN_CENTER));
+          lineTable.addCell(bodyCell(formatCurrency(line.getRate()), valueFont, Element.ALIGN_RIGHT));
+          lineTable.addCell(bodyCell(formatCurrency(line.getAmount()), valueFont, Element.ALIGN_RIGHT));
         }
-      }
-      if (index == 1) {
-        PdfPCell empty = new PdfPCell(new Phrase("No items recorded", tableBody));
+      } else {
+        PdfPCell empty = bodyCell("No line items captured", valueFont, Element.ALIGN_LEFT);
         empty.setColspan(6);
-        empty.setHorizontalAlignment(Element.ALIGN_CENTER);
-        empty.setPadding(10f);
         lineTable.addCell(empty);
       }
+      lineTable.setSpacingAfter(12f);
       doc.add(lineTable);
-      doc.add(Chunk.NEWLINE);
 
-      PdfPTable totals = new PdfPTable(new float[]{2f, 1.2f});
-      totals.setWidthPercentage(50);
+      PdfPTable totals = new PdfPTable(new float[]{1.5f, 1f});
+      totals.setWidthPercentage(45);
       totals.setHorizontalAlignment(Element.ALIGN_RIGHT);
-      totals.getDefaultCell().setBorder(Rectangle.NO_BORDER);
-      totals.addCell(totalsLabel("Subtotal", label));
-      totals.addCell(totalsValue(formatMoney(po.getSubTotal()), value));
+      totals.setSpacingAfter(10f);
+
+      totals.addCell(summaryLabel("Subtotal", labelFont));
+      totals.addCell(summaryValue(formatCurrency(po.getSubTotal()), valueFont));
       if (hasAmount(po.getCgstAmount())) {
-        totals.addCell(totalsLabel("CGST " + rateLabel(po.getCgstRate()) + "%", label));
-        totals.addCell(totalsValue(formatMoney(po.getCgstAmount()), value));
+        totals.addCell(summaryLabel("CGST " + rateLabel(po.getCgstRate()) + "%", labelFont));
+        totals.addCell(summaryValue(formatCurrency(po.getCgstAmount()), valueFont));
       }
       if (hasAmount(po.getSgstAmount())) {
-        totals.addCell(totalsLabel("SGST " + rateLabel(po.getSgstRate()) + "%", label));
-        totals.addCell(totalsValue(formatMoney(po.getSgstAmount()), value));
+        totals.addCell(summaryLabel("SGST " + rateLabel(po.getSgstRate()) + "%", labelFont));
+        totals.addCell(summaryValue(formatCurrency(po.getSgstAmount()), valueFont));
       }
       if (hasAmount(po.getIgstAmount())) {
-        totals.addCell(totalsLabel("IGST " + rateLabel(po.getIgstRate()) + "%", label));
-        totals.addCell(totalsValue(formatMoney(po.getIgstAmount()), value));
+        totals.addCell(summaryLabel("IGST " + rateLabel(po.getIgstRate()) + "%", labelFont));
+        totals.addCell(summaryValue(formatCurrency(po.getIgstAmount()), valueFont));
       }
-      PdfPCell grandLabel = totalsLabel("Grand Total (₹)", label);
-      grandLabel.setBorder(Rectangle.TOP);
-      grandLabel.setBorderColor(border);
-      totals.addCell(grandLabel);
-      PdfPCell grandValue = totalsValue(formatMoney(po.getGrandTotal()), value);
-      grandValue.setBorder(Rectangle.TOP);
-      grandValue.setBorderColor(border);
-      totals.addCell(grandValue);
+      totals.addCell(summaryLabel("Grand Total", labelFont));
+      totals.addCell(summaryValue(formatCurrency(po.getGrandTotal()), valueFont));
       doc.add(totals);
 
-      doc.add(Chunk.NEWLINE);
       Paragraph amountWords = new Paragraph(
-          "Amount Chargeable (in words): " + safe(po.getAmountInWords()), value);
-      amountWords.setAlignment(Element.ALIGN_LEFT);
+          "Amount chargeable (in words): " + (po.getAmountInWords() == null ? "—" : po.getAmountInWords()),
+          valueFont);
+      amountWords.setSpacingAfter(12f);
       doc.add(amountWords);
-      doc.add(Chunk.NEWLINE);
+
+      Paragraph note = new Paragraph(
+          "Procurement covers cabling and wiring materials as per approved schedules. Supplier must ensure brand-specific packaging and deliver items without damage.",
+          noteFont);
+      note.setSpacingAfter(18f);
+      doc.add(note);
 
       PdfPTable footer = new PdfPTable(new float[]{1f, 1f});
       footer.setWidthPercentage(100);
       footer.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
-      Paragraph footLeft = new Paragraph();
-      footLeft.add(new Phrase("Company’s PAN: " + safe(po.getCompanyPan()) + "\n", value));
-      footLeft.add(new Phrase("E. & O.E\n", tiny));
-      footLeft.add(new Phrase("This is a computer generated document.", tiny));
-      PdfPCell footLeftCell = new PdfPCell(footLeft);
-      footLeftCell.setBorder(Rectangle.NO_BORDER);
-      footer.addCell(footLeftCell);
+      Paragraph left = new Paragraph("Company PAN: " + (po.getCompanyPan() == null ? "—" : po.getCompanyPan()), valueFont);
+      left.add(Chunk.NEWLINE);
+      left.add(new Chunk("This document is system generated.", noteFont));
+      PdfPCell leftCell = new PdfPCell(left);
+      leftCell.setBorder(Rectangle.NO_BORDER);
+      footer.addCell(leftCell);
 
-      Paragraph footRight = new Paragraph();
-      footRight.add(new Phrase("for " + safe(po.getBuyerName()) + "\n\n", value));
-      footRight.add(new Phrase("\n\n", value));
-      footRight.add(new Phrase("Authorised Signatory", label));
-      PdfPCell footRightCell = new PdfPCell(footRight);
-      footRightCell.setBorder(Rectangle.NO_BORDER);
-      footRightCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-      footer.addCell(footRightCell);
+      Paragraph right = new Paragraph();
+      right.add(new Chunk("For " + (po.getBuyerName() == null ? "" : po.getBuyerName()), valueFont));
+      right.add(Chunk.NEWLINE);
+      right.add(Chunk.NEWLINE);
+      right.add(new Chunk("Authorised Signatory", labelFont));
+      PdfPCell rightCell = new PdfPCell(right);
+      rightCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+      rightCell.setBorder(Rectangle.NO_BORDER);
+      footer.addCell(rightCell);
 
       doc.add(footer);
 
@@ -266,52 +750,36 @@ public class PdfUtil {
       java.util.List<java.util.Map<String, Object>> items,
       java.util.Map<String, Object> totals,
       com.vebops.domain.CompanyDetails company) {
+    if (svc == null) {
+      return new byte[0];
+    }
     try {
-      // Create the PDF document with sensible margins
       java.io.ByteArrayOutputStream bout = new java.io.ByteArrayOutputStream();
-      com.lowagie.text.Document doc = new com.lowagie.text.Document(com.lowagie.text.PageSize.A4, 36, 36, 36, 36);
+      com.lowagie.text.Document doc = new com.lowagie.text.Document(com.lowagie.text.PageSize.A4, 36, 36, 48, 36);
       com.lowagie.text.pdf.PdfWriter.getInstance(doc, bout);
       doc.open();
 
-      // -------------------------------------------------------------------------
-      // Define fonts used throughout the invoice. Using consistent fonts makes
-      // the output resemble the on‑screen preview. Adjust sizes to loosely
-      // mirror the Tailwind classes in Preview.jsx (e.g. text-[22px] ≈ 16pt).
-      var titleFont = new com.lowagie.text.Font(com.lowagie.text.Font.HELVETICA, 18, com.lowagie.text.Font.BOLD);
-      var companyFont = new com.lowagie.text.Font(com.lowagie.text.Font.HELVETICA, 12, com.lowagie.text.Font.BOLD);
-      var boldFont = new com.lowagie.text.Font(com.lowagie.text.Font.HELVETICA, 9, com.lowagie.text.Font.BOLD);
-      var regularFont = new com.lowagie.text.Font(com.lowagie.text.Font.HELVETICA, 9, com.lowagie.text.Font.NORMAL);
-      var smallBold = new com.lowagie.text.Font(com.lowagie.text.Font.HELVETICA, 8, com.lowagie.text.Font.BOLD);
-      var small = new com.lowagie.text.Font(com.lowagie.text.Font.HELVETICA, 8, com.lowagie.text.Font.NORMAL);
+      Font titleFont = fontBold(16f);
+      Font sectionFont = fontBold(11f);
+      Font labelFont = fontBold(9f);
+      Font valueFont = fontRegular(9f);
+      Font noteFont = fontRegular(8f);
 
-      // -------------------------------------------------------------------------
-      // Determine doc type (Invoice vs Proforma) and derive labels/values. If a
-      // proforma number/date is provided in meta then treat the document as a
-      // proforma invoice; otherwise fall back to a standard invoice. This is
-      // analogous to the docType logic in Preview.jsx.
-      String declaredDocType = "";
-      String invoiceNo = "";
-      String invoiceDate = "";
-      String pinvNo = "";
-      String pinvDate = "";
-      if (meta != null) {
-        Object docTypeObj = meta.get("docType");
-        if (docTypeObj != null) {
-          declaredDocType = String.valueOf(docTypeObj).trim().toUpperCase();
-        }
-        invoiceNo = cleanDocNumber(meta.get("invoiceNo"));
-        Object invDateObj = meta.get("invoiceDate");
-        if (invDateObj != null) invoiceDate = String.valueOf(invDateObj).trim();
-        pinvNo = cleanDocNumber(meta.get("pinvNo"));
-        Object pinvDateObj = meta.get("pinvDate");
-        if (pinvDateObj != null) pinvDate = String.valueOf(pinvDateObj).trim();
-      }
+      String declaredDocType = meta != null && meta.get("docType") != null
+          ? String.valueOf(meta.get("docType")).trim().toUpperCase()
+          : "";
+      String invoiceNo = cleanDocNumber(meta != null ? meta.get("invoiceNo") : null);
+      String invoiceDate = meta != null && meta.get("invoiceDate") != null ? String.valueOf(meta.get("invoiceDate")).trim() : "";
+      String pinvNo = cleanDocNumber(meta != null ? meta.get("pinvNo") : null);
+      String pinvDate = meta != null && meta.get("pinvDate") != null ? String.valueOf(meta.get("pinvDate")).trim() : "";
+
       boolean explicitProforma = "PROFORMA".equals(declaredDocType) || "PINV".equals(declaredDocType);
       boolean explicitInvoice = "INVOICE".equals(declaredDocType);
       boolean isProforma = explicitProforma || (!explicitInvoice && (!pinvNo.isBlank() || !pinvDate.isBlank()));
-      String docTitle = isProforma ? "PROFORMA INVOICE" : "INVOICE";
+
+      String docTitle = isProforma ? "PROFORMA INVOICE" : "SERVICE INVOICE";
       String docNoLabel = isProforma ? "PINV No." : "Invoice No.";
-      String docDateLabel = isProforma ? "PINV Date" : "Date";
+      String docDateLabel = isProforma ? "PINV Date" : "Invoice Date";
       String docNoValue = isProforma
           ? (!pinvNo.isBlank() ? pinvNo : (!invoiceNo.isBlank() ? invoiceNo : "—"))
           : (!invoiceNo.isBlank() ? invoiceNo : (!pinvNo.isBlank() ? pinvNo : "—"));
@@ -319,682 +787,230 @@ public class PdfUtil {
           ? (!pinvDate.isBlank() ? pinvDate : (!invoiceDate.isBlank() ? invoiceDate : "—"))
           : (!invoiceDate.isBlank() ? invoiceDate : (!pinvDate.isBlank() ? pinvDate : "—"));
 
-      // -------------------------------------------------------------------------
-      // Compute totals and prepare derived values. Subtotal is the sum of
-      // discounted line amounts.
-      java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
-      java.math.BigDecimal grossTotal = java.math.BigDecimal.ZERO;
-      java.math.BigDecimal discountSavings = java.math.BigDecimal.ZERO;
-      // Table rows for items will be added later. We'll compute the totals
-      // here while iterating through the items list.
-      if (items != null) {
-        for (java.util.Map<String,Object> it : items) {
-          if (it == null) continue;
-          java.math.BigDecimal rate = java.math.BigDecimal.ZERO;
-          java.math.BigDecimal qty = java.math.BigDecimal.ZERO;
-          java.math.BigDecimal disc = java.math.BigDecimal.ZERO;
-          try { if (it.get("basePrice") != null) rate = new java.math.BigDecimal(it.get("basePrice").toString()); } catch(Exception ignored) {}
-          try { if (it.get("qty") != null) qty = new java.math.BigDecimal(it.get("qty").toString()); } catch(Exception ignored) {}
-          try { if (it.get("discount") != null) disc = new java.math.BigDecimal(it.get("discount").toString()); } catch(Exception ignored) {}
-          // Normalise discount range to [0,100]
-          if (disc.compareTo(java.math.BigDecimal.ZERO) < 0) disc = java.math.BigDecimal.ZERO;
-          if (disc.compareTo(new java.math.BigDecimal("100")) > 0) disc = new java.math.BigDecimal("100");
-          if (qty.compareTo(java.math.BigDecimal.ZERO) < 0) qty = java.math.BigDecimal.ZERO;
-          if (rate.compareTo(java.math.BigDecimal.ZERO) < 0) rate = java.math.BigDecimal.ZERO;
-          java.math.BigDecimal lineBase = rate.multiply(qty);
-          grossTotal = grossTotal.add(lineBase);
-          java.math.BigDecimal discounted = lineBase.multiply(java.math.BigDecimal.ONE.subtract(disc.divide(new java.math.BigDecimal("100"))));
-          subtotal = subtotal.add(discounted);
-        }
-      }
-      discountSavings = grossTotal.subtract(subtotal);
-      if (discountSavings.compareTo(java.math.BigDecimal.ZERO) < 0) {
-        discountSavings = java.math.BigDecimal.ZERO;
-      }
-      // Extract transport and taxes from totals map. Default to zero when missing.
-      java.math.BigDecimal transport = java.math.BigDecimal.ZERO;
-      java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
-      java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
-      java.math.BigDecimal igst = java.math.BigDecimal.ZERO;
-      if (totals != null) {
-        try { if (totals.get("transport") != null) transport = new java.math.BigDecimal(totals.get("transport").toString()); } catch(Exception ignored) {}
-        try { if (totals.get("cgst") != null) cgst = new java.math.BigDecimal(totals.get("cgst").toString()); } catch(Exception ignored) {}
-        try { if (totals.get("sgst") != null) sgst = new java.math.BigDecimal(totals.get("sgst").toString()); } catch(Exception ignored) {}
-        try { if (totals.get("igst") != null) igst = new java.math.BigDecimal(totals.get("igst").toString()); } catch(Exception ignored) {}
-      }
-      java.math.BigDecimal totalBeforeTax = subtotal.add(transport);
-      java.math.BigDecimal grand = totalBeforeTax.add(cgst).add(sgst).add(igst);
-      // Compute amount in words using the Words utility. Append "Only" at the end.
-      String totalInWords;
-      try {
-        totalInWords = com.vebops.util.Words.inIndianSystem(grand) + " Only";
-      } catch(Exception e) {
-        totalInWords = "";
-      }
-      if (totalInWords == null || totalInWords.isBlank()) {
-        totalInWords = "Rupees " + invoicemoney(grand) + " Only";
-      }
+      String serviceTypeVal = meta != null && meta.get("serviceType") != null ? String.valueOf(meta.get("serviceType")) : "";
+      String buyerOrderNo = meta != null && meta.get("buyerOrderNo") != null ? String.valueOf(meta.get("buyerOrderNo")) : "";
+      String orderDate = meta != null && meta.get("orderDate") != null ? String.valueOf(meta.get("orderDate")) : "";
+      String dcNo = meta != null && meta.get("dcNo") != null
+          ? String.valueOf(meta.get("dcNo"))
+          : (meta != null && meta.get("deliveryChallanNo") != null ? String.valueOf(meta.get("deliveryChallanNo")) : "");
+      String wcNo = meta != null && meta.get("wcNo") != null
+          ? String.valueOf(meta.get("wcNo"))
+          : (meta != null && meta.get("workCompletionCertNo") != null ? String.valueOf(meta.get("workCompletionCertNo")) : "");
+      String projectName = meta != null && meta.get("projectName") != null ? String.valueOf(meta.get("projectName")) : "";
 
-      // Determine place of supply. Follow the same precedence as Preview.jsx: first
-      // meta.placeOfSupply; else buyer state; else consignee state; else company
-      // state; else blank.
-      String placeOfSupply = null;
-      if (meta != null && meta.get("placeOfSupply") != null) {
-        placeOfSupply = String.valueOf(meta.get("placeOfSupply"));
-      }
-      if ((placeOfSupply == null || placeOfSupply.isBlank()) && svc.getBuyerState() != null && !svc.getBuyerState().isBlank()) {
-        placeOfSupply = svc.getBuyerState();
-      }
-      if ((placeOfSupply == null || placeOfSupply.isBlank()) && svc.getConsigneeState() != null && !svc.getConsigneeState().isBlank()) {
-        placeOfSupply = svc.getConsigneeState();
-      }
-      if ((placeOfSupply == null || placeOfSupply.isBlank()) && company != null && company.getState() != null && !company.getState().isBlank()) {
+      String placeOfSupply = meta != null && meta.get("placeOfSupply") != null
+          ? String.valueOf(meta.get("placeOfSupply"))
+          : "";
+      if ((placeOfSupply == null || placeOfSupply.isBlank()) && company != null) {
         placeOfSupply = company.getState();
       }
-      if (placeOfSupply == null || placeOfSupply.isBlank()) placeOfSupply = "—";
-
-      // Extract meta values for buyer order, order date, dc no and wc no, serviceType
-      String serviceTypeVal = meta != null && meta.get("serviceType") != null ? String.valueOf(meta.get("serviceType")) : "—";
-      String buyerOrderNo = meta != null && meta.get("buyerOrderNo") != null ? String.valueOf(meta.get("buyerOrderNo")) : "—";
-      String orderDate = meta != null && meta.get("orderDate") != null ? String.valueOf(meta.get("orderDate")) : "—";
-      String dcNo = meta != null && meta.get("dcNo") != null ? String.valueOf(meta.get("dcNo")) : (meta != null && meta.get("deliveryChallanNo") != null ? String.valueOf(meta.get("deliveryChallanNo")) : "—");
-      String wcNo = meta != null && meta.get("wcNo") != null ? String.valueOf(meta.get("wcNo")) : (meta != null && meta.get("workCompletionCertNo") != null ? String.valueOf(meta.get("workCompletionCertNo")) : "—");
-
-      // -------------------------------------------------------------------------
-      // Header: company logo & details on the left; invoice details on the right
-      com.lowagie.text.pdf.PdfPTable headerTable = new com.lowagie.text.pdf.PdfPTable(2);
-      headerTable.setWidthPercentage(100);
-      headerTable.setWidths(new float[]{3f, 2f});
-      // Left side: logo and company details
-      com.lowagie.text.pdf.PdfPTable leftHeader = new com.lowagie.text.pdf.PdfPTable(2);
-      leftHeader.setWidths(new float[]{1f, 4f});
-      // Logo cell
-      if (company != null && company.getLogoDataUrl() != null && company.getLogoDataUrl().startsWith("data:")) {
-        try {
-          String logoUrl = company.getLogoDataUrl();
-          int comma = logoUrl.indexOf(',');
-          if (comma >= 0) {
-            String b64 = logoUrl.substring(comma + 1);
-            byte[] imgBytes = java.util.Base64.getDecoder().decode(b64);
-            com.lowagie.text.Image img = com.lowagie.text.Image.getInstance(imgBytes);
-            // constrain logo height to ~50 pt and preserve aspect ratio
-            float maxH = 50f;
-            float maxW = 50f;
-            float ratio = Math.min(maxW / img.getWidth(), maxH / img.getHeight());
-            img.scaleToFit(img.getWidth() * ratio, img.getHeight() * ratio);
-            com.lowagie.text.pdf.PdfPCell logoCell = new com.lowagie.text.pdf.PdfPCell(img, false);
-            logoCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-            logoCell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
-            logoCell.setVerticalAlignment(com.lowagie.text.Element.ALIGN_MIDDLE);
-            leftHeader.addCell(logoCell);
-          } else {
-            leftHeader.addCell(new com.lowagie.text.pdf.PdfPCell() {{ setBorder(com.lowagie.text.Rectangle.NO_BORDER); }});
-          }
-        } catch (Exception e) {
-          // If logo fails to load, add an empty cell to preserve layout
-          com.lowagie.text.pdf.PdfPCell empty = new com.lowagie.text.pdf.PdfPCell();
-          empty.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-          leftHeader.addCell(empty);
-        }
-      } else {
-        // no logo
-        com.lowagie.text.pdf.PdfPCell empty = new com.lowagie.text.pdf.PdfPCell();
-        empty.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-        leftHeader.addCell(empty);
+      if (placeOfSupply == null || placeOfSupply.isBlank()) {
+        placeOfSupply = "—";
       }
-      // Company details cell
-      com.lowagie.text.Paragraph compPara = new com.lowagie.text.Paragraph();
+
+      PdfPTable header = new PdfPTable(new float[]{1.3f, 1f});
+      header.setWidthPercentage(100);
+      header.setSpacingAfter(12f);
+
+      java.util.Map<String, String> seller = new java.util.LinkedHashMap<>();
       if (company != null) {
-        if (company.getName() != null && !company.getName().isBlank()) {
-          compPara.add(new com.lowagie.text.Chunk(company.getName() + "\n", companyFont));
-        }
-        StringBuilder addr = new StringBuilder();
-        if (company.getAddressLine1() != null && !company.getAddressLine1().isBlank()) addr.append(company.getAddressLine1());
-        if (company.getAddressLine2() != null && !company.getAddressLine2().isBlank()) {
-          if (addr.length() > 0) addr.append(", ");
-          addr.append(company.getAddressLine2());
-        }
-        if (addr.length() > 0) compPara.add(new com.lowagie.text.Chunk(addr.toString() + "\n", regularFont));
-        if (company.getGstin() != null && !company.getGstin().isBlank()) {
-          compPara.add(new com.lowagie.text.Chunk("GSTIN: " + company.getGstin() + "\n", regularFont));
-        }
-        if (company.getPan() != null && !company.getPan().isBlank()) {
-          compPara.add(new com.lowagie.text.Chunk("PAN: " + company.getPan() + "\n", regularFont));
-        }
-        if (company.getPhone() != null && !company.getPhone().isBlank()) {
-          compPara.add(new com.lowagie.text.Chunk("Phone: " + company.getPhone() + "\n", regularFont));
-        }
-        if (company.getEmail() != null && !company.getEmail().isBlank()) {
-          compPara.add(new com.lowagie.text.Chunk("Email: " + company.getEmail() + "\n", regularFont));
-        }
+        seller.put("Company", company.getName());
+        seller.put("Address", combineAddress(company.getAddressLine1(), company.getAddressLine2()));
+        seller.put("GSTIN", company.getGstin());
+        seller.put("PAN", company.getPan());
+        seller.put("Phone", company.getPhone());
+        seller.put("Email", company.getEmail());
+      } else {
+        seller.put("Company", "Cable & Wiring Installation Services");
+        seller.put("Address", "—");
       }
-      com.lowagie.text.pdf.PdfPCell compCell = new com.lowagie.text.pdf.PdfPCell();
-      compCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      compCell.addElement(compPara);
-      leftHeader.addCell(compCell);
-      // Add left header as cell to main header table
-      com.lowagie.text.pdf.PdfPCell leftHeaderCell = new com.lowagie.text.pdf.PdfPCell(leftHeader);
-      leftHeaderCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      headerTable.addCell(leftHeaderCell);
-      // Right side: document title and invoice details
-      com.lowagie.text.pdf.PdfPCell rightCell = new com.lowagie.text.pdf.PdfPCell();
-      rightCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      // Title
-      com.lowagie.text.Paragraph titlePara = new com.lowagie.text.Paragraph(docTitle, titleFont);
-      titlePara.setAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
-      rightCell.addElement(titlePara);
-      // Invoice number/date
-      com.lowagie.text.Paragraph detailsPara = new com.lowagie.text.Paragraph();
-      detailsPara.setAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
-      detailsPara.add(new com.lowagie.text.Chunk(docNoLabel + ": ", boldFont));
-      detailsPara.add(new com.lowagie.text.Chunk(docNoValue + "\n", regularFont));
-      detailsPara.add(new com.lowagie.text.Chunk(docDateLabel + ": ", boldFont));
-      detailsPara.add(new com.lowagie.text.Chunk(docDateValue, regularFont));
-      rightCell.addElement(detailsPara);
-      headerTable.addCell(rightCell);
-      headerTable.setSpacingAfter(0f);
-      com.lowagie.text.pdf.PdfPCell headerWrapper = new com.lowagie.text.pdf.PdfPCell(headerTable);
-      headerWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      headerWrapper.setPadding(18f);
-      headerWrapper.setBackgroundColor(new java.awt.Color(248, 250, 252));
-      com.lowagie.text.pdf.PdfPTable headerCard = new com.lowagie.text.pdf.PdfPTable(1);
-      headerCard.setWidthPercentage(100);
-      headerCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      headerCard.addCell(headerWrapper);
-      doc.add(headerCard);
-      doc.add(new com.lowagie.text.Paragraph(" "));
-      com.lowagie.text.pdf.draw.LineSeparator accentDivider = new com.lowagie.text.pdf.draw.LineSeparator();
-      accentDivider.setLineColor(new java.awt.Color(226, 232, 240));
-      accentDivider.setLineWidth(1.2f);
-      doc.add(new com.lowagie.text.Chunk(accentDivider));
-      doc.add(new com.lowagie.text.Paragraph(" "));
+      header.addCell(infoBlock("Seller", seller, sectionFont, labelFont, valueFont));
 
-      // -------------------------------------------------------------------------
-      // Bill To / Ship To sections
-      com.lowagie.text.pdf.PdfPTable bcTable = new com.lowagie.text.pdf.PdfPTable(2);
-      bcTable.setWidthPercentage(100);
-      bcTable.setWidths(new float[]{1f, 1f});
-      // Bill To
-      com.lowagie.text.pdf.PdfPCell billCell = new com.lowagie.text.pdf.PdfPCell();
-      billCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      com.lowagie.text.Paragraph billPara = new com.lowagie.text.Paragraph();
-      billPara.add(new com.lowagie.text.Chunk("Bill To\n", boldFont));
-      String buyerName = svc.getBuyerName() != null ? svc.getBuyerName().toUpperCase() : "";
-      billPara.add(new com.lowagie.text.Chunk(buyerName + "\n", boldFont));
-      String buyerAddr = svc.getBuyerAddress() != null ? svc.getBuyerAddress() : "";
-      if (!buyerAddr.isBlank()) billPara.add(new com.lowagie.text.Chunk(buyerAddr + "\n", regularFont));
-      if (svc.getBuyerPin() != null && !svc.getBuyerPin().isBlank()) billPara.add(new com.lowagie.text.Chunk(svc.getBuyerPin() + "\n", regularFont));
-      if (svc.getBuyerState() != null && !svc.getBuyerState().isBlank()) billPara.add(new com.lowagie.text.Chunk(svc.getBuyerState() + "\n", regularFont));
-      if (svc.getBuyerGst() != null && !svc.getBuyerGst().isBlank()) billPara.add(new com.lowagie.text.Chunk("GSTIN: " + svc.getBuyerGst() + "\n", regularFont));
-      if (svc.getBuyerContact() != null && !svc.getBuyerContact().isBlank()) billPara.add(new com.lowagie.text.Chunk("Contact: " + svc.getBuyerContact() + "\n", regularFont));
-      billCell.addElement(billPara);
-      bcTable.addCell(billCell);
-      // Ship To
-      com.lowagie.text.pdf.PdfPCell shipCell = new com.lowagie.text.pdf.PdfPCell();
-      shipCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      com.lowagie.text.Paragraph shipPara = new com.lowagie.text.Paragraph();
-      shipPara.add(new com.lowagie.text.Chunk("Ship To\n", boldFont));
-      String consName = svc.getConsigneeName() != null ? svc.getConsigneeName().toUpperCase() : "";
-      shipPara.add(new com.lowagie.text.Chunk(consName + "\n", boldFont));
-      String consAddr = svc.getConsigneeAddress() != null ? svc.getConsigneeAddress() : "";
-      if (!consAddr.isBlank()) shipPara.add(new com.lowagie.text.Chunk(consAddr + "\n", regularFont));
-      if (svc.getConsigneePin() != null && !svc.getConsigneePin().isBlank()) shipPara.add(new com.lowagie.text.Chunk(svc.getConsigneePin() + "\n", regularFont));
-      if (svc.getConsigneeState() != null && !svc.getConsigneeState().isBlank()) shipPara.add(new com.lowagie.text.Chunk(svc.getConsigneeState() + "\n", regularFont));
-      if (svc.getConsigneeGst() != null && !svc.getConsigneeGst().isBlank()) shipPara.add(new com.lowagie.text.Chunk("GSTIN: " + svc.getConsigneeGst() + "\n", regularFont));
-      shipCell.addElement(shipPara);
-      bcTable.addCell(shipCell);
-      com.lowagie.text.pdf.PdfPCell bcWrapper = new com.lowagie.text.pdf.PdfPCell(bcTable);
-      bcWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      bcWrapper.setPadding(16f);
-      bcWrapper.setBackgroundColor(new java.awt.Color(255, 255, 255));
-      com.lowagie.text.pdf.PdfPTable bcCard = new com.lowagie.text.pdf.PdfPTable(1);
-      bcCard.setWidthPercentage(100);
-      bcCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      bcCard.addCell(bcWrapper);
-      doc.add(bcCard);
-      doc.add(new com.lowagie.text.Paragraph(" "));
+      java.util.Map<String, String> docMeta = new java.util.LinkedHashMap<>();
+      docMeta.put(docNoLabel, docNoValue);
+      docMeta.put(docDateLabel, docDateValue);
+      docMeta.put("Service Type", serviceTypeVal);
+      docMeta.put("Place of Supply", placeOfSupply);
+      docMeta.put("Project", projectName);
+      header.addCell(infoBlock(docTitle, docMeta, sectionFont, labelFont, valueFont));
+      doc.add(header);
+      PdfPTable parties = new PdfPTable(new float[]{1f, 1f});
+      parties.setWidthPercentage(100);
+      parties.setSpacingAfter(12f);
 
-      // -------------------------------------------------------------------------
-      // Meta details: 3 columns × 2 rows
-      com.lowagie.text.pdf.PdfPTable metaTable = new com.lowagie.text.pdf.PdfPTable(3);
-      metaTable.setWidthPercentage(100);
-      metaTable.setWidths(new float[]{1f,1f,1f});
-      // Row 1
-      metaTable.addCell(metaCell("Service Type", serviceTypeVal, smallBold, small));
-      metaTable.addCell(metaCell("Place of Supply", placeOfSupply, smallBold, small));
-      metaTable.addCell(metaCell("Buyer’s Order / PO No.", buyerOrderNo, smallBold, small));
-      // Row 2
-      metaTable.addCell(metaCell("PO / WO Date", orderDate, smallBold, small));
-      metaTable.addCell(metaCell("Delivery Challan No.", dcNo, smallBold, small));
-      metaTable.addCell(metaCell("Work Completion Cert No.", wcNo, smallBold, small));
-      com.lowagie.text.pdf.PdfPCell metaWrapper = new com.lowagie.text.pdf.PdfPCell(metaTable);
-      metaWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      metaWrapper.setPadding(14f);
-      metaWrapper.setBackgroundColor(new java.awt.Color(248, 250, 252));
-      com.lowagie.text.pdf.PdfPTable metaCard = new com.lowagie.text.pdf.PdfPTable(1);
-      metaCard.setWidthPercentage(100);
-      metaCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      metaCard.addCell(metaWrapper);
-      doc.add(metaCard);
-      doc.add(new com.lowagie.text.Paragraph(" "));
+      java.util.Map<String, String> billTo = new java.util.LinkedHashMap<>();
+      billTo.put("Name", svc.getBuyerName());
+      billTo.put("Address", svc.getBuyerAddress());
+      billTo.put("State", svc.getBuyerState());
+      billTo.put("PIN", svc.getBuyerPin());
+      billTo.put("GSTIN", svc.getBuyerGst());
+      billTo.put("Contact", svc.getBuyerContact());
+      billTo.put("Email", svc.getBuyerEmail());
+      parties.addCell(infoBlock("Bill To", billTo, sectionFont, labelFont, valueFont));
 
-      // -------------------------------------------------------------------------
-      // Items table: Header row and data rows
-      com.lowagie.text.pdf.PdfPTable itemsTable = new com.lowagie.text.pdf.PdfPTable(5);
+      java.util.Map<String, String> shipTo = new java.util.LinkedHashMap<>();
+      shipTo.put("Name", svc.getConsigneeName());
+      shipTo.put("Address", svc.getConsigneeAddress());
+      shipTo.put("State", svc.getConsigneeState());
+      shipTo.put("PIN", svc.getConsigneePin());
+      shipTo.put("GSTIN", svc.getConsigneeGst());
+      parties.addCell(infoBlock("Ship To", shipTo, sectionFont, labelFont, valueFont));
+      doc.add(parties);
+
+      PdfPTable references = new PdfPTable(new float[]{1f, 1f});
+      references.setWidthPercentage(100);
+      references.setSpacingAfter(14f);
+
+      java.util.Map<String, String> referenceLeft = new java.util.LinkedHashMap<>();
+      referenceLeft.put("Buyer PO", buyerOrderNo);
+      referenceLeft.put("Order Date", orderDate);
+      referenceLeft.put("Delivery Challan", dcNo);
+      referenceLeft.put("Completion Certificate", wcNo);
+      references.addCell(infoBlock("Project References", referenceLeft, sectionFont, labelFont, valueFont));
+
+      java.util.Map<String, String> referenceRight = new java.util.LinkedHashMap<>();
+      referenceRight.put("Site", placeOfSupply);
+      referenceRight.put("Service Type", serviceTypeVal);
+      referenceRight.put("Project", projectName);
+      referenceRight.put("Generated", formatDateTime(java.time.LocalDateTime.now()));
+      references.addCell(infoBlock("Execution Details", referenceRight, sectionFont, labelFont, valueFont));
+      doc.add(references);
+
+      PdfPTable itemsTable = new PdfPTable(new float[]{3.2f, 1.1f, 0.8f, 1.1f, 0.8f, 1.2f});
       itemsTable.setWidthPercentage(100);
-      itemsTable.setWidths(new float[]{3.2f, 1.2f, 0.9f, 1.2f, 1.3f});
-      itemsTable.setHeaderRows(1);
-      itemsTable.setSplitLate(false);
-      itemsTable.setSplitRows(true);
-      itemsTable.setSpacingBefore(4f);
-      itemsTable.setSpacingAfter(8f);
-      // Header cells with light background
-      String[] headers = { "Item Description", "HSN/SAC", "Qty", "Rate", "Amount" };
-      for (String h : headers) {
-        com.lowagie.text.pdf.PdfPCell hc = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(h, boldFont));
-        hc.setBackgroundColor(new java.awt.Color(240, 243, 255));
-        hc.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
-        hc.setPadding(5f);
-        itemsTable.addCell(hc);
-      }
-      // Data rows
-      if (items != null) {
-        for (java.util.Map<String,Object> it : items) {
-          if (it == null) continue;
+      addTableHeader(itemsTable, labelFont,
+          "Description", "HSN/SAC", "Qty", "Rate (₹)", "Disc %", "Amount (₹)");
+
+      java.math.BigDecimal grossTotal = java.math.BigDecimal.ZERO;
+      java.math.BigDecimal discountSavings = java.math.BigDecimal.ZERO;
+      java.math.BigDecimal subtotal = java.math.BigDecimal.ZERO;
+
+      if (items != null && !items.isEmpty()) {
+        for (java.util.Map<String, Object> it : items) {
+          if (it == null) {
+            continue;
+          }
           String desc = it.get("name") != null ? String.valueOf(it.get("name")) : "";
           String hsn = it.get("hsnSac") != null ? String.valueOf(it.get("hsnSac")) : "";
-          java.math.BigDecimal qty = java.math.BigDecimal.ZERO;
-          java.math.BigDecimal rate = java.math.BigDecimal.ZERO;
-          java.math.BigDecimal disc = java.math.BigDecimal.ZERO;
-          try { if (it.get("qty") != null) qty = new java.math.BigDecimal(it.get("qty").toString()); } catch(Exception ignored) {}
-          try { if (it.get("basePrice") != null) rate = new java.math.BigDecimal(it.get("basePrice").toString()); } catch(Exception ignored) {}
-          try { if (it.get("discount") != null) disc = new java.math.BigDecimal(it.get("discount").toString()); } catch(Exception ignored) {}
+          java.math.BigDecimal qty = parseDecimal(it.get("qty"));
+          java.math.BigDecimal rate = parseDecimal(it.get("basePrice"));
+          java.math.BigDecimal discountPct = parseDecimal(it.get("discount"));
           if (qty.compareTo(java.math.BigDecimal.ZERO) < 0) qty = java.math.BigDecimal.ZERO;
           if (rate.compareTo(java.math.BigDecimal.ZERO) < 0) rate = java.math.BigDecimal.ZERO;
-          if (disc.compareTo(java.math.BigDecimal.ZERO) < 0) disc = java.math.BigDecimal.ZERO;
-          if (disc.compareTo(new java.math.BigDecimal("100")) > 0) disc = new java.math.BigDecimal("100");
-          java.math.BigDecimal lineBase = rate.multiply(qty);
-          java.math.BigDecimal discounted = lineBase.multiply(java.math.BigDecimal.ONE.subtract(disc.divide(new java.math.BigDecimal("100"))));
-          // Description cell
-          com.lowagie.text.pdf.PdfPCell dcell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(desc, regularFont));
-          dcell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
-          dcell.setPadding(5f);
-          itemsTable.addCell(dcell);
-          // HSN/SAC
-          com.lowagie.text.pdf.PdfPCell hcell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(hsn, regularFont));
-          hcell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
-          hcell.setPadding(5f);
-          itemsTable.addCell(hcell);
-          // Qty
-          com.lowagie.text.pdf.PdfPCell qcell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(qty.stripTrailingZeros().toPlainString(), regularFont));
-          qcell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_CENTER);
-          qcell.setPadding(5f);
-          itemsTable.addCell(qcell);
-          // Base Rate
-          com.lowagie.text.pdf.PdfPCell rcell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(formatInr(rate), regularFont));
-          rcell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
-          rcell.setPadding(5f);
-          itemsTable.addCell(rcell);
-          // Amount (discounted)
-          com.lowagie.text.pdf.PdfPCell amCell = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(formatInr(discounted), regularFont));
-          amCell.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
-          amCell.setPadding(5f);
-          itemsTable.addCell(amCell);
-        }
-      }
-      com.lowagie.text.pdf.PdfPCell itemsWrapper = new com.lowagie.text.pdf.PdfPCell(itemsTable);
-      itemsWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      itemsWrapper.setPadding(12f);
-      itemsWrapper.setBackgroundColor(new java.awt.Color(255, 255, 255));
-      com.lowagie.text.pdf.PdfPTable itemsCard = new com.lowagie.text.pdf.PdfPTable(1);
-      itemsCard.setWidthPercentage(100);
-      itemsCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      itemsCard.setSplitLate(false);
-      itemsCard.setKeepTogether(false);
-      itemsCard.addCell(itemsWrapper);
-      doc.add(itemsCard);
-      doc.add(new com.lowagie.text.Paragraph(" "));
+          if (discountPct.compareTo(java.math.BigDecimal.ZERO) < 0) discountPct = java.math.BigDecimal.ZERO;
+          if (discountPct.compareTo(new java.math.BigDecimal("100")) > 0) discountPct = new java.math.BigDecimal("100");
 
-      // -------------------------------------------------------------------------
-      // Totals section: align to the right. We'll build a small table with two
-      // columns (label and value). Only display taxes if greater than zero.
-      com.lowagie.text.pdf.PdfPTable totalsTable = new com.lowagie.text.pdf.PdfPTable(2);
-      totalsTable.setWidthPercentage(100);
-      totalsTable.setWidths(new float[]{2f, 1f});
-      // Helper to add a row
-      java.util.function.BiConsumer<String,String> addTotalRow = (label, value) -> {
-        com.lowagie.text.pdf.PdfPCell l = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(label, boldFont));
-        l.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-        l.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
-        l.setPadding(6f);
-        totalsTable.addCell(l);
-        com.lowagie.text.pdf.PdfPCell v = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(value, boldFont));
-        v.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-        v.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
-        v.setPadding(6f);
-        totalsTable.addCell(v);
-      };
+          java.math.BigDecimal lineBase = rate.multiply(qty);
+          java.math.BigDecimal discountAmount = lineBase.multiply(discountPct.divide(new java.math.BigDecimal("100"), 4, java.math.RoundingMode.HALF_UP));
+          java.math.BigDecimal netAmount = lineBase.subtract(discountAmount);
+
+          grossTotal = grossTotal.add(lineBase);
+          discountSavings = discountSavings.add(discountAmount);
+          subtotal = subtotal.add(netAmount);
+
+          itemsTable.addCell(bodyCell(desc, valueFont, com.lowagie.text.Element.ALIGN_LEFT));
+          itemsTable.addCell(bodyCell(hsn, valueFont, com.lowagie.text.Element.ALIGN_CENTER));
+          itemsTable.addCell(bodyCell(formatQuantity(qty), valueFont, com.lowagie.text.Element.ALIGN_RIGHT));
+          itemsTable.addCell(bodyCell(formatCurrency(rate), valueFont, com.lowagie.text.Element.ALIGN_RIGHT));
+          itemsTable.addCell(bodyCell(formatPercent(discountPct), valueFont, com.lowagie.text.Element.ALIGN_RIGHT));
+          itemsTable.addCell(bodyCell(formatCurrency(netAmount), valueFont, com.lowagie.text.Element.ALIGN_RIGHT));
+        }
+      } else {
+        PdfPCell empty = bodyCell("No service items captured", valueFont, com.lowagie.text.Element.ALIGN_LEFT);
+        empty.setColspan(6);
+        itemsTable.addCell(empty);
+      }
+      itemsTable.setSpacingAfter(12f);
+      doc.add(itemsTable);
+      java.math.BigDecimal transport = parseDecimal(totals != null ? totals.get("transport") : null);
+      java.math.BigDecimal cgst = parseDecimal(totals != null ? totals.get("cgst") : null);
+      java.math.BigDecimal sgst = parseDecimal(totals != null ? totals.get("sgst") : null);
+      java.math.BigDecimal igst = parseDecimal(totals != null ? totals.get("igst") : null);
+      java.math.BigDecimal recordedGrand = parseDecimal(totals != null ? totals.get("grand") : null);
+
+      java.math.BigDecimal totalBeforeTax = subtotal.add(transport);
+      java.math.BigDecimal grand = recordedGrand.compareTo(java.math.BigDecimal.ZERO) > 0
+          ? recordedGrand
+          : totalBeforeTax.add(cgst).add(sgst).add(igst);
+
+      PdfPTable totalsTable = new PdfPTable(new float[]{1.7f, 1f});
+      totalsTable.setWidthPercentage(45);
+      totalsTable.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
+      totalsTable.setSpacingAfter(10f);
+
+      totalsTable.addCell(summaryLabel("Gross Amount", labelFont));
+      totalsTable.addCell(summaryValue(formatCurrency(grossTotal), valueFont));
       if (discountSavings.compareTo(java.math.BigDecimal.ZERO) > 0) {
-        addTotalRow.accept("Items Total:", formatInr(grossTotal));
-        addTotalRow.accept("Discount Savings:", formatInr(discountSavings));
+        totalsTable.addCell(summaryLabel("Discount Savings", labelFont));
+        totalsTable.addCell(summaryValue("-" + formatCurrency(discountSavings), valueFont));
       }
-      addTotalRow.accept("Subtotal:", formatInr(subtotal));
       if (transport.compareTo(java.math.BigDecimal.ZERO) > 0) {
-        addTotalRow.accept("Transport:", formatInr(transport));
+        totalsTable.addCell(summaryLabel("Transport", labelFont));
+        totalsTable.addCell(summaryValue(formatCurrency(transport), valueFont));
       }
+      totalsTable.addCell(summaryLabel("Net Subtotal", labelFont));
+      totalsTable.addCell(summaryValue(formatCurrency(totalBeforeTax), valueFont));
       if (cgst.compareTo(java.math.BigDecimal.ZERO) > 0) {
-        addTotalRow.accept("CGST:", formatInr(cgst));
+        totalsTable.addCell(summaryLabel("CGST", labelFont));
+        totalsTable.addCell(summaryValue(formatCurrency(cgst), valueFont));
       }
       if (sgst.compareTo(java.math.BigDecimal.ZERO) > 0) {
-        addTotalRow.accept("SGST:", formatInr(sgst));
+        totalsTable.addCell(summaryLabel("SGST", labelFont));
+        totalsTable.addCell(summaryValue(formatCurrency(sgst), valueFont));
       }
       if (igst.compareTo(java.math.BigDecimal.ZERO) > 0) {
-        addTotalRow.accept("IGST:", formatInr(igst));
+        totalsTable.addCell(summaryLabel("IGST", labelFont));
+        totalsTable.addCell(summaryValue(formatCurrency(igst), valueFont));
       }
-      addTotalRow.accept("Grand Total:", formatInr(grand));
-      // Add amount in words spanning two columns
-      com.lowagie.text.pdf.PdfPCell wordsLabel = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase("Amount in words:", boldFont));
-      wordsLabel.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      wordsLabel.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
-      wordsLabel.setPadding(6f);
-      totalsTable.addCell(wordsLabel);
-      com.lowagie.text.pdf.PdfPCell wordsValue = new com.lowagie.text.pdf.PdfPCell(new com.lowagie.text.Phrase(totalInWords, regularFont));
-      wordsValue.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      wordsValue.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_LEFT);
-      wordsValue.setPadding(6f);
-      totalsTable.addCell(wordsValue);
-      com.lowagie.text.pdf.PdfPCell totalsWrapper = new com.lowagie.text.pdf.PdfPCell(totalsTable);
-      totalsWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      totalsWrapper.setPadding(12f);
-      totalsWrapper.setBackgroundColor(new java.awt.Color(241, 245, 249));
-      com.lowagie.text.pdf.PdfPTable totalsCard = new com.lowagie.text.pdf.PdfPTable(1);
-      totalsCard.setWidthPercentage(45);
-      totalsCard.setHorizontalAlignment(com.lowagie.text.Element.ALIGN_RIGHT);
-      totalsCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      totalsCard.setSplitLate(false);
-      totalsCard.setKeepTogether(true);
-      totalsCard.addCell(totalsWrapper);
-      doc.add(totalsCard);
-      doc.add(new com.lowagie.text.Paragraph(" "));
+      totalsTable.addCell(summaryLabel("Grand Total", labelFont));
+      totalsTable.addCell(summaryValue(formatCurrency(grand), valueFont));
+      doc.add(totalsTable);
 
-      // -------------------------------------------------------------------------
-      // Bank details, Terms & Conditions, Narration and Summary card
-      // We'll create a two‑column layout: left for bank & terms, right for summary.
-      com.lowagie.text.pdf.PdfPTable footTable = new com.lowagie.text.pdf.PdfPTable(2);
-      footTable.setWidthPercentage(100);
-      footTable.setWidths(new float[]{3f, 1.5f});
-      // Left column content
-      com.lowagie.text.Paragraph leftFoot = new com.lowagie.text.Paragraph();
-      // Bank details
-      leftFoot.add(new com.lowagie.text.Chunk("Company's Bank Details\n", smallBold));
-      if (company != null) {
-        leftFoot.add(new com.lowagie.text.Chunk((company.getBankName() != null ? "Bank Name: " + company.getBankName() + "\n" : ""), small));
-        String acc = "";
-        if (company.getAccNo() != null && !company.getAccNo().isBlank()) acc = company.getAccNo();
-        if (!acc.isBlank()) leftFoot.add(new com.lowagie.text.Chunk("A/C No: " + acc + "\n", small));
-        if (company.getBranch() != null && !company.getBranch().isBlank()) leftFoot.add(new com.lowagie.text.Chunk("Branch: " + company.getBranch() + "\n", small));
-        if (company.getIfsc() != null && !company.getIfsc().isBlank()) leftFoot.add(new com.lowagie.text.Chunk("IFSC: " + company.getIfsc() + "\n", small));
+      String amountWords;
+      if (totals != null && totals.get("inWords") != null) {
+        amountWords = String.valueOf(totals.get("inWords"));
+      } else {
+        amountWords = com.vebops.util.Words.inIndianSystem(grand) + " Only";
       }
-      // Terms & Conditions
-      java.util.List<String> termsList = null;
-      if (meta != null) {
-        Object termsObj = meta.get("termsList");
-        if (termsObj instanceof java.util.List<?> l) {
-          // Safely convert each element to string
-          java.util.List<String> tmp = new java.util.ArrayList<>();
-          for (Object o : l) {
-            if (o != null) {
-              String s = o.toString().trim();
-              if (!s.isEmpty()) tmp.add(s);
-            }
-          }
-          if (!tmp.isEmpty()) termsList = tmp;
-        }
-        if ((termsList == null || termsList.isEmpty()) && meta.get("terms") != null) {
-          String termsStr = String.valueOf(meta.get("terms"));
-          java.util.List<String> tmp = new java.util.ArrayList<>();
-          for (String line : termsStr.split("\\r?\\n|[;|]")) {
-            String t = line.trim();
-            if (!t.isEmpty()) tmp.add(t);
-          }
-          if (!tmp.isEmpty()) termsList = tmp;
-        }
-      }
-      if (termsList != null && !termsList.isEmpty()) {
-        leftFoot.add(new com.lowagie.text.Chunk("\nTerms & Conditions\n", smallBold));
-        for (String term : termsList) {
-          leftFoot.add(new com.lowagie.text.Chunk("• " + term + "\n", small));
-        }
-      }
-      // Narration / Remarks
-      if (meta != null && meta.get("narration") != null) {
-        String narr = String.valueOf(meta.get("narration")).trim();
-        if (!narr.isBlank()) {
-          leftFoot.add(new com.lowagie.text.Chunk("\nNarration / Remarks\n", smallBold));
-          leftFoot.add(new com.lowagie.text.Chunk(narr + "\n", small));
-        }
-      }
-      com.lowagie.text.pdf.PdfPCell leftFootCell = new com.lowagie.text.pdf.PdfPCell(leftFoot);
-      leftFootCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      footTable.addCell(leftFootCell);
-      // Right column: summary card with Total and Amount Due
-      com.lowagie.text.Paragraph rightCard = new com.lowagie.text.Paragraph();
-      rightCard.add(new com.lowagie.text.Chunk("Total\n", smallBold));
-      rightCard.add(new com.lowagie.text.Chunk(formatInr(grand) + "\n", titleFont));
-      rightCard.add(new com.lowagie.text.Chunk("Amount Due\n", smallBold));
-      rightCard.add(new com.lowagie.text.Chunk(formatInr(grand), titleFont));
-      com.lowagie.text.pdf.PdfPCell rightFootCell = new com.lowagie.text.pdf.PdfPCell(rightCard);
-      rightFootCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      rightFootCell.setBackgroundColor(new java.awt.Color(247,249,255));
-      rightFootCell.setPadding(6f);
-      footTable.addCell(rightFootCell);
-      com.lowagie.text.pdf.PdfPCell footWrapper = new com.lowagie.text.pdf.PdfPCell(footTable);
-      footWrapper.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      footWrapper.setPadding(16f);
-      footWrapper.setBackgroundColor(new java.awt.Color(255, 255, 255));
-      com.lowagie.text.pdf.PdfPTable footCard = new com.lowagie.text.pdf.PdfPTable(1);
-      footCard.setWidthPercentage(100);
-      footCard.getDefaultCell().setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-      footCard.addCell(footWrapper);
-      doc.add(footCard);
 
-      // -------------------------------------------------------------------------
+      Paragraph wordsHeading = new Paragraph("Amount in words", sectionFont);
+      wordsHeading.setSpacingAfter(2f);
+      doc.add(wordsHeading);
+      doc.add(new Paragraph(amountWords, valueFont));
+
+      Paragraph note = new Paragraph(
+          "Cabling and wiring installation completed as per site schedule. Please arrange payment within the agreed credit period.",
+          noteFont);
+      note.setSpacingBefore(12f);
+      note.setSpacingAfter(18f);
+      doc.add(note);
+
+      PdfPTable signature = new PdfPTable(new float[]{1f, 1f});
+      signature.setWidthPercentage(100);
+      signature.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+
+      Paragraph assurance = new Paragraph("Prepared by: Cable & Wiring Installation Team", valueFont);
+      PdfPCell assuranceCell = new PdfPCell(assurance);
+      assuranceCell.setBorder(Rectangle.NO_BORDER);
+      signature.addCell(assuranceCell);
+
+      String companyName = company != null && company.getName() != null ? company.getName() : "Cable & Wiring Installation Services";
+      Paragraph signLine = new Paragraph("______________________________", valueFont);
+      signLine.setAlignment(Element.ALIGN_RIGHT);
+      Paragraph signBlock = new Paragraph("Authorised Signatory\nfor " + companyName, labelFont);
+      signBlock.setAlignment(Element.ALIGN_RIGHT);
+      PdfPCell signCell = new PdfPCell();
+      signCell.setBorder(Rectangle.NO_BORDER);
+      signCell.addElement(signLine);
+      signCell.addElement(signBlock);
+      signature.addCell(signCell);
+      doc.add(signature);
+
       doc.close();
       return bout.toByteArray();
-    } catch(Exception ex) {
-      return new byte[0];
+    } catch (Exception ex) {
+      throw new RuntimeException("Failed to build service invoice PDF", ex);
     }
-  }
-
-  private static String safe(String s){ return s==null? "" : s; }
-  private static PdfPCell partyCard(String title, Color border, Font label, Font value,
-                                    String name, String address, String phone,
-                                    String gst, String stateName, String stateCode,
-                                    String email, String website) {
-    PdfPCell cell = new PdfPCell();
-    cell.setBorderColor(border);
-    cell.setPadding(10f);
-    Paragraph p = new Paragraph(title, label);
-    p.setSpacingAfter(6f);
-    cell.addElement(p);
-
-    cell.addElement(detailParagraph("Company Name", name, value));
-    cell.addElement(detailParagraph("Address", address, value));
-    cell.addElement(detailParagraph("Phone/Cell", phone, value));
-    cell.addElement(detailParagraph("GSTIN/UIN", gst, value));
-    cell.addElement(detailParagraph("State Name & Code", formatState(stateName, stateCode), value));
-    cell.addElement(detailParagraph("Email", email, value));
-    if (!website.isBlank()) {
-      cell.addElement(detailParagraph("Website", website, value));
-    }
-    return cell;
-  }
-
-  private static PdfPCell supplierCard(Color border, Font label, Font value,
-                                       String name, String address, String gst,
-                                       String stateName, String stateCode) {
-    PdfPCell cell = new PdfPCell();
-    cell.setBorderColor(border);
-    cell.setPadding(10f);
-    Paragraph p = new Paragraph("Supplier (Bill From)", label);
-    p.setSpacingAfter(6f);
-    cell.addElement(p);
-    cell.addElement(detailParagraph("Supplier Name", name, value));
-    cell.addElement(detailParagraph("Address", address, value));
-    cell.addElement(detailParagraph("GSTIN/UIN", gst, value));
-    cell.addElement(detailParagraph("State Name & Code", formatState(stateName, stateCode), value));
-    return cell;
-  }
-
-  private static Paragraph detailParagraph(String label, String data, Font valueFont) {
-    Paragraph para = new Paragraph();
-    para.setLeading(12f);
-    Chunk bold = new Chunk(label + ": ", new Font(valueFont.getFamily(), valueFont.getSize(), Font.BOLD, valueFont.getColor()));
-    para.add(bold);
-    para.add(new Chunk(data == null || data.isBlank() ? "—" : data, valueFont));
-    return para;
-  }
-
-  private static PdfPCell poMetaCell(String labelText, String valueText, Font labelFont, Font valueFont) {
-    Paragraph p = new Paragraph();
-    p.add(new Chunk(labelText + ":\n", labelFont));
-    p.add(new Chunk(valueText == null || valueText.isBlank() ? "—" : valueText, valueFont));
-    PdfPCell cell = new PdfPCell(p);
-    cell.setBorder(Rectangle.NO_BORDER);
-    cell.setPadding(6f);
-    return cell;
-  }
-
-  private static void addPoHeaderCell(PdfPTable table, String text, Font font, Color bg) {
-    PdfPCell cell = new PdfPCell(new Phrase(text, font));
-    cell.setBackgroundColor(bg);
-    cell.setHorizontalAlignment(Element.ALIGN_CENTER);
-    cell.setPadding(8f);
-    cell.setBorder(Rectangle.NO_BORDER);
-    cell.setBorderColor(bg);
-    table.addCell(cell);
-  }
-
-  private static PdfPCell lineCell(String text, Font font, int align) {
-    PdfPCell cell = new PdfPCell(new Phrase(text == null ? "" : text, font));
-    cell.setHorizontalAlignment(align);
-    cell.setPadding(7f);
-    cell.setBorderColor(new Color(230, 233, 236));
-    return cell;
-  }
-
-  private static String formatQuantity(BigDecimal qty) {
-    if (qty == null) return "";
-    BigDecimal normalized = qty.stripTrailingZeros();
-    return normalized.scale() < 0 ? normalized.toPlainString() : normalized.toPlainString();
-  }
-
-  private static String formatMoney(BigDecimal value) {
-    BigDecimal normalized = value == null ? BigDecimal.ZERO : value.setScale(2, RoundingMode.HALF_UP);
-    DecimalFormat df = new DecimalFormat("#,##0.00");
-    return df.format(normalized);
-  }
-
-  private static String formatState(String name, String code) {
-    String n = name == null ? "" : name.trim();
-    String c = code == null ? "" : code.trim();
-    if (n.isEmpty() && c.isEmpty()) {
-      return "";
-    }
-    if (c.isEmpty()) {
-      return n;
-    }
-    if (n.isEmpty()) {
-      return "Code: " + c;
-    }
-    return n + " – Code: " + c;
-  }
-
-  private static boolean hasAmount(BigDecimal value) {
-    return value != null && value.compareTo(BigDecimal.ZERO) > 0;
-  }
-
-  private static PdfPCell totalsLabel(String text, Font font) {
-    PdfPCell cell = new PdfPCell(new Phrase(text, font));
-    cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-    cell.setPadding(4f);
-    cell.setBorder(Rectangle.NO_BORDER);
-    return cell;
-  }
-
-  private static PdfPCell totalsValue(String text, Font font) {
-    PdfPCell cell = new PdfPCell(new Phrase(text, font));
-    cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-    cell.setPadding(4f);
-    cell.setBorder(Rectangle.NO_BORDER);
-    return cell;
-  }
-
-  private static String rateLabel(BigDecimal rate) {
-    if (rate == null) {
-      return "0";
-    }
-    BigDecimal normalized = rate.setScale(2, RoundingMode.HALF_UP).stripTrailingZeros();
-    return normalized.toPlainString();
-  }
-  private static String invoicemoney(BigDecimal v){
-    return (v==null? BigDecimal.ZERO : v).setScale(2, RoundingMode.HALF_UP).toPlainString();
-  }
-  private static String formatInr(java.math.BigDecimal value) {
-    java.math.BigDecimal normalized = (value == null ? java.math.BigDecimal.ZERO : value)
-        .setScale(2, java.math.RoundingMode.HALF_UP);
-    java.text.NumberFormat fmt = java.text.NumberFormat.getCurrencyInstance(new Locale("en", "IN"));
-    fmt.setMaximumFractionDigits(2);
-    fmt.setMinimumFractionDigits(2);
-    return fmt.format(normalized);
-  }
-  private static void addHeader(PdfPTable t, String... cells){
-    for(String c: cells){
-      PdfPCell cell = new PdfPCell(new Phrase(c));
-      cell.setBackgroundColor(new Color(230,230,230));
-      t.addCell(cell);
-    }
-  }
-  private static void addRow(PdfPTable t, String... cells){
-    for(String c: cells){ t.addCell(new Phrase(c)); }
-  }
-
-  private static void addMetaRow(PdfPTable table, String labelText, String valueText, Font labelFont, Font valueFont) {
-    PdfPCell labelCell = new PdfPCell(new Phrase(labelText, labelFont));
-    labelCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-    labelCell.setPaddingBottom(4f);
-    table.addCell(labelCell);
-
-    PdfPCell valueCell = new PdfPCell(new Phrase(valueText, valueFont));
-    valueCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
-    valueCell.setPaddingBottom(4f);
-    table.addCell(valueCell);
-  }
-
-  private static String assignedEngineerName(WorkOrder wo) {
-    if (wo == null || wo.getAssignedFE() == null) {
-      return "";
-    }
-    if (wo.getAssignedFE().getUser() != null) {
-      return safe(wo.getAssignedFE().getUser().getDisplayName());
-    }
-    return safe(wo.getAssignedFE().getName());
-  }
-
-  private static String resolveSiteAddress(WorkOrder wo, ServiceRequest sr) {
-    if (sr == null) {
-      return "";
-    }
-    String[] candidates = {
-      sr.getSiteAddress(),
-      sr.getDescription()
-    };
-    for (String candidate : candidates) {
-      if (candidate != null && !candidate.isBlank()) {
-        return candidate;
-      }
-    }
-    return "";
   }
 
   /**
@@ -1011,103 +1027,149 @@ public class PdfUtil {
   public static byte[] buildCompletionReportPdf(WorkOrder wo, java.util.List<WorkOrderProgress> progress) {
     try {
       ByteArrayOutputStream bout = new ByteArrayOutputStream();
-      Document doc = new Document(PageSize.A4, 36, 36, 48, 48);
+      Document doc = new Document(PageSize.A4, 36, 36, 48, 36);
       PdfWriter.getInstance(doc, bout);
       doc.open();
 
-      Font title = new Font(Font.HELVETICA, 18, Font.BOLD);
-      Font section = new Font(Font.HELVETICA, 12, Font.BOLD);
-      Font label = new Font(Font.HELVETICA, 10, Font.BOLD);
-      Font value = new Font(Font.HELVETICA, 10, Font.NORMAL);
+      Font titleFont = fontBold(16f);
+      Font sectionFont = fontBold(11f);
+      Font labelFont = fontBold(9f);
+      Font valueFont = fontRegular(9f);
+      Font noteFont = fontRegular(8f);
 
-      doc.add(new Paragraph("WORK COMPLETION CERTIFICATE", title));
-      doc.add(new Paragraph("Generated on: " + java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm")
-        .format(java.time.LocalDateTime.now()), value));
-      doc.add(Chunk.NEWLINE);
+      Paragraph heading = new Paragraph("WORK COMPLETION CERTIFICATE", titleFont);
+      heading.setAlignment(Element.ALIGN_CENTER);
+      heading.setSpacingAfter(6f);
+      doc.add(heading);
 
-      PdfPTable overview = new PdfPTable(2);
-      overview.setWidthPercentage(100);
-      overview.setWidths(new float[]{1.2f, 2.2f});
-      addMetaRow(overview, "Work Order", safe(wo.getWan()), label, value);
-      addMetaRow(overview, "Status", wo.getStatus() != null ? wo.getStatus().name() : "", label, value);
-      ServiceRequest sr = wo.getServiceRequest();
-      addMetaRow(overview, "Service Request", sr != null ? safe(sr.getSrn()) : "", label, value);
-      addMetaRow(overview, "Service Type", sr != null && sr.getServiceType() != null ? sr.getServiceType().name() : "", label, value);
-      addMetaRow(overview, "Assigned Engineer", safe(assignedEngineerName(wo)), label, value);
-      addMetaRow(overview, "Customer", sr != null && sr.getCustomer() != null ? safe(sr.getCustomer().getName()) : "", label, value);
-      addMetaRow(overview, "Customer PO", wo.getCustomerPO() != null ? safe(wo.getCustomerPO().getPoNumber()) : "", label, value);
-      addMetaRow(overview, "Site Address", safe(resolveSiteAddress(wo, sr)), label, value);
-      doc.add(overview);
-      doc.add(Chunk.NEWLINE);
+      Paragraph generated = new Paragraph("Generated on: " + formatDateTime(LocalDateTime.now()), valueFont);
+      generated.setAlignment(Element.ALIGN_CENTER);
+      generated.setSpacingAfter(16f);
+      doc.add(generated);
+
+      ServiceRequest sr = wo != null ? wo.getServiceRequest() : null;
+
+      PdfPTable summary = new PdfPTable(new float[]{1.1f, 1.6f});
+      summary.setWidthPercentage(100);
+      summary.setSpacingAfter(12f);
+      addDetailRow(summary, "Work Order", wo != null ? wo.getWan() : "", labelFont, valueFont);
+      addDetailRow(summary, "Status", wo != null && wo.getStatus() != null ? wo.getStatus().name().replace('_', ' ') : "", labelFont, valueFont);
+      addDetailRow(summary, "Service Request", sr != null ? sr.getSrn() : "", labelFont, valueFont);
+      addDetailRow(summary, "Service Type", sr != null && sr.getServiceType() != null ? sr.getServiceType().name().replace('_', ' ') : "", labelFont, valueFont);
+      addDetailRow(summary, "Assigned Engineer", assignedEngineerName(wo), labelFont, valueFont);
+      addDetailRow(summary, "Customer", sr != null && sr.getCustomer() != null ? sr.getCustomer().getName() : "", labelFont, valueFont);
+      addDetailRow(summary, "Customer PO", wo != null && wo.getCustomerPO() != null ? wo.getCustomerPO().getPoNumber() : "", labelFont, valueFont);
+      addDetailRow(summary, "Site Address", resolveSiteAddress(wo, sr), labelFont, valueFont);
+      doc.add(summary);
 
       if (sr != null && sr.getCustomer() != null) {
         Customer customer = sr.getCustomer();
-        PdfPTable customerTbl = new PdfPTable(2);
-        customerTbl.setWidthPercentage(100);
-        customerTbl.setWidths(new float[]{1.2f, 2.2f});
-        addMetaRow(customerTbl, "Customer Email", safe(customer.getEmail()), label, value);
-        addMetaRow(customerTbl, "Customer Phone", safe(customer.getMobile()), label, value);
-        doc.add(customerTbl);
-        doc.add(Chunk.NEWLINE);
+        PdfPTable contact = new PdfPTable(new float[]{1.1f, 1.6f});
+        contact.setWidthPercentage(100);
+        contact.setSpacingAfter(16f);
+        addDetailRow(contact, "Customer Email", customer.getEmail(), labelFont, valueFont);
+        addDetailRow(contact, "Customer Phone", customer.getMobile(), labelFont, valueFont);
+        doc.add(contact);
       }
 
-      doc.add(new Paragraph("Progress Timeline", section));
-      doc.add(Chunk.NEWLINE);
+      Paragraph progressHeading = new Paragraph("Progress Timeline", sectionFont);
+      progressHeading.setSpacingAfter(6f);
+      doc.add(progressHeading);
 
-      PdfPTable progressTable = new PdfPTable(new float[]{0.6f, 1.4f, 2.2f, 1.4f, 1.6f});
+      PdfPTable progressTable = new PdfPTable(new float[]{0.6f, 1.3f, 2.4f, 1.3f, 1.4f});
       progressTable.setWidthPercentage(100);
-      addHeader(progressTable, "#", "Status", "Remarks", "Updated By", "Timestamp");
+      addTableHeader(progressTable, labelFont, "#", "Status", "Remarks", "Updated By", "Timestamp");
+
+      List<WorkOrderProgress> entries = progress != null ? progress : Collections.emptyList();
       int idx = 1;
-      for (WorkOrderProgress p : progress) {
-        progressTable.addCell(new Phrase(String.valueOf(idx++), value));
-        progressTable.addCell(new Phrase(p.getStatus() != null ? p.getStatus().name().replace('_', ' ') : "", value));
-        progressTable.addCell(new Phrase(safe(p.getRemarks()), value));
-        String by = "";
-        if (p.getByFE() != null) {
-          by = safe(p.getByFE().getUser() != null ? p.getByFE().getUser().getDisplayName() : p.getByFE().getName());
+      for (WorkOrderProgress entry : entries) {
+        progressTable.addCell(bodyCell(String.valueOf(idx++), valueFont, Element.ALIGN_CENTER));
+        progressTable.addCell(bodyCell(entry.getStatus() != null ? entry.getStatus().name().replace('_', ' ') : "", valueFont, Element.ALIGN_LEFT));
+        progressTable.addCell(bodyCell(entry.getRemarks(), valueFont, Element.ALIGN_LEFT));
+        String updatedBy = "";
+        if (entry.getByFE() != null) {
+          updatedBy = safe(entry.getByFE().getUser() != null ? entry.getByFE().getUser().getDisplayName() : entry.getByFE().getName());
         }
-        progressTable.addCell(new Phrase(by, value));
-        progressTable.addCell(new Phrase(p.getCreatedAt() != null ? p.getCreatedAt().toString() : "", value));
+        progressTable.addCell(bodyCell(updatedBy, valueFont, Element.ALIGN_LEFT));
+        progressTable.addCell(bodyCell(formatDateTime(entry.getCreatedAt()), valueFont, Element.ALIGN_RIGHT));
       }
-      if (progress.isEmpty()) {
-        PdfPCell empty = new PdfPCell(new Phrase("No progress updates were recorded for this work order.", value));
+      if (entries.isEmpty()) {
+        PdfPCell empty = bodyCell("No progress updates were recorded for this work order.", valueFont, Element.ALIGN_LEFT);
         empty.setColspan(5);
         progressTable.addCell(empty);
       }
+      progressTable.setSpacingAfter(14f);
       doc.add(progressTable);
-      doc.add(Chunk.NEWLINE);
 
-      doc.add(new Paragraph("Photo Evidence", section));
-      doc.add(Chunk.NEWLINE);
-      java.util.List<WorkOrderProgressAttachment> photos = new java.util.ArrayList<>();
-      for (WorkOrderProgress p : progress) {
-        if (p.getAttachments() != null) {
-          photos.addAll(p.getAttachments());
+      Paragraph photosHeading = new Paragraph("Photo Evidence", sectionFont);
+      photosHeading.setSpacingAfter(6f);
+      doc.add(photosHeading);
+
+      List<WorkOrderProgressAttachment> attachments = new ArrayList<>();
+      for (WorkOrderProgress entry : entries) {
+        if (entry.getAttachments() != null) {
+          attachments.addAll(entry.getAttachments());
         }
       }
-      if (photos.isEmpty()) {
-        doc.add(new Paragraph("No photos were uploaded for this work order.", value));
+
+      if (attachments.isEmpty()) {
+        Paragraph noPhotos = new Paragraph("No photo evidence was uploaded for this work order.", valueFont);
+        noPhotos.setSpacingAfter(12f);
+        doc.add(noPhotos);
       } else {
-        PdfPTable photoTable = new PdfPTable(new float[]{0.7f, 2.6f, 1.4f, 1.3f});
+        PdfPTable photoTable = new PdfPTable(new float[]{0.6f, 2.6f, 1.2f, 1.4f});
         photoTable.setWidthPercentage(100);
-        addHeader(photoTable, "#", "File Name", "Content Type", "Uploaded At");
-        int pIdx = 1;
-        for (WorkOrderProgressAttachment att : photos) {
-          photoTable.addCell(new Phrase(String.valueOf(pIdx++), value));
-          photoTable.addCell(new Phrase(safe(att.getFilename()), value));
-          photoTable.addCell(new Phrase(safe(att.getContentType()), value));
-          photoTable.addCell(new Phrase(att.getUploadedAt() != null ? att.getUploadedAt().toString() : "", value));
+        addTableHeader(photoTable, labelFont, "#", "File Name", "Type", "Uploaded At");
+        int photoIndex = 1;
+        for (WorkOrderProgressAttachment att : attachments) {
+          photoTable.addCell(bodyCell(String.valueOf(photoIndex++), valueFont, Element.ALIGN_CENTER));
+          photoTable.addCell(bodyCell(att.getFilename(), valueFont, Element.ALIGN_LEFT));
+          photoTable.addCell(bodyCell(att.getContentType(), valueFont, Element.ALIGN_LEFT));
+          photoTable.addCell(bodyCell(formatDateTime(att.getUploadedAt()), valueFont, Element.ALIGN_RIGHT));
         }
+        photoTable.setSpacingAfter(14f);
         doc.add(photoTable);
       }
 
-      doc.add(Chunk.NEWLINE);
-      doc.add(new Paragraph("Completion Summary", section));
-      doc.add(new Paragraph("This certificate confirms that the above work order has been completed with the recorded progress updates and supporting evidence.", value));
-      doc.add(Chunk.NEWLINE);
-      doc.add(new Paragraph("Authorised Signature", section));
-      doc.add(new Paragraph("______________________________", value));
-      doc.add(new Paragraph("Name & Designation", value));
+      Paragraph summaryHeading = new Paragraph("Completion Summary", sectionFont);
+      summaryHeading.setSpacingAfter(4f);
+      doc.add(summaryHeading);
+
+      Paragraph summaryNote = new Paragraph(
+          "Installation, testing and commissioning activities for the above work order have been completed as per the recorded progress updates and approvals.",
+          valueFont);
+      summaryNote.setSpacingAfter(14f);
+      doc.add(summaryNote);
+
+      Paragraph reminder = new Paragraph(
+          "Please retain this certificate for your records. For any clarifications contact the project coordination team.",
+          noteFont);
+      reminder.setSpacingAfter(18f);
+      doc.add(reminder);
+
+      PdfPTable signature = new PdfPTable(new float[]{1f, 1f});
+      signature.setWidthPercentage(100);
+      signature.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+
+      PdfPCell left = new PdfPCell();
+      left.setBorder(Rectangle.NO_BORDER);
+      Paragraph leftText = new Paragraph("Certified by", labelFont);
+      leftText.setSpacingAfter(2f);
+      left.addElement(leftText);
+      left.addElement(new Paragraph("Cable & Wiring Installation Team", valueFont));
+      signature.addCell(left);
+
+      PdfPCell right = new PdfPCell();
+      right.setBorder(Rectangle.NO_BORDER);
+      right.setHorizontalAlignment(Element.ALIGN_RIGHT);
+      Paragraph line = new Paragraph("______________________________", valueFont);
+      line.setAlignment(Element.ALIGN_RIGHT);
+      Paragraph sig = new Paragraph("Authorised Signatory", labelFont);
+      sig.setAlignment(Element.ALIGN_RIGHT);
+      right.addElement(line);
+      right.addElement(sig);
+      signature.addCell(right);
+      doc.add(signature);
 
       doc.close();
       return bout.toByteArray();

@@ -116,6 +116,19 @@ export const customerApi = baseApi.injectEndpoints({
       })
     }),
 
+    getCustomerServiceInvoicePdf: b.query({
+      query: ({ workOrderId, type }) => {
+        if (!workOrderId) throw new Error('workOrderId is required')
+        return {
+          url: `/customer/work-orders/${workOrderId}/service-invoice`,
+          method: 'GET',
+          params: type ? { type } : undefined,
+          headers: { Accept: 'application/pdf' },
+          responseHandler: (response) => response.blob()
+        }
+      }
+    }),
+
     /** Download a progress attachment blob */
     getCustomerProgressAttachment: b.query({
       query: ({ woId, progressId, attachmentId }) => ({
@@ -262,12 +275,14 @@ export const {
   useGetMyWorkOrdersQuery,
   useGetCustomerWorkOrderDetailQuery,
   useGetCustomerWorkOrderCompletionReportQuery,
+  useGetCustomerServiceInvoicePdfQuery,
   useGetProposalDocumentsQuery,
   useUploadPOFileMutation,
   useCustomerDownloadProposalDocumentFileMutation,
   useLazyGetInvoicePdfQuery,
   useCustomerDownloadLatestProposalPdfMutation,
   useLazyGetCustomerWorkOrderCompletionReportQuery,
+  useLazyGetCustomerServiceInvoicePdfQuery,
   useLazyGetCustomerProgressAttachmentQuery,
   useApproveProposalMutation,
   useRejectProposalMutation,

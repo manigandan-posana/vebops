@@ -293,7 +293,7 @@ export default function Proposals () {
                                   }
                                 }}
                               >
-                                PDF
+                                Download proposal
                               </Button>
                               <Button
                                 size='small'

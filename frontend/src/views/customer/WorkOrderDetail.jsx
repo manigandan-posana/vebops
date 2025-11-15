@@ -264,7 +264,7 @@ export default function WorkOrderDetail () {
               onClick={handleDownloadCertificate}
               disabled={!workOrder.completionReportAvailable || certificateState.isFetching}
             >
-              {certificateState.isFetching ? 'Preparing…' : 'Download PDF'}
+              {certificateState.isFetching ? 'Preparing…' : 'Download certificate'}
             </Button>
           </Stack>
         </CardContent>
