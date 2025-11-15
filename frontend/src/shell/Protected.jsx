@@ -1,13 +1,41 @@
 import React from 'react'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { LS_USER_KEY, LS_jwt_KEY, setCredentials } from '../features/auth/authSlice'
 
 export default function Protected({ roles }){
   const auth = useSelector(s => s.auth)
+  const dispatch = useDispatch()
   const location = useLocation()
+  const [rehydrated, setRehydrated] = React.useState(() => Boolean(auth?.jwt))
+
+  React.useEffect(() => {
+    if (auth?.jwt) {
+      if (!rehydrated) setRehydrated(true)
+      return
+    }
+    if (rehydrated) return
+    if (typeof localStorage === 'undefined') {
+      setRehydrated(true)
+      return
+    }
+    const storedJwt = localStorage.getItem(LS_jwt_KEY)
+    if (storedJwt) {
+      let storedUser = null
+      try {
+        const rawUser = localStorage.getItem(LS_USER_KEY)
+        storedUser = rawUser ? JSON.parse(rawUser) : null
+      } catch (err) {
+        storedUser = null
+      }
+      dispatch(setCredentials({ jwt: storedJwt, user: storedUser }))
+    }
+    setRehydrated(true)
+  }, [auth?.jwt, dispatch, rehydrated])
   const isAdmin = auth?.role === 'ADMIN'
 
   if (!auth?.jwt) {
+    if (!rehydrated) return null
     return <Navigate to="/login" state={{ from: location }} replace />
   }
   if (roles && roles.length && !roles.includes(auth?.role)) {

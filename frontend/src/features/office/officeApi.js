@@ -199,7 +199,15 @@ export const officeApi = baseApi.injectEndpoints({
           method: 'POST',
           headers: { 'Idempotency-Key': `sr-${id}` }, // ✅ harmless if backend ignores; great if it supports
         })
-        if (res.error) return { error: res.error }
+        if (res.error) {
+          const status = res.error.status
+          const payload = res.error.data
+          if (status === 409 && payload != null) {
+            if (typeof payload === 'number') return { data: { id: payload } }
+            if (typeof payload === 'object') return { data: payload }
+          }
+          return { error: res.error }
+        }
         const d = res.data
         // Backend may return a raw Long or a WorkOrder object.
         // Normalize to { id, wan? } to keep UI happy.
@@ -360,6 +368,85 @@ export const officeApi = baseApi.injectEndpoints({
      */
     autocompleteServiceBuyers: b.query({
       query: ({ q, limit = 5 }) => ({ url: '/office/services/autocomplete', method: 'GET', params: { q, limit } }),
+      transformResponse: (res) => Array.isArray(res) ? res : []
+    }),
+
+    /* -------------------------------- Purchase Orders -------------------------------- */
+    createPurchaseOrder: b.mutation({
+      async queryFn (body, _api, _extra, baseQuery) {
+        const res = await baseQuery({ url: '/office/purchase-orders', method: 'POST', body })
+        return res.error ? { error: res.error } : { data: res.data }
+      },
+      invalidatesTags: [{ type: 'PurchaseOrders', id: 'LIST' }]
+    }),
+
+    listPurchaseOrders: b.query({
+      query: (params = {}) => ({ url: '/office/purchase-orders', method: 'GET', params }),
+      transformResponse: (res) => normalisePage(res),
+      providesTags: (result) => {
+        const rows = result?.content ?? []
+        return rows.length
+          ? [...rows.map((row) => ({ type: 'PurchaseOrders', id: row.id })), { type: 'PurchaseOrders', id: 'LIST' }]
+          : [{ type: 'PurchaseOrders', id: 'LIST' }]
+      }
+    }),
+
+    listPurchaseOrderKits: b.query({
+      query: ({ q, page = 0, size = 10, sort = 'updatedAt,desc' } = {}) => ({
+        url: '/office/purchase-orders/kits',
+        method: 'GET',
+        params: {
+          q: q && q.trim() !== '' ? q : undefined,
+          page,
+          size,
+          sort
+        }
+      }),
+      transformResponse: (res) => normalisePage(res)
+    }),
+
+    getPurchaseOrder: b.query({
+      query: (id) => ({ url: `/office/purchase-orders/${id}`, method: 'GET' }),
+      providesTags: (_r,_e,id) => [{ type: 'PurchaseOrders', id }]
+    }),
+
+    downloadPurchaseOrderPdf: b.mutation({
+      async queryFn (id, _api, _extra, baseQuery) {
+        const poId = typeof id === 'object' && id !== null ? id.id : id
+        if (!poId) return { error: { status: 0, data: { message: 'id is required' } } }
+        const res = await baseQuery({
+          url: `/office/purchase-orders/${poId}/pdf`,
+          method: 'GET',
+          headers: { Accept: 'application/pdf' },
+          responseHandler: (r) => r.arrayBuffer(),
+          cache: 'no-store'
+        })
+        if (res.error) return { error: res.error }
+        const cd = res.meta?.response?.headers?.get('Content-Disposition')
+        const filename = extractFilename(cd) || `purchase-order-${poId}.pdf`
+        const blob = new Blob([res.data], { type: 'application/pdf' })
+        downloadBlob(blob, filename, 'application/pdf')
+        return { data: null }
+      }
+    }),
+
+    sendPurchaseOrder: b.mutation({
+      async queryFn ({ id, toEmail, toWhatsapp }, _api, _extra, baseQuery) {
+        if (!id) return { error: { status: 0, data: { message: 'id is required' } } }
+        const payload = {}
+        if (toEmail && toEmail.trim()) payload.toEmail = toEmail
+        if (toWhatsapp && toWhatsapp.trim()) payload.toWhatsapp = toWhatsapp
+        const res = await baseQuery({
+          url: `/office/purchase-orders/${id}/send`,
+          method: 'POST',
+          body: Object.keys(payload).length ? payload : undefined
+        })
+        return res.error ? { error: res.error } : { data: res.data }
+      }
+    }),
+
+    purchaseOrderSuggestions: b.query({
+      query: ({ q, limit = 5 } = {}) => ({ url: '/office/purchase-orders/autocomplete', method: 'GET', params: { q, limit } }),
       transformResponse: (res) => Array.isArray(res) ? res : []
     }),
 
@@ -655,9 +742,51 @@ export const officeApi = baseApi.injectEndpoints({
       providesTags: (_r,_e,id) => [{ type:'WorkOrders', id }]
     }),
 
+    getWoCompletionReport: b.query({
+      query: (id) => ({
+        url: `/office/wo/${id}/completion-report.pdf`,
+        method: 'GET',
+        responseHandler: (response) => response.blob()
+      })
+    }),
+
+    getWoProgressAttachment: b.query({
+      query: ({ woId, progressId, attachmentId }) => ({
+        url: `/office/wo/${woId}/progress/${progressId}/attachments/${attachmentId}`,
+        method: 'GET',
+        responseHandler: (response) => response.blob()
+      })
+    }),
+
     // GET /office/wo/summary
     woSummary: b.query({
       query: () => ({ url: '/office/wo/summary', method: 'GET' }),
+      transformResponse: (res) => {
+        const countsInput = res?.counts && typeof res.counts === 'object' ? res.counts : {}
+        const normalisedCounts = Object.entries(countsInput).reduce((acc, [key, value]) => {
+          const num = Number(value)
+          acc[key] = Number.isFinite(num) ? num : 0
+          return acc
+        }, {})
+        const normaliseNumber = (value, fallback = 0) => {
+          const num = Number(value)
+          return Number.isFinite(num) ? num : fallback
+        }
+        const normaliseList = (value) => (Array.isArray(value) ? value : [])
+
+        return {
+          counts: normalisedCounts,
+          total: normaliseNumber(res?.total),
+          active: normaliseNumber(res?.active),
+          overdue: normaliseNumber(res?.overdue),
+          completionRate: normaliseNumber(res?.completionRate, 0),
+          avgCompletionDays: normaliseNumber(res?.avgCompletionDays, 0),
+          lastUpdatedAt: res?.lastUpdatedAt ?? null,
+          lastUpdatedWan: res?.lastUpdatedWan ?? null,
+          engineerLoads: normaliseList(res?.engineerLoads),
+          upcomingDue: normaliseList(res?.upcomingDue)
+        }
+      },
       providesTags: ['WorkOrders']
     }),
 
@@ -673,14 +802,41 @@ export const officeApi = baseApi.injectEndpoints({
       invalidatesTags: ['WorkOrders','Stocks','Ledger']
     }),
 
-    // POST /office/wo/{id}/progress { status, byFeId, remarks?, photoUrl? }
+    // POST /office/wo/{id}/progress { status, byFeId, remarks?, photoUrl?, photoName?, photoContentType?, photoSize?, photoData? }
     woProgress: b.mutation({
-      async queryFn ({ id, ...body }, _api, _extra, baseQuery) {
+      async queryFn ({ id, photoFile, ...body }, _api, _extra, baseQuery) {
         if (!id) return { error: { status: 0, data: { message: 'id is required' } } }
         try { requireFields(body, ['status']) } catch (e) {
           return { error: { status: 0, data: { message: e.message } } }
         }
-        const res = await baseQuery({ url: `/office/wo/${id}/progress`, method: 'POST', body })
+        let photoPayload = {}
+        if (photoFile instanceof File) {
+          try {
+            const base64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader()
+              reader.onload = () => {
+                const result = reader.result || ''
+                const commaIndex = typeof result === 'string' ? result.indexOf(',') : -1
+                resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result)
+              }
+              reader.onerror = () => reject(reader.error || new Error('Unable to read file'))
+              reader.readAsDataURL(photoFile)
+            })
+            photoPayload = {
+              photoName: photoFile.name,
+              photoContentType: photoFile.type,
+              photoSize: photoFile.size,
+              photoData: base64
+            }
+          } catch (err) {
+            return { error: { status: 0, data: { message: err?.message || 'Failed to read photo' } } }
+          }
+        }
+        const res = await baseQuery({ url: `/office/wo/${id}/progress`, method: 'POST', body: {
+          ...body,
+          photoUrl: body.photoUrl || null,
+          ...photoPayload
+        } })
         return res.error ? { error: res.error } : { data: null }
       },
       invalidatesTags: ['WorkOrders']
@@ -880,9 +1036,12 @@ export const {
   useListWOsQuery,
   useGetWOQuery,
   useWoTimelineQuery,
+  useGetWoCompletionReportQuery,
+  useLazyGetWoCompletionReportQuery,
   useWoSummaryQuery,
   useWoAssignMutation,
   useWoProgressMutation,
+  useLazyGetWoProgressAttachmentQuery,
   useWoIssueItemMutation,
   useWoCompleteMutation,
   useReceiveStockMutation,
@@ -897,8 +1056,17 @@ export const {
   useBulkCreateKitsMutation,
   useAutocompleteServiceBuyersQuery,
   useGetServicesQuery,
+  useLazyGetServicesQuery,
   useGetServiceQuery,
+  useLazyGetServiceQuery,
   useDownloadServiceInvoiceMutation,
   useSendServiceInvoiceMutation,
   useShareServiceProposalMutation,
+  useCreatePurchaseOrderMutation,
+  useListPurchaseOrdersQuery,
+  useListPurchaseOrderKitsQuery,
+  useGetPurchaseOrderQuery,
+  useDownloadPurchaseOrderPdfMutation,
+  useSendPurchaseOrderMutation,
+  usePurchaseOrderSuggestionsQuery,
 } = officeApi
