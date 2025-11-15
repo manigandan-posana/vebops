@@ -82,6 +82,12 @@ public class CustomerController {
         return svc.completionReport(id);
     }
 
+    @GetMapping(value = "/work-orders/{id}/service-invoice", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadServiceInvoice(@PathVariable Long id,
+                                                         @RequestParam(name = "type", required = false) String type) {
+        return svc.downloadServiceInvoice(id, type);
+    }
+
     @GetMapping("/work-orders/{woId}/progress/{progressId}/attachments/{attachmentId}")
     public ResponseEntity<byte[]> downloadProgressAttachment(@PathVariable Long woId,
                                                              @PathVariable Long progressId,
