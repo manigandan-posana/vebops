@@ -9,8 +9,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,12 +26,16 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.vebops.context.TenantContext;
+import com.vebops.domain.CompanyDetails;
 import com.vebops.domain.Customer;
 import com.vebops.domain.CustomerPO;
 import com.vebops.domain.Document;
@@ -48,6 +54,7 @@ import com.vebops.domain.enums.WOStatus;
 import com.vebops.dto.CustomerDashboardSummary;
 import com.vebops.exception.BusinessException;
 import com.vebops.exception.NotFoundException;
+import com.vebops.repository.CompanyDetailsRepository;
 import com.vebops.repository.CustomerPORepository;
 import com.vebops.repository.CustomerRepository;
 import com.vebops.repository.DocumentRepository;
@@ -79,6 +86,8 @@ public class CustomerService {
     private final WorkOrderProgressRepository workOrderProgressRepo;
     private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
     private final com.vebops.repository.ServiceRepository serviceRepo;
+    private final CompanyDetailsRepository companyRepo;
+    private final ObjectMapper objectMapper;
 
     public CustomerService(ProposalRepository proposalRepo,
                            ProposalService proposals,
@@ -89,7 +98,9 @@ public class CustomerService {
                            WorkOrderRepository workOrderRepo,
                            WorkOrderProgressRepository workOrderProgressRepo,
                            WorkOrderProgressAttachmentRepository progressAttachmentRepo,
-                           com.vebops.repository.ServiceRepository serviceRepo) {
+                           com.vebops.repository.ServiceRepository serviceRepo,
+                           CompanyDetailsRepository companyRepo,
+                           ObjectMapper objectMapper) {
         this.proposalRepo = proposalRepo;
         this.proposals = proposals;
         this.invoiceRepo = invoiceRepo;
@@ -102,6 +113,8 @@ public class CustomerService {
         this.workOrderProgressRepo = workOrderProgressRepo;
         this.progressAttachmentRepo = progressAttachmentRepo;
         this.serviceRepo = serviceRepo;
+        this.companyRepo = companyRepo;
+        this.objectMapper = objectMapper;
     }
 
     private Long tenant() { return TenantContext.getTenantId(); }
@@ -250,6 +263,56 @@ public class CustomerService {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=invoice-" + inv.getInvoiceNo() + ".pdf")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdf);
+    }
+
+    public ResponseEntity<byte[]> downloadServiceInvoice(Long workOrderId, String type) {
+        Long tid = tenant();
+        Customer me = currentCustomerOrThrow();
+        WorkOrder wo = workOrderRepo.findById(workOrderId)
+                .orElseThrow(() -> new NotFoundException("Work order not found"));
+        if (!tid.equals(wo.getTenantId())) {
+            throw new BusinessException("Cross-tenant access");
+        }
+        ServiceRequest sr = wo.getServiceRequest();
+        if (sr == null || sr.getCustomer() == null || !Objects.equals(sr.getCustomer().getId(), me.getId())) {
+            throw new BusinessException("Not your work order");
+        }
+
+        boolean proforma = type != null && type.equalsIgnoreCase("PROFORMA");
+        com.vebops.domain.Service service = resolveLinkedService(tid, sr.getId(), wo.getId());
+        if (service == null) {
+            throw new NotFoundException("Service invoice not available");
+        }
+
+        Document doc = findServiceDocument(tid, service.getId(), proforma);
+        byte[] pdf = loadServiceDocumentBytes(doc);
+
+        Map<String, Object> meta = new LinkedHashMap<>(readServiceMap(service.getMetaJson()));
+        String baseName = computeServiceFileName(meta, service.getId(), proforma);
+
+        if (pdf == null || pdf.length == 0) {
+            meta.put("docType", proforma ? "PROFORMA" : "INVOICE");
+            pdf = generateServiceInvoicePdf(service, meta, readServiceList(service.getItemsJson()),
+                    readServiceMap(service.getTotalsJson()), tid);
+        }
+
+        if (pdf == null || pdf.length == 0) {
+            throw new BusinessException("Invoice document unavailable");
+        }
+
+        String filename = (doc != null && doc.getFilename() != null && !doc.getFilename().isBlank())
+                ? doc.getFilename()
+                : baseName + ".pdf";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentLength(pdf.length);
+        headers.setContentDisposition(ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build());
+        headers.add(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate");
+        headers.add(HttpHeaders.PRAGMA, "no-cache");
+        headers.add(HttpHeaders.EXPIRES, "0");
+
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
     }
 
     public ResponseEntity<List<ProposalDocumentRow>> proposalDocuments(Long proposalId, Long customerId) {
@@ -563,6 +626,98 @@ public class CustomerService {
             }
         }
         return srMatch != null ? srMatch : woMatch;
+    }
+
+    private Document findServiceDocument(Long tenantId, Long serviceId, boolean proforma) {
+        if (tenantId == null || serviceId == null) {
+            return null;
+        }
+        DocumentEntityType desired = proforma ? DocumentEntityType.PROFORMA : DocumentEntityType.INVOICE;
+        List<Document> docs = docRepo.findByEntityTypeAndEntityIdAndTenantId(desired, serviceId, tenantId);
+        if ((docs == null || docs.isEmpty()) && desired != DocumentEntityType.SR) {
+            docs = docRepo.findByEntityTypeAndEntityIdAndTenantId(DocumentEntityType.SR, serviceId, tenantId);
+        }
+        return (docs != null && !docs.isEmpty()) ? docs.get(0) : null;
+    }
+
+    private byte[] loadServiceDocumentBytes(Document doc) {
+        if (doc == null || doc.getUrl() == null) {
+            return null;
+        }
+        String url = doc.getUrl();
+        String prefix = "data:application/pdf;base64,";
+        if (url.startsWith(prefix)) {
+            try {
+                return Base64.getDecoder().decode(url.substring(prefix.length()));
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        try {
+            java.io.File file = fileStorageService.loadServiceInvoiceDoc(tenant(), doc.getEntityId(), doc.getId(), url);
+            if (file != null && file.exists()) {
+                return Files.readAllBytes(file.toPath());
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private byte[] generateServiceInvoicePdf(com.vebops.domain.Service service,
+                                             Map<String, Object> meta,
+                                             List<Map<String, Object>> items,
+                                             Map<String, Object> totals,
+                                             Long tenantId) {
+        CompanyDetails company = companyRepo.findByTenantId(tenantId).orElse(null);
+        return PdfUtil.buildServiceInvoicePdf(service, meta, items, totals, company);
+    }
+
+    private Map<String, Object> readServiceMap(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private List<Map<String, Object>> readServiceList(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private String computeServiceFileName(Map<String, Object> meta, Long serviceId, boolean proforma) {
+        String invoice = sanitizeDocCode(meta.get("invoiceNo"));
+        String pinv = sanitizeDocCode(meta.get("pinvNo"));
+        String base = proforma
+                ? (!pinv.isEmpty() ? pinv : (!invoice.isEmpty() ? invoice : "service-" + serviceId + "-proforma"))
+                : (!invoice.isEmpty() ? invoice : (!pinv.isEmpty() ? pinv : "service-" + serviceId));
+        if (base == null || base.isBlank()) {
+            return proforma ? ("service-" + serviceId + "-proforma") : ("service-" + serviceId);
+        }
+        return base;
+    }
+
+    private String sanitizeDocCode(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String code = String.valueOf(value).trim();
+        if (code.isEmpty()) {
+            return "";
+        }
+        while (code.startsWith("#")) {
+            code = code.substring(1).trim();
+        }
+        return code;
     }
 
     private boolean metaContains(String compactMeta, Long value, String... keys) {

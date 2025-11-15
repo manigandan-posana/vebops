@@ -22,7 +22,8 @@ import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded'
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
 import {
   useGetMyInvoicesQuery,
-  useLazyGetInvoicePdfQuery
+  useLazyGetInvoicePdfQuery,
+  useLazyGetCustomerServiceInvoicePdfQuery
 } from '../../features/customer/customerApi'
 import { downloadBlob } from '../../utils/file'
 import { displayDocNumber, normalizeDocNumber } from '../../utils/docNumbers'
@@ -93,6 +94,7 @@ export default function Invoices () {
     { skip: customerId === null }
   )
   const [triggerPdf, pdfState] = useLazyGetInvoicePdfQuery()
+  const [triggerServicePdf, servicePdfState] = useLazyGetCustomerServiceInvoicePdfQuery()
   const invoices = Array.isArray(data?.content) ? data.content : []
 
   const handleDownload = async (inv) => {
@@ -103,6 +105,24 @@ export default function Invoices () {
       const filename = `invoice-${code || inv.id}.pdf`
       downloadBlob(blob, filename)
       toast.success('Downloaded')
+    } catch (e) {
+      toast.error(String(e?.data?.message || e?.error || 'Download failed'))
+    }
+  }
+
+  const handleServiceDocDownload = async (inv, docType) => {
+    try {
+      const workOrderId = inv?.workOrder?.id || inv?.workOrderId || inv?.woId
+      if (!workOrderId) {
+        throw new Error('Work order reference missing')
+      }
+      const res = await triggerServicePdf({ workOrderId, type: docType }).unwrap()
+      const blob = res
+      const code = normalizeDocNumber(inv.invoiceNo) || normalizeDocNumber(inv.workOrder?.wan) || workOrderId
+      const prefix = docType === 'PROFORMA' ? 'proforma' : 'service-invoice'
+      const filename = `${prefix}-${code || workOrderId}.pdf`
+      downloadBlob(blob, filename)
+      toast.success(docType === 'PROFORMA' ? 'Proforma downloaded' : 'Service invoice downloaded')
     } catch (e) {
       toast.error(String(e?.data?.message || e?.error || 'Download failed'))
     }
@@ -196,15 +216,27 @@ export default function Invoices () {
                           </TableCell>
                           <TableCell>{wan}</TableCell>
                           <TableCell align='right'>
-                            <Button
-                              size='small'
-                              variant='outlined'
-                              startIcon={<DownloadRoundedIcon fontSize='small' />}
-                              onClick={() => handleDownload(inv)}
-                              disabled={pdfState.isFetching}
-                            >
-                              {pdfState.isFetching ? 'Preparing…' : 'Download'}
-                            </Button>
+                            <Stack direction='row' spacing={1} justifyContent='flex-end'>
+                              <Button
+                                size='small'
+                                variant='outlined'
+                                startIcon={<DownloadRoundedIcon fontSize='small' />}
+                                onClick={() => handleDownload(inv)}
+                                disabled={pdfState.isFetching}
+                              >
+                                {pdfState.isFetching ? 'Preparing…' : 'Download invoice'}
+                              </Button>
+                              {(inv?.workOrder?.id || inv?.workOrderId || inv?.woId) && (
+                                <Button
+                                  size='small'
+                                  variant='text'
+                                  onClick={() => handleServiceDocDownload(inv, 'PROFORMA')}
+                                  disabled={servicePdfState.isFetching}
+                                >
+                                  {servicePdfState.isFetching ? 'Preparing…' : 'Download proforma'}
+                                </Button>
+                              )}
+                            </Stack>
                           </TableCell>
                         </TableRow>
                       )
