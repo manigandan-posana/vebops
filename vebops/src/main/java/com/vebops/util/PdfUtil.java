@@ -330,7 +330,7 @@ public class PdfUtil {
       return new BigDecimal(number.toString());
     }
     if (value instanceof String str) {
-      String cleaned = str.replaceAll("[^0-9.\-]", "");
+      String cleaned = str.replaceAll("[^0-9.-]", "");
       if (cleaned.isBlank()) {
         return BigDecimal.ZERO;
       }
