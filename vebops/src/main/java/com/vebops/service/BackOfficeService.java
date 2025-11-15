@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.time.temporal.ChronoUnit;
 
 import org.springframework.http.*;
 import org.springframework.core.io.Resource;
@@ -2349,5 +2350,170 @@ public ResponseEntity<Void> sendProposalEmail(Long proposalId, ProposalShareRequ
     return ResponseEntity.noContent().build();
 }
 
+
+}
+
+    public ResponseEntity<List<DispatchBoardRow>> dispatchBoard(int limit) {
+        Long tid = tenant();
+        int size = Math.max(1, Math.min(limit, 50));
+        List<WorkOrder> upcoming = workOrderRepo.findTop50ByTenantIdAndStatusInOrderByDueDateAsc(tid, ACTIVE_WO_STATUSES);
+        LocalDate today = LocalDate.now();
+        List<DispatchBoardRow> rows = upcoming.stream()
+                .sorted(Comparator.comparing(wo -> Optional.ofNullable(wo.getDueDate()).orElse(LocalDate.MAX)))
+                .limit(size)
+                .map(wo -> {
+                    ServiceRequest sr = wo.getServiceRequest();
+                    String customerName = null;
+                    String serviceType = null;
+                    String siteAddress = null;
+                    if (sr != null) {
+                        sr.getSrn();
+                        if (sr.getCustomer() != null) {
+                            sr.getCustomer().getName();
+                            sr.getCustomer().getAddress();
+                            customerName = sr.getCustomer().getName();
+                            siteAddress = sr.getSiteAddress();
+                            if (siteAddress == null || siteAddress.isBlank()) {
+                                siteAddress = sr.getCustomer().getAddress();
+                            }
+                        }
+                        if (sr.getServiceType() != null) {
+                            serviceType = sr.getServiceType().name();
+                        }
+                        if (siteAddress == null || siteAddress.isBlank()) {
+                            siteAddress = sr.getSiteAddress();
+                        }
+                    }
+
+                    FieldEngineer fe = wo.getAssignedFE();
+                    String feName = null;
+                    String feEmail = null;
+                    if (fe != null) {
+                        fe.getId();
+                        feName = fe.getName();
+                        if (fe.getUser() != null) {
+                            fe.getUser().getDisplayName();
+                            feEmail = fe.getUser().getEmail();
+                        }
+                    }
+
+                    LocalDate dueDate = wo.getDueDate();
+                    Long daysUntilDue = null;
+                    boolean overdue = false;
+                    if (dueDate != null) {
+                        daysUntilDue = ChronoUnit.DAYS.between(today, dueDate);
+                        overdue = dueDate.isBefore(today);
+                    }
+
+                    Instant lastProgress = latestProgressInstant(tid, wo.getId());
+                    if (lastProgress == null) {
+                        lastProgress = wo.getUpdatedAt();
+                    }
+
+                    return new DispatchBoardRow(
+                            wo.getId(),
+                            wo.getWan(),
+                            wo.getStatus() != null ? wo.getStatus().name() : null,
+                            dueDate,
+                            daysUntilDue,
+                            overdue,
+                            customerName,
+                            serviceType,
+                            siteAddress,
+                            feName,
+                            feEmail,
+                            lastProgress,
+                            wo.getUpdatedAt()
+                    );
+                })
+                .toList();
+
+        return ResponseEntity.ok(rows);
+    }
+
+    public ResponseEntity<List<FieldEngineerPerformanceDto>> fieldEngineerPerformance() {
+        Long tid = tenant();
+        List<FieldEngineer> engineers = feRepo.findByTenantId(tid);
+        LocalDate today = LocalDate.now();
+        Instant now = Instant.now();
+        Instant last30 = now.minus(Duration.ofDays(30));
+
+        List<FieldEngineerPerformanceDto> rows = new ArrayList<>(engineers.size());
+        for (FieldEngineer fe : engineers) {
+            if (fe.getUser() != null) {
+                fe.getUser().getDisplayName();
+                fe.getUser().getEmail();
+            }
+            List<WorkOrder> assigned = workOrderRepo.findByTenantIdAndAssignedFE_Id(tid, fe.getId());
+            long active = assigned.stream()
+                    .filter(wo -> wo.getStatus() != null && ACTIVE_WO_STATUSES.contains(wo.getStatus()))
+                    .count();
+            long overdue = assigned.stream()
+                    .filter(wo -> wo.getStatus() != null && ACTIVE_WO_STATUSES.contains(wo.getStatus()))
+                    .filter(wo -> wo.getDueDate() != null && wo.getDueDate().isBefore(today))
+                    .count();
+            List<WorkOrder> completed = assigned.stream()
+                    .filter(wo -> wo.getStatus() == WOStatus.COMPLETED)
+                    .toList();
+            long completedLast30 = completed.stream()
+                    .filter(wo -> Optional.ofNullable(wo.getUpdatedAt()).orElse(Instant.EPOCH).isAfter(last30))
+                    .count();
+            Double averageCompletion = null;
+            if (!completed.isEmpty()) {
+                double avg = completed.stream()
+                        .mapToDouble(wo -> {
+                            Instant start = Optional.ofNullable(wo.getCreatedAt()).orElse(wo.getUpdatedAt());
+                            Instant end = Optional.ofNullable(wo.getUpdatedAt()).orElse(start);
+                            if (start == null || end == null) {
+                                return 0d;
+                            }
+                            double minutes = Duration.between(start, end).toMinutes();
+                            return minutes / (60d * 24d);
+                        })
+                        .average()
+                        .orElse(0d);
+                averageCompletion = Math.round(avg * 10d) / 10d;
+            }
+
+            Instant lastProgress = null;
+            for (WorkOrder wo : assigned) {
+                Instant progress = latestProgressInstant(tid, wo.getId());
+                if (progress == null) {
+                    progress = wo.getUpdatedAt();
+                }
+                if (progress != null && (lastProgress == null || progress.isAfter(lastProgress))) {
+                    lastProgress = progress;
+                }
+            }
+
+            rows.add(new FieldEngineerPerformanceDto(
+                    fe.getId(),
+                    fe.getName(),
+                    fe.getUser() != null ? fe.getUser().getEmail() : null,
+                    fe.getStatus() != null ? fe.getStatus().name() : null,
+                    active,
+                    overdue,
+                    completedLast30,
+                    averageCompletion,
+                    lastProgress
+            ));
+        }
+
+        rows.sort(Comparator
+                .comparingLong(FieldEngineerPerformanceDto::activeWorkOrders).reversed()
+                .thenComparingLong(FieldEngineerPerformanceDto::overdueWorkOrders).reversed()
+                .thenComparing(FieldEngineerPerformanceDto::name, Comparator.nullsLast(String::compareToIgnoreCase)));
+
+        return ResponseEntity.ok(rows);
+    }
+
+    private Instant latestProgressInstant(Long tenantId, Long woId) {
+        if (tenantId == null || woId == null) {
+            return null;
+        }
+        return woProgressRepo.findTop1ByTenantIdAndWorkOrder_IdOrderByCreatedAtDesc(tenantId, woId)
+                .map(WorkOrderProgress::getCreatedAt)
+                .orElse(null);
+    }
 
 }

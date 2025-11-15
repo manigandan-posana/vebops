@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.vebops.domain.WorkOrder;
+import com.vebops.dto.FeDashboardSummary;
 import com.vebops.dto.ProgressRequest;
 import com.vebops.service.FeService;
 
@@ -38,6 +39,11 @@ public class FEController {
     @GetMapping("/assigned")
     public ResponseEntity<List<WorkOrder>> assigned(@RequestParam(required = false) Long feId) {
         return (feId == null) ? svc.assignedForCurrentUser() : svc.assigned(feId);
+    }
+
+    @GetMapping("/dashboard")
+    public ResponseEntity<FeDashboardSummary> dashboard() {
+        return svc.dashboard();
     }
 
     @GetMapping("/wo/{id}")

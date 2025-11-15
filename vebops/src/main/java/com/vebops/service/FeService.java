@@ -1,7 +1,10 @@
 package com.vebops.service;
 
 import java.time.Instant;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -17,8 +20,11 @@ import com.vebops.domain.FieldEngineer;
 import com.vebops.domain.KitItem;
 import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrder;
+import com.vebops.domain.WorkOrderItem;
 import com.vebops.domain.WorkOrderProgress;
 import com.vebops.domain.WorkOrderProgressAttachment;
+import com.vebops.domain.enums.WOStatus;
+import com.vebops.dto.FeDashboardSummary;
 import com.vebops.dto.ProgressRequest;
 import com.vebops.exception.BusinessException;
 import com.vebops.exception.NotFoundException;
@@ -39,6 +45,13 @@ import com.vebops.util.PdfUtil;
  */
 @Service
 public class FeService {
+
+    private static final EnumSet<WOStatus> ACTIVE_STATUSES = EnumSet.of(
+            WOStatus.NEW,
+            WOStatus.ASSIGNED,
+            WOStatus.IN_PROGRESS,
+            WOStatus.ON_HOLD
+    );
 
     private final WorkOrderService workOrders;
     private final WorkOrderQueryRepository woQuery;
@@ -229,12 +242,84 @@ public class FeService {
             .body(data);
     }
 
+    private Instant latestProgressInstant(Long tenantId, Long woId) {
+        if (tenantId == null || woId == null) {
+            return null;
+        }
+        return woProgressRepo.findTop1ByTenantIdAndWorkOrder_IdOrderByCreatedAtDesc(tenantId, woId)
+                .map(WorkOrderProgress::getCreatedAt)
+                .orElse(null);
+    }
+
     public ResponseEntity<List<WorkOrder>> assignedForCurrentUser() {
         Long tid = tenant();
         Long uid = TenantContext.getUserId();
         var fe = feRepo.findFirstByTenantIdAndUser_Id(tid, uid)
             .orElseThrow(() -> new NotFoundException("Field engineer profile not found for user"));
         return assigned(fe.getId());
+    }
+
+    public ResponseEntity<FeDashboardSummary> dashboard() {
+        Long tid = tenant();
+        Long uid = TenantContext.getUserId();
+        var fe = feRepo.findFirstByTenantIdAndUser_Id(tid, uid)
+            .orElseThrow(() -> new NotFoundException("Field engineer profile not found for user"));
+
+        List<WorkOrder> assigned = woQuery.findByTenantIdAndAssignedFE_Id(tid, fe.getId());
+        LocalDate today = LocalDate.now();
+        long totalAssignments = assigned.stream()
+                .filter(wo -> wo.getStatus() != null && ACTIVE_STATUSES.contains(wo.getStatus()))
+                .count();
+        long inProgress = assigned.stream()
+                .filter(wo -> wo.getStatus() == WOStatus.IN_PROGRESS)
+                .count();
+        long dueToday = assigned.stream()
+                .filter(wo -> wo.getStatus() != null && ACTIVE_STATUSES.contains(wo.getStatus()))
+                .filter(wo -> wo.getDueDate() != null && wo.getDueDate().isEqual(today))
+                .count();
+        long overdue = assigned.stream()
+                .filter(wo -> wo.getStatus() != null && ACTIVE_STATUSES.contains(wo.getStatus()))
+                .filter(wo -> wo.getDueDate() != null && wo.getDueDate().isBefore(today))
+                .count();
+
+        long awaitingMaterials = 0;
+        Instant lastProgress = null;
+        for (WorkOrder wo : assigned) {
+            if (wo.getId() == null) {
+                continue;
+            }
+            if (wo.getStatus() != null && ACTIVE_STATUSES.contains(wo.getStatus())) {
+                List<WorkOrderItem> items = woItemRepo.findByTenantIdAndWorkOrder_Id(tid, wo.getId());
+                boolean pending = items.stream().anyMatch(item -> {
+                    BigDecimal planned = item.getQtyPlanned();
+                    BigDecimal issued = item.getQtyIssued();
+                    if (planned == null || issued == null) {
+                        return false;
+                    }
+                    return issued.compareTo(planned) < 0;
+                });
+                if (pending) {
+                    awaitingMaterials++;
+                }
+            }
+
+            Instant progress = latestProgressInstant(tid, wo.getId());
+            if (progress == null) {
+                progress = wo.getUpdatedAt();
+            }
+            if (progress != null && (lastProgress == null || progress.isAfter(lastProgress))) {
+                lastProgress = progress;
+            }
+        }
+
+        return ResponseEntity.ok(new FeDashboardSummary(
+                totalAssignments,
+                inProgress,
+                dueToday,
+                overdue,
+                awaitingMaterials,
+                lastProgress
+        ));
     }
 
     public ResponseEntity<FeWorkOrderDetail> detail(Long woId) {
