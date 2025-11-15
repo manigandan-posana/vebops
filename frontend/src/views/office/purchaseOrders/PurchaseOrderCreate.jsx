@@ -24,13 +24,11 @@ import {
   Typography
 } from '@mui/material'
 import { ArrowLeft, Plus, Save, Search } from 'lucide-react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   useCreatePurchaseOrderMutation,
   useGetCompanyQuery,
-  useLazyGetServicesQuery,
-  useLazyGetServiceQuery,
   useListPurchaseOrderKitsQuery,
   usePurchaseOrderSuggestionsQuery
 } from '../../../features/office/officeApi'
@@ -49,33 +47,18 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 
 const emptyPage = { content: [], totalElements: 0, totalPages: 0, size: 10, number: 0 }
 
-const serviceLabel = (service) => {
-  if (!service) return ''
-  const parts = []
-  if (service.wan) parts.push(service.wan)
-  else if (service.serviceWan) parts.push(service.serviceWan)
-  else if (service.id) parts.push(`SR-${service.id}`)
-  const buyer = service.buyerName || service.buyer?.name
-  if (buyer) parts.push(buyer)
-  return parts.join(' • ')
-}
-
-const serviceSubtitle = (service) => {
-  if (!service) return ''
-  const consignee = service.consigneeName || service.consignee?.name
-  const address = service.consigneeAddress || service.siteAddress || service.siteLocation || ''
-  const pieces = []
-  if (consignee) pieces.push(consignee)
-  if (address) pieces.push(address)
-  return pieces.join(' • ')
-}
-
 const templateLabel = (detail) => {
   if (!detail) return ''
   const header = detail.header || detail
   const voucher = header?.voucherNumber || (header?.id ? `PO-${header.id}` : '')
   const supplier = header?.supplierName || detail?.supplier?.name || ''
   return [voucher, supplier].filter(Boolean).join(' • ')
+}
+
+const supplierLabel = (detail) => {
+  if (!detail) return ''
+  const header = detail.header || detail
+  return header?.supplierName || detail?.supplier?.name || ''
 }
 
 const buildKitDescription = (kit) => {
@@ -87,94 +70,39 @@ const buildKitDescription = (kit) => {
 
 export default function PurchaseOrderCreate () {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const initialServiceId = searchParams.get('serviceId')
-
-  const [serviceOptions, setServiceOptions] = useState([])
-  const [serviceSearch, setServiceSearch] = useState('')
-  const [serviceInput, setServiceInput] = useState('')
-  const [selectedService, setSelectedService] = useState(null)
-const [fetchServices, { isFetching: servicesLoading }] = useLazyGetServicesQuery()
-const [fetchService] = useLazyGetServiceQuery()
 
   const { data: companyDetails } = useGetCompanyQuery()
-  const [poForm, setPoForm] = useState(() => makeInitialPoForm({}, companyDetails || {}))
+  const [poForm, setPoForm] = useState(() => makeInitialPoForm())
   const [buyerPrefilled, setBuyerPrefilled] = useState(false)
   const [poItems, setPoItems] = useState([])
 
   useEffect(() => {
-    if (companyDetails && !buyerPrefilled) {
-      setPoForm((prev) => ({
-        ...makeInitialPoForm(selectedService || {}, companyDetails),
-        supplier: prev.supplier,
-        meta: prev.meta,
-        amountInWords: prev.amountInWords,
-        totals: prev.totals,
-        companyPan: companyDetails?.pan || prev.companyPan
-      }))
-      setBuyerPrefilled(true)
-    }
+    if (!companyDetails || buyerPrefilled) return
+    setPoForm((prev) => ({
+      ...makeInitialPoForm(companyDetails),
+      supplier: prev.supplier,
+      meta: prev.meta,
+      amountInWords: prev.amountInWords,
+      totals: prev.totals,
+      companyPan: companyDetails?.pan || prev.companyPan
+    }))
+    setBuyerPrefilled(true)
   }, [companyDetails, buyerPrefilled])
-
-  const queryArgs = useMemo(() => ({
-    page: 0,
-    size: 20,
-    sort: 'createdAt,desc',
-    q: serviceSearch.trim() || undefined
-  }), [serviceSearch])
-
-  useEffect(() => {
-    let active = true
-    const loadServices = async () => {
-      try {
-        const res = await fetchServices(queryArgs).unwrap()
-        if (!active) return
-        const rows = Array.isArray(res?.content) ? res.content : Array.isArray(res) ? res : []
-        setServiceOptions(rows)
-      } catch (err) {
-        if (!active) return
-        console.error('Failed to fetch services', err)
-        toast.error('Unable to load service suggestions')
-      }
-    }
-    loadServices()
-    return () => { active = false }
-  }, [fetchServices, queryArgs])
-
-  useEffect(() => {
-    if (!initialServiceId) return
-    const id = Number(initialServiceId)
-    if (!Number.isFinite(id)) return
-    const bootstrap = async () => {
-      try {
-        const res = await fetchService(id).unwrap()
-        const svc = res?.service ?? res
-        if (svc) {
-          setSelectedService(svc)
-          setServiceInput(serviceLabel(svc))
-          setPoForm((prev) => ({
-            ...makeInitialPoForm(svc, companyDetails || {}),
-            supplier: prev.supplier,
-            meta: prev.meta,
-            amountInWords: prev.amountInWords,
-            totals: prev.totals,
-            companyPan: companyDetails?.pan || prev.companyPan
-          }))
-          setPoItems([])
-        }
-      } catch (err) {
-        console.error('Failed to bootstrap service', err)
-      }
-    }
-    bootstrap()
-  // intentionally run only once when component mounts
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const [templateQuery, setTemplateQuery] = useState('')
 const { data: templateOptions = [], isFetching: templatesLoading } = usePurchaseOrderSuggestionsQuery(
     { q: templateQuery, limit: 8 },
     { skip: templateQuery.trim().length < 2 }
+  )
+
+  const [supplierQuery, setSupplierQuery] = useState('')
+  const { data: supplierOptionsRaw = [], isFetching: supplierLoading } = usePurchaseOrderSuggestionsQuery(
+    { q: supplierQuery, limit: 6 },
+    { skip: supplierQuery.trim().length < 2 }
+  )
+  const supplierOptions = useMemo(
+    () => (Array.isArray(supplierOptionsRaw) ? supplierOptionsRaw.filter((opt) => supplierLabel(opt)) : []),
+    [supplierOptionsRaw]
   )
 
   const [kitSearch, setKitSearch] = useState('')
@@ -217,22 +145,20 @@ const { data: templateOptions = [], isFetching: templatesLoading } = usePurchase
     })
   }, [])
 
-  const handleServiceSelect = useCallback(async (_event, value) => {
-    setSelectedService(value || null)
-    setServiceInput(value ? serviceLabel(value) : '')
-    if (!value?.id) {
-      setPoItems([])
-      return
-    }
-    try {
-      await fetchService(value.id).unwrap()
-      setPoItems([])
-    } catch (err) {
-      console.error('Failed to fetch service', err)
-      toast.error('Unable to load service details')
-      setPoItems([])
-    }
-  }, [fetchService])
+  const handleSupplierSuggestionSelect = useCallback((_event, option) => {
+    if (!option) return
+    const mapped = mapDetailToForm(option)
+    const supplier = mapped?.supplier || {}
+    setPoForm((prev) => ({
+      ...prev,
+      supplier: {
+        ...prev.supplier,
+        ...supplier
+      }
+    }))
+    setSupplierQuery(supplierLabel(option) || '')
+    toast.success('Supplier details applied from history')
+  }, [])
 
   const handleTemplateSelect = useCallback((_event, option) => {
     if (!option) return
@@ -243,6 +169,7 @@ const { data: templateOptions = [], isFetching: templatesLoading } = usePurchase
     }
     setPoForm(mapped)
     setPoItems(mapDetailToItems(option))
+    setSupplierQuery(supplierLabel(option) || '')
   }, [poForm.buyer, poForm.companyPan])
 
   const handleAddBlankItem = useCallback(() => {
@@ -318,8 +245,8 @@ const { data: templateOptions = [], isFetching: templatesLoading } = usePurchase
   }, [poForm.supplier?.stateCode, poForm.supplier?.stateName])
 
   const handleSubmit = useCallback(async () => {
-    if (!selectedService?.id) {
-      toast.error('Select a service to link this purchase order')
+    if (!poForm.supplier?.name || !poForm.supplier.name.trim()) {
+      toast.error('Enter supplier details')
       return
     }
     if (!poItems.length) {
@@ -342,7 +269,6 @@ const { data: templateOptions = [], isFetching: templatesLoading } = usePurchase
     }
 
     const payload = {
-      serviceId: selectedService.id,
       voucherNumber: poForm.voucherNumber || undefined,
       date: poForm.date || isoDate(),
       buyer: { ...poForm.buyer },
@@ -376,7 +302,7 @@ const { data: templateOptions = [], isFetching: templatesLoading } = usePurchase
       const message = err?.data?.message || err?.error || 'Failed to create purchase order'
       toast.error(String(message))
     }
-  }, [selectedService?.id, poItems, poForm, poSummary, createPo, navigate])
+  }, [poItems, poForm, poSummary, createPo, navigate])
 
   return (
     <Box sx={{ pb: 6 }}>
@@ -402,41 +328,41 @@ const { data: templateOptions = [], isFetching: templatesLoading } = usePurchase
 
           <Card>
             <CardHeader
-              avatar={<Search size={18} />}
-              title='Link service request'
-              subheader='Select the service or work order this purchase order belongs to'
+              title='Start from history'
+              subheader='Reuse supplier profiles or copy a previous purchase order'
             />
             <CardContent>
               <Stack spacing={3}>
                 <Autocomplete
-                  options={serviceOptions}
-                  value={selectedService}
-                  onChange={handleServiceSelect}
-                  inputValue={serviceInput}
+                  freeSolo
+                  options={supplierOptions}
+                  value={null}
+                  inputValue={poForm.supplier?.name ?? ''}
                   onInputChange={(_event, value, reason) => {
                     if (reason === 'reset') return
-                    setServiceInput(value)
-                    setServiceSearch(value)
+                    handlePoFormChange('supplier.name', value)
+                    setSupplierQuery(value || '')
                   }}
-                  getOptionLabel={serviceLabel}
-                  isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                  onChange={handleSupplierSuggestionSelect}
+                  getOptionLabel={supplierLabel}
                   filterOptions={(options) => options}
-                  loading={servicesLoading}
-                  loadingText='Loading services…'
-                  noOptionsText={serviceSearch ? 'No matching services' : 'Start typing to search services'}
+                  loading={supplierLoading}
+                  loadingText='Searching previous suppliers…'
+                  noOptionsText={
+                    (poForm.supplier?.name || '').trim().length >= 2
+                      ? 'No matching suppliers'
+                      : 'Type at least 2 characters'
+                  }
                   renderOption={(props, option) => {
-                    const primary = serviceLabel(option)
-                    const secondary = serviceSubtitle(option)
+                    const header = option?.header || option || {}
+                    const supplierName = supplierLabel(option)
+                    const contact = header?.supplierEmail || header?.supplierWhatsapp || ''
                     return (
                       <li {...props}>
                         <Stack spacing={0.25}>
-                          <Typography variant='body2' fontWeight={600}>
-                            {primary || 'Service'}
-                          </Typography>
-                          {secondary && (
-                            <Typography variant='caption' color='text.secondary'>
-                              {secondary}
-                            </Typography>
+                          <Typography variant='body2' fontWeight={600}>{supplierName || 'Supplier'}</Typography>
+                          {contact && (
+                            <Typography variant='caption' color='text.secondary'>{contact}</Typography>
                           )}
                         </Stack>
                       </li>
@@ -445,8 +371,8 @@ const { data: templateOptions = [], isFetching: templatesLoading } = usePurchase
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label='Service'
-                      placeholder='Search WAN / buyer / SR ID'
+                      label='Supplier name'
+                      placeholder='Start typing supplier name'
                       required
                     />
                   )}
@@ -481,13 +407,13 @@ const { data: templateOptions = [], isFetching: templatesLoading } = usePurchase
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label='Reuse previous purchase order'
-                      placeholder='Type supplier or voucher to search templates'
+                      label='Copy a previous purchase order'
+                      placeholder='Search by supplier or voucher number'
                     />
                   )}
                   clearOnBlur={false}
                 />
-                <Typography variant='caption' color='text.secondary'>Selecting a template copies supplier, items, and totals while keeping your company details intact.</Typography>
+                <Typography variant='caption' color='text.secondary'>Templates bring across supplier details, line items, and totals; adjust the kits as needed.</Typography>
               </Stack>
             </CardContent>
           </Card>

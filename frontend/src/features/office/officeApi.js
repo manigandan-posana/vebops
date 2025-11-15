@@ -381,7 +381,17 @@ export const officeApi = baseApi.injectEndpoints({
     }),
 
     listPurchaseOrders: b.query({
-      query: (params = {}) => ({ url: '/office/purchase-orders', method: 'GET', params }),
+      query: (params = {}) => {
+        const { q, ...rest } = params || {}
+        return {
+          url: '/office/purchase-orders',
+          method: 'GET',
+          params: {
+            ...rest,
+            q: typeof q === 'string' && q.trim() !== '' ? q.trim() : undefined
+          }
+        }
+      },
       transformResponse: (res) => normalisePage(res),
       providesTags: (result) => {
         const rows = result?.content ?? []

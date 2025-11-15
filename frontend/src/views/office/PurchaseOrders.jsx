@@ -13,14 +13,9 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  FormControl,
-  FormControlLabel,
-  FormLabel,
   Grid,
   IconButton,
   Paper,
-  Radio,
-  RadioGroup,
   Stack,
   Table,
   TableBody,
@@ -33,8 +28,8 @@ import {
   Tooltip,
   Typography
 } from '@mui/material'
-import Autocomplete from '@mui/material/Autocomplete'
-import { FileDown, Plus, RefreshCcw, Send, Eye } from 'lucide-react'
+import InputAdornment from '@mui/material/InputAdornment'
+import { FileDown, Plus, RefreshCcw, Send, Eye, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { skipToken } from '@reduxjs/toolkit/query'
 import { useNavigate } from 'react-router-dom'
@@ -42,13 +37,9 @@ import {
   useListPurchaseOrdersQuery,
   useDownloadPurchaseOrderPdfMutation,
   useSendPurchaseOrderMutation,
-  useGetPurchaseOrderQuery,
-  useLazyGetServicesQuery
+  useGetPurchaseOrderQuery
 } from '../../features/office/officeApi'
-import {
-  firstNonEmpty,
-  fmtINR
-} from './purchaseOrders/utils'
+import { fmtINR } from './purchaseOrders/utils'
 
 const parseJson = (value, fallback) => {
   if (!value) return fallback
@@ -71,35 +62,29 @@ const formatDate = (value) => {
   }
 }
 
-const serviceLabel = (service) => {
-  if (!service) return ''
-  const parts = []
-  if (service.wan) parts.push(service.wan)
-  else if (service.serviceWan) parts.push(service.serviceWan)
-  else if (service.id) parts.push(`SR-${service.id}`)
-  const buyer = firstNonEmpty(service.buyerName, service.buyer?.name)
-  if (buyer) parts.push(buyer)
-  return parts.join(' • ')
-}
-
 const emptyPage = { content: [], totalElements: 0, totalPages: 0, size: 25, number: 0 }
 
 export default function PurchaseOrders () {
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
-  const [serviceFilter, setServiceFilter] = useState(null)
-  const [serviceOptions, setServiceOptions] = useState([])
-  const [serviceSearch, setServiceSearch] = useState('')
-  const [filterServiceInput, setFilterServiceInput] = useState('')
-  const [fetchServices] = useLazyGetServicesQuery()
+  const [searchInput, setSearchInput] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearchTerm(searchInput.trim())
+      setPage(0)
+    }, 250)
+    return () => clearTimeout(handle)
+  }, [searchInput])
 
   const queryArgs = useMemo(() => ({
     page,
     size: rowsPerPage,
     sort: 'createdAt,desc',
-    serviceId: serviceFilter?.id || undefined
-  }), [page, rowsPerPage, serviceFilter?.id])
+    q: searchTerm || undefined
+  }), [page, rowsPerPage, searchTerm])
 
   const {
     data: poPage = emptyPage,
@@ -115,44 +100,9 @@ export default function PurchaseOrders () {
   const [selectedPoId, setSelectedPoId] = useState(null)
   const { data: selectedPoDetail } = useGetPurchaseOrderQuery(selectedPoId ?? skipToken)
 
-  useEffect(() => {
-    let active = true
-    const loadServices = async (input = '') => {
-      try {
-        const params = {
-          q: input?.trim() || undefined,
-          page: 0,
-          size: 20,
-          sort: 'createdAt,desc'
-        }
-        const res = await fetchServices(params).unwrap()
-        if (!active) return
-        const content = Array.isArray(res?.content) ? res.content : Array.isArray(res) ? res : []
-        setServiceOptions(content)
-      } catch (err) {
-        if (!active) return
-        console.error('Failed to load services', err)
-        toast.error('Unable to load service suggestions')
-      }
-    }
-    loadServices(serviceSearch)
-    return () => { active = false }
-  }, [fetchServices, serviceSearch])
-
-  const handleServiceFilterChange = useCallback((_event, value) => {
-    setServiceFilter(value || null)
-    setFilterServiceInput(value ? serviceLabel(value) : '')
-    setPage(0)
-  }, [])
-
   const handleCreateNavigate = useCallback(() => {
-    const params = new URLSearchParams()
-    if (serviceFilter?.id) {
-      params.set('serviceId', serviceFilter.id)
-    }
-    const suffix = params.toString()
-    navigate(`/office/purchase-orders/new${suffix ? `?${suffix}` : ''}`)
-  }, [navigate, serviceFilter?.id])
+    navigate('/office/purchase-orders/new')
+  }, [navigate])
 
   const handlePoView = useCallback((row) => {
     if (!row?.id) return
@@ -229,31 +179,24 @@ export default function PurchaseOrders () {
           <Card>
             <CardHeader
               title='Filters'
-              subheader='Narrow down purchase orders by service or supplier'
+              subheader='Search by voucher number, supplier, or buyer'
             />
             <CardContent>
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6} lg={4}>
-                  <Autocomplete
-                    options={serviceOptions}
-                    value={serviceFilter}
-                    onChange={handleServiceFilterChange}
-                    inputValue={filterServiceInput}
-                    onInputChange={(_event, value, reason) => {
-                      if (reason === 'reset') return
-                      setFilterServiceInput(value)
-                      setServiceSearch(value)
+                  <TextField
+                    label='Search purchase orders'
+                    placeholder='Search voucher, supplier, or buyer'
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position='start'>
+                          <Search size={16} />
+                        </InputAdornment>
+                      )
                     }}
-                    getOptionLabel={serviceLabel}
-                    isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        label='Filter by service'
-                        placeholder='Search work orders or buyers'
-                      />
-                    )}
-                    clearOnBlur={false}
+                    fullWidth
                   />
                 </Grid>
               </Grid>
@@ -277,7 +220,6 @@ export default function PurchaseOrders () {
                       <TableCell>Date</TableCell>
                       <TableCell>Supplier</TableCell>
                       <TableCell>Buyer</TableCell>
-                      <TableCell>Service</TableCell>
                       <TableCell align='right'>Total</TableCell>
                       <TableCell align='right'>Actions</TableCell>
                     </TableRow>
@@ -301,7 +243,6 @@ export default function PurchaseOrders () {
                             </Stack>
                           </TableCell>
                           <TableCell>{row.buyerName || '—'}</TableCell>
-                          <TableCell>{row.serviceWan || `Service #${row.serviceId || '—'}`}</TableCell>
                           <TableCell align='right'>
                             <Typography variant='body2' fontWeight={600}>{fmtINR(row.grandTotal)}</Typography>
                           </TableCell>

@@ -288,10 +288,11 @@ public class BackOfficeController {
     @GetMapping("/purchase-orders")
     public ResponseEntity<Page<PurchaseOrderDtos.ListItem>> listPurchaseOrders(
             @RequestParam(required = false) Long serviceId,
+            @RequestParam(name = "q", required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "createdAt,desc") String sort) {
-        return bo.listPurchaseOrders(serviceId, page, size, sort);
+        return bo.listPurchaseOrders(serviceId, keyword, page, size, sort);
     }
 
     @GetMapping("/purchase-orders/kits")

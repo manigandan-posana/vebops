@@ -142,12 +142,12 @@ const formatCompanyAddress = (company = {}) => {
   return lines.join('\n')
 }
 
-export const makeInitialPoForm = (service = {}, company = {}) => ({
+export const makeInitialPoForm = (company = {}) => ({
   voucherNumber: '',
   date: isoDate(),
   buyer: {
     name: company?.name || '',
-    address: formatCompanyAddress(company) || service?.buyerAddress || '',
+    address: formatCompanyAddress(company) || '',
     phone: company?.phone || '',
     gstin: company?.gstin || '',
     stateName: company?.state || '',
@@ -199,7 +199,7 @@ export const makeInitialPoItems = (items) => {
 }
 
 export const mapDetailToForm = (detail) => {
-  if (!detail) return makeInitialPoForm({}, {})
+  if (!detail) return makeInitialPoForm()
   return {
     voucherNumber: detail?.header?.voucherNumber || '',
     date: detail?.header?.date ? isoDate(detail.header.date) : isoDate(),

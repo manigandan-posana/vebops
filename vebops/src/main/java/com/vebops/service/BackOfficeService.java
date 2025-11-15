@@ -1485,12 +1485,21 @@ public ResponseEntity<CreateCustomerResponse> createCustomer(CreateCustomerReque
         return ResponseEntity.ok(mapped);
     }
 
-    public ResponseEntity<Page<PurchaseOrderDtos.ListItem>> listPurchaseOrders(Long serviceId, int page, int size, String sort) {
+    public ResponseEntity<Page<PurchaseOrderDtos.ListItem>> listPurchaseOrders(Long serviceId,
+                                                                              String keyword,
+                                                                              int page,
+                                                                              int size,
+                                                                              String sort) {
         Long tenantId = tenant();
         Pageable pageable = buildPageRequest(page, size, sort, "createdAt");
-        Page<PurchaseOrder> data = (serviceId != null)
-                ? purchaseOrderRepo.findByTenantIdAndService_Id(tenantId, serviceId, pageable)
-                : purchaseOrderRepo.findByTenantId(tenantId, pageable);
+        Page<PurchaseOrder> data;
+        if (keyword != null && !keyword.isBlank()) {
+            data = purchaseOrderRepo.searchByTenantIdAndKeyword(tenantId, keyword.trim(), pageable);
+        } else if (serviceId != null) {
+            data = purchaseOrderRepo.findByTenantIdAndService_Id(tenantId, serviceId, pageable);
+        } else {
+            data = purchaseOrderRepo.findByTenantId(tenantId, pageable);
+        }
         Page<PurchaseOrderDtos.ListItem> mapped = data.map(this::toPurchaseOrderListItem);
         return ResponseEntity.ok(mapped);
     }
