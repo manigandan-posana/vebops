@@ -46,7 +46,7 @@ export default function Topbar({ onMenuClick }) {
             size="small"
             sx={{
               mr: 1.75,
-              border: `1px solid ${muiAlpha(theme.palette.primary.main, 0.16)}`,
+              border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
               borderRadius: 8,
               backgroundColor: theme.palette.background.paper,
             }}
@@ -66,8 +66,8 @@ export default function Topbar({ onMenuClick }) {
               sx={{
                 borderRadius: 8,
                 color: theme.palette.primary.main,
-                border: `1px solid ${muiAlpha(theme.palette.primary.main, 0.16)}`,
-                backgroundColor: muiAlpha(theme.palette.primary.main, 0.08),
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+                backgroundColor: alpha(theme.palette.primary.main, 0.08),
               }}
             >
               <Badge color="secondary" variant="dot" overlap="circular">
@@ -79,9 +79,9 @@ export default function Topbar({ onMenuClick }) {
             <Tooltip title={user?.name || user?.email || "User"}>
               <Avatar
                 sx={{
-                  bgcolor: muiAlpha(theme.palette.primary.main, 0.1),
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
                   color: theme.palette.primary.main,
-                  border: `1px solid ${muiAlpha(theme.palette.primary.main, 0.2)}`,
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
                   width: 36,
                   height: 36,
                   fontSize: '0.85rem',
@@ -101,7 +101,7 @@ export default function Topbar({ onMenuClick }) {
                 </Typography>
                 <Typography
                   variant="caption"
-                  sx={{ color: muiAlpha(theme.palette.text.primary, 0.6), letterSpacing: '0.05em' }}
+                  sx={{ color: alpha(theme.palette.text.primary, 0.6), letterSpacing: '0.05em' }}
                 >
                   {user?.role || "User"}
                 </Typography>

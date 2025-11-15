@@ -334,7 +334,7 @@ const theme = createTheme({
         },
       },
     },
-    MuiCard: {
+    MuiOutlinedInput: {
       styleOverrides: {
         indicator: {
           height: 3,
