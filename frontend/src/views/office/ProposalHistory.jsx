@@ -29,7 +29,7 @@ import {
   Typography
 } from '@mui/material'
 import { FileDown, RefreshCcw, Search } from 'lucide-react'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   useDownloadProposalDocumentFileMutation,
   useListProposalDocumentsQuery,
@@ -184,7 +184,6 @@ export default function ProposalHistory () {
   return (
     <Box sx={{ bgcolor: 'background.default', minHeight: '100%', py: 3 }}>
       <Container maxWidth='xl'>
-        <Toaster />
         <Stack spacing={3}>
           <Stack direction='row' justifyContent='space-between' alignItems='center'>
             <Typography variant='h5' fontWeight={600}>Proposal History</Typography>

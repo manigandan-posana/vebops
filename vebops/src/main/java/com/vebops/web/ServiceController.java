@@ -11,14 +11,17 @@ import com.vebops.domain.Service;
 import com.vebops.domain.enums.DocumentEntityType;
 import com.vebops.domain.enums.DocumentKind;
 import com.vebops.domain.enums.ProposalStatus;
+import com.vebops.domain.DocumentSequence;
 import com.vebops.domain.ServiceRequest;
 import com.vebops.domain.WorkOrder;
 import com.vebops.domain.WorkOrderAssignment;
 import com.vebops.domain.WorkOrderProgress;
+import com.vebops.domain.WorkOrderProgressAttachment;
 import com.vebops.repository.ServiceRepository;
 import com.vebops.repository.ServiceRequestRepository;
 import com.vebops.repository.WorkOrderAssignmentRepository;
 import com.vebops.repository.WorkOrderProgressRepository;
+import com.vebops.repository.WorkOrderProgressAttachmentRepository;
 import com.vebops.repository.WorkOrderRepository;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -42,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import com.vebops.service.DocumentSequenceService;
 import com.vebops.service.FileStorageService;
 
 
@@ -67,11 +71,13 @@ public class ServiceController {
     private final WorkOrderRepository workOrderRepo;
     private final WorkOrderProgressRepository workOrderProgressRepo;
     private final WorkOrderAssignmentRepository workOrderAssignmentRepo;
+    private final WorkOrderProgressAttachmentRepository progressAttachmentRepo;
 
     private final com.vebops.repository.DocumentRepository documentRepo;
     private final com.vebops.repository.CompanyDetailsRepository companyRepo;
     private final org.springframework.mail.javamail.JavaMailSender mailSender;
     private final com.vebops.service.EmailService emailService;
+    private final DocumentSequenceService sequenceService;
 
     // Storage for persisting generated invoice PDFs.  Files are stored on
     // disk rather than encoded into the database.  Injected via the
@@ -86,10 +92,12 @@ public class ServiceController {
                              WorkOrderRepository workOrderRepo,
                              WorkOrderProgressRepository workOrderProgressRepo,
                              WorkOrderAssignmentRepository workOrderAssignmentRepo,
+                             WorkOrderProgressAttachmentRepository progressAttachmentRepo,
                              com.vebops.repository.DocumentRepository documentRepo,
                              com.vebops.repository.CompanyDetailsRepository companyRepo,
                              org.springframework.mail.javamail.JavaMailSender mailSender,
                              com.vebops.service.EmailService emailService,
+                             DocumentSequenceService sequenceService,
                              FileStorageService fileStorage) {
         this.repository = repository;
         this.objectMapper = objectMapper;
@@ -99,10 +107,12 @@ public class ServiceController {
         this.workOrderRepo = workOrderRepo;
         this.workOrderProgressRepo = workOrderProgressRepo;
         this.workOrderAssignmentRepo = workOrderAssignmentRepo;
+        this.progressAttachmentRepo = progressAttachmentRepo;
         this.documentRepo = documentRepo;
         this.companyRepo = companyRepo;
         this.mailSender = mailSender;
         this.emailService = emailService;
+        this.sequenceService = sequenceService;
         this.fileStorage = fileStorage;
     }
 
@@ -505,12 +515,37 @@ public class ServiceController {
      */
     @GetMapping("/autocomplete")
     @PreAuthorize("hasAnyRole('OFFICE','BACK_OFFICE')")
-    public ResponseEntity<java.util.List<java.util.Map<String, Object>>> autocomplete(
+    public ResponseEntity<List<Map<String, Object>>> autocomplete(
             @RequestParam(name = "q") String q,
             @RequestParam(name = "limit", defaultValue = "5") int limit
     ) {
         if (q == null || q.isBlank()) {
-        return ResponseEntity.ok(java.util.Collections.emptyList());
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+
+        Long tenantId = TenantContext.getTenantId();
+        int max = Math.max(1, Math.min(limit, 50));
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, max);
+        org.springframework.data.domain.Page<Service> page = repository.searchByTenantIdAndKeyword(tenantId, q, pageable);
+        List<Map<String, Object>> out = new ArrayList<>();
+        java.util.Set<String> seenKeys = new java.util.HashSet<>();
+        for (Service s : page.getContent()) {
+            String key = (s.getBuyerName() != null ? s.getBuyerName().toLowerCase() : "") + "|"
+                    + (s.getBuyerContact() != null ? s.getBuyerContact().toLowerCase() : "");
+            if (seenKeys.contains(key)) continue;
+            seenKeys.add(key);
+            Map<String, Object> m = new HashMap<>();
+            m.put("buyerName", s.getBuyerName());
+            m.put("buyerGst", s.getBuyerGst());
+            m.put("buyerAddress", s.getBuyerAddress());
+            m.put("buyerPin", s.getBuyerPin());
+            m.put("buyerState", s.getBuyerState());
+            m.put("buyerContact", s.getBuyerContact());
+            m.put("buyerEmail", s.getBuyerEmail());
+            out.add(m);
+            if (out.size() >= max) break;
+        }
+        return ResponseEntity.ok(out);
     }
 
     private Map<String, Object> resolveServiceContext(Long tenantId, Service svc) {
@@ -586,7 +621,19 @@ public class ServiceController {
             List<WorkOrderProgress> progress = workOrderProgressRepo
                     .findByTenantIdAndWorkOrder_IdOrderByCreatedAtAsc(tenantId, wo.getId());
             progress.forEach(this::hydrateProgressForContext);
-            out.put("progress", summariseProgress(progress));
+            Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress = Map.of();
+            List<Long> progressIds = progress.stream()
+                    .map(WorkOrderProgress::getId)
+                    .filter(idVal -> idVal != null)
+                    .toList();
+            if (!progressIds.isEmpty()) {
+                attachmentsByProgress = progressAttachmentRepo
+                        .findByTenantIdAndProgress_IdIn(tenantId, progressIds)
+                        .stream()
+                        .filter(att -> att.getProgress() != null && att.getProgress().getId() != null)
+                        .collect(java.util.stream.Collectors.groupingBy(att -> att.getProgress().getId()));
+            }
+            out.put("progress", summariseProgress(progress, attachmentsByProgress, wo.getId()));
         } else {
             out.put("workOrder", null);
             out.put("assignments", java.util.Collections.emptyList());
@@ -618,6 +665,8 @@ public class ServiceController {
         }
         if (wo.getCustomerPO() != null) {
             wo.getCustomerPO().getPoNumber();
+            wo.getCustomerPO().getFileUrl();
+            wo.getCustomerPO().getUploadedAt();
         }
     }
 
@@ -686,6 +735,8 @@ public class ServiceController {
             Map<String, Object> po = new LinkedHashMap<>();
             po.put("id", wo.getCustomerPO().getId());
             po.put("poNumber", wo.getCustomerPO().getPoNumber());
+            po.put("fileUrl", wo.getCustomerPO().getFileUrl());
+            po.put("uploadedAt", wo.getCustomerPO().getUploadedAt());
             map.put("customerPO", po);
         }
         return map;
@@ -738,7 +789,9 @@ public class ServiceController {
         return list;
     }
 
-    private List<Map<String, Object>> summariseProgress(List<WorkOrderProgress> progress) {
+    private List<Map<String, Object>> summariseProgress(List<WorkOrderProgress> progress,
+                                                        Map<Long, List<WorkOrderProgressAttachment>> attachmentsByProgress,
+                                                        Long woId) {
         List<Map<String, Object>> list = new ArrayList<>();
         for (WorkOrderProgress p : progress) {
             Map<String, Object> map = new LinkedHashMap<>();
@@ -756,6 +809,24 @@ public class ServiceController {
                 fe.put("name", name);
                 map.put("byFE", fe);
             }
+            Long progressId = p.getId();
+            List<Map<String, Object>> attachmentViews = attachmentsByProgress
+                    .getOrDefault(progressId, java.util.Collections.emptyList())
+                    .stream()
+                    .map(att -> {
+                        Map<String, Object> attMap = new LinkedHashMap<>();
+                        attMap.put("id", att.getId());
+                        attMap.put("filename", att.getFilename());
+                        attMap.put("contentType", att.getContentType());
+                        attMap.put("size", att.getSize());
+                        attMap.put("uploadedAt", att.getUploadedAt());
+                        if (woId != null && progressId != null && att.getId() != null) {
+                            attMap.put("downloadPath", String.format("/office/wo/%d/progress/%d/attachments/%d", woId, progressId, att.getId()));
+                        }
+                        return attMap;
+                    })
+                    .toList();
+            map.put("attachments", attachmentViews);
             list.add(map);
         }
         return list;
@@ -777,31 +848,6 @@ public class ServiceController {
         }
         return null;
     }
-        Long tenantId = TenantContext.getTenantId();
-        int max = Math.max(1, Math.min(limit, 50));
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(0, max);
-        org.springframework.data.domain.Page<Service> page = repository.searchByTenantIdAndKeyword(tenantId, q, pageable);
-        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
-        java.util.Set<String> seenKeys = new java.util.HashSet<>();
-        for (Service s : page.getContent()) {
-            // Key by name + contact to deduplicate suggestions
-            String key = (s.getBuyerName() != null ? s.getBuyerName().toLowerCase() : "") + "|" + (s.getBuyerContact() != null ? s.getBuyerContact().toLowerCase() : "");
-            if (seenKeys.contains(key)) continue;
-            seenKeys.add(key);
-            java.util.Map<String, Object> m = new java.util.HashMap<>();
-            m.put("buyerName", s.getBuyerName());
-            m.put("buyerGst", s.getBuyerGst());
-            m.put("buyerAddress", s.getBuyerAddress());
-            m.put("buyerPin", s.getBuyerPin());
-            m.put("buyerState", s.getBuyerState());
-            m.put("buyerContact", s.getBuyerContact());
-            m.put("buyerEmail", s.getBuyerEmail());
-            out.add(m);
-            if (out.size() >= max) break;
-        }
-        return ResponseEntity.ok(out);
-    }
-
     /**
      * Create a new service. Expects a JSON body with the following
      * structure:
@@ -822,14 +868,31 @@ public class ServiceController {
         Map<String, Object> meta = toMap(payload.get("meta"));
         Object totals = payload.get("totals");
 
+        Long tenantId = TenantContext.getTenantId();
+
         // Normalise frequently used meta fields up-front so that both the
         // persisted JSON and the downstream PDF generation have cleaned
         // document numbers without stray hash prefixes.
-        if (meta.containsKey("invoiceNo")) {
-            meta.put("invoiceNo", sanitizeDocCode(meta.get("invoiceNo")));
+        String invoiceNo = sanitizeDocCode(meta.get("invoiceNo"));
+        String proformaNo = sanitizeDocCode(meta.get("pinvNo"));
+        java.time.LocalDate invoiceDateRef = parseIsoDate(meta.get("invoiceDate"));
+        java.time.LocalDate proformaDateRef = parseIsoDate(meta.get("pinvDate"));
+        if (tenantId != null) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            if (invoiceNo.isEmpty()) {
+                java.time.LocalDate target = invoiceDateRef != null ? invoiceDateRef : today;
+                invoiceNo = sequenceService.nextNumber(tenantId, DocumentSequence.Scope.INVOICE, target, "INV-", 3);
+            }
+            if (proformaNo.isEmpty()) {
+                java.time.LocalDate target = proformaDateRef != null ? proformaDateRef : today;
+                proformaNo = sequenceService.nextNumber(tenantId, DocumentSequence.Scope.PROFORMA, target, "PINV-", 3);
+            }
         }
-        if (meta.containsKey("pinvNo")) {
-            meta.put("pinvNo", sanitizeDocCode(meta.get("pinvNo")));
+        if (!invoiceNo.isEmpty()) {
+            meta.put("invoiceNo", invoiceNo);
+        }
+        if (!proformaNo.isEmpty()) {
+            meta.put("pinvNo", proformaNo);
         }
 
         // Extract canonical buyer fields:
@@ -838,7 +901,6 @@ public class ServiceController {
         String buyerContact = stringOrNull(buyer.get("contact"));
         String buyerEmail   = stringOrNull(buyer.get("email"));
         Service svc = new Service();
-        Long tenantId = TenantContext.getTenantId();
         if (tenantId != null) svc.setTenantId(tenantId);
         // Set buyer fields
         svc.setBuyerName(buyerName);
@@ -1326,6 +1388,21 @@ public class ServiceController {
             code = code.substring(1).trim();
         }
         return code;
+    }
+    private java.time.LocalDate parseIsoDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof java.time.LocalDate ld) {
+            return ld;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return java.time.LocalDate.parse(text);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
     private String computeFileName(Map<String,Object> meta, Long id, boolean proforma) {
         String inv = sanitizeDocCode(meta.get("invoiceNo"));

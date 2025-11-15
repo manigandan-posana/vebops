@@ -7,10 +7,10 @@
 // table of individual line items with totals. The component offers a
 // back link to return to the history list.
 
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom'
 import { IndianRupee, Send, Share2, FileDown } from 'lucide-react'
-import { Toaster, toast } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import {
   Alert,
   Box,
@@ -30,6 +30,7 @@ import {
   FormControlLabel,
   FormLabel,
   Grid,
+  IconButton,
   Link,
   Paper,
   Radio,
@@ -44,9 +45,11 @@ import {
   TextField,
   Typography
 } from '@mui/material'
+import Tooltip from '@mui/material/Tooltip'
 import { alpha } from '@mui/material/styles'
 import EventNoteRoundedIcon from '@mui/icons-material/EventNoteRounded'
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { displayDocNumber } from '../../utils/docNumbers'
 import { buildServiceLineDescriptions } from '../../utils/serviceLineDescriptions'
 // Import the getService hook rather than the paginated getServices hook. This
@@ -56,8 +59,20 @@ import {
   useGetServiceQuery,
   useDownloadServiceInvoiceMutation,
   useSendServiceInvoiceMutation,
-  useShareServiceProposalMutation
+  useShareServiceProposalMutation,
+  useLazyGetWoProgressAttachmentQuery,
+  useListPurchaseOrdersQuery,
+  useGetPurchaseOrderQuery,
+  useDownloadPurchaseOrderPdfMutation,
+  useSendPurchaseOrderMutation
 } from '../../features/office/officeApi'
+import { downloadBlob } from '../../utils/file'
+import { skipToken } from '@reduxjs/toolkit/query'
+import {
+  firstNonEmpty,
+  parseAmount,
+  fmtINR
+} from './purchaseOrders/utils'
 
 const parseJson = (value, fallback) => {
   if (!value) return fallback
@@ -67,15 +82,6 @@ const parseJson = (value, fallback) => {
   } catch (err) {
     return fallback
   }
-}
-
-const firstNonEmpty = (...values) => {
-  for (const value of values) {
-    if (value === null || value === undefined) continue
-    const str = String(value).trim()
-    if (str) return value
-  }
-  return null
 }
 
 const formatServiceType = (value) => {
@@ -89,29 +95,16 @@ const formatServiceType = (value) => {
     .replace(/(^|\s)\w/g, (match) => match.toUpperCase())
 }
 
-const parseAmount = (value) => {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
-  if (typeof value === 'object') {
-    if ('value' in value) return parseAmount(value.value)
-    if ('amount' in value) return parseAmount(value.amount)
-    if ('total' in value) return parseAmount(value.total)
-    if ('grandTotal' in value) return parseAmount(value.grandTotal)
-    return null
+const formatDate = (value) => {
+  if (!value) return '—'
+  try {
+    const date = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(date.getTime())) return '—'
+    return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch {
+    return '—'
   }
-  if (typeof value === 'string') {
-    const cleaned = value.replace(/[^0-9.-]/g, '')
-    if (!cleaned) return null
-    const num = Number(cleaned)
-    return Number.isFinite(num) ? num : null
-  }
-  return null
 }
-
-// Local helper to format currency in Indian Rupees.
-const fmtINR = (n) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
-    .format(Number.isFinite(+n) ? +n : 0)
 
 const InfoRow = ({ label, value }) => {
   const isElement = React.isValidElement(value)
@@ -150,14 +143,93 @@ export default function ServiceDetail () {
   const { data, isFetching, error } = useGetServiceQuery(id)
   const service = data?.service ?? data ?? {}
   const workOrder = data?.workOrder ?? null
+  const customerPo = workOrder?.customerPO ?? null
   const serviceRequest = data?.serviceRequest ?? null
   const progress = Array.isArray(data?.progress) ? data.progress : []
   const assignments = Array.isArray(data?.assignments) ? data.assignments : []
+  const progressSummary = data?.progressSummary || {}
   const [downloadInvoice] = useDownloadServiceInvoiceMutation()
   const [sendServiceInvoice, sendState] = useSendServiceInvoiceMutation()
   const [shareServiceProposal] = useShareServiceProposalMutation()
+  const [downloadProgressAttachment, { isFetching: isServiceAttachmentDownloading }] = useLazyGetWoProgressAttachmentQuery()
   const [modal, setModal] = useState({ open: false, serviceId: null, method: 'email', contact: '', docType: 'INVOICE' })
   const [sharingDocType, setSharingDocType] = useState(null)
+  const poQueryArgs = service?.id ? { serviceId: service.id, size: 25, sort: 'createdAt,desc' } : skipToken
+  const { data: poPage, isFetching: isPoLoading, refetch: refetchPurchaseOrders } = useListPurchaseOrdersQuery(poQueryArgs)
+  const purchaseOrders = poPage?.content ?? []
+  const [downloadPurchaseOrderPdf] = useDownloadPurchaseOrderPdfMutation()
+  const [sendPurchaseOrder, sendPoState] = useSendPurchaseOrderMutation()
+  const [poSendModal, setPoSendModal] = useState({ open: false, id: null, method: 'email', contact: '' })
+  const [poDetailOpen, setPoDetailOpen] = useState(false)
+  const [selectedPoId, setSelectedPoId] = useState(null)
+  const { data: selectedPoDetail } = useGetPurchaseOrderQuery(selectedPoId, { skip: !selectedPoId })
+
+  const statusChip = useMemo(() => {
+    if (!workOrder?.status) return null
+    const label = String(workOrder.status).replace(/_/g, ' ').toLowerCase()
+    const text = label.replace(/(^|\s)\w/g, (m) => m.toUpperCase())
+    let color = 'default'
+    const upper = String(workOrder.status).toUpperCase()
+    if (upper === 'COMPLETED') color = 'success'
+    else if (upper === 'IN_PROGRESS') color = 'primary'
+    else if (upper === 'ASSIGNED') color = 'info'
+    else if (upper === 'ON_HOLD') color = 'error'
+    return <Chip label={text} size='small' color={color} variant={color === 'default' ? 'outlined' : 'filled'} />
+  }, [workOrder?.status])
+
+  const handlePoView = useCallback((id) => {
+    setSelectedPoId(id)
+    setPoDetailOpen(true)
+  }, [])
+
+  const handlePoDownload = useCallback(async (id) => {
+    try {
+      await downloadPurchaseOrderPdf(id).unwrap()
+    } catch (err) {
+      const message = err?.data?.message || err?.error || 'Unable to download purchase order'
+      toast.error(String(message))
+    }
+  }, [downloadPurchaseOrderPdf])
+
+  const handlePoSendOpen = useCallback((row) => {
+    const method = row?.supplierEmail ? 'email' : 'whatsapp'
+    const contact = method === 'email' ? (row?.supplierEmail || '') : (row?.supplierWhatsapp || '')
+    setPoSendModal({ open: true, id: row?.id || null, method, contact })
+  }, [])
+
+  const closePoSendModal = useCallback(() => {
+    setPoSendModal({ open: false, id: null, method: 'email', contact: '' })
+  }, [])
+
+  const handlePoSendSubmit = useCallback(async () => {
+    if (!poSendModal.id) {
+      toast.error('Select a purchase order first')
+      return
+    }
+    const contact = poSendModal.contact?.trim()
+    if (!contact) {
+      toast.error('Provide an email or WhatsApp number')
+      return
+    }
+    const payload = {
+      id: poSendModal.id,
+      toEmail: poSendModal.method === 'email' ? contact : undefined,
+      toWhatsapp: poSendModal.method === 'whatsapp' ? contact : undefined
+    }
+    try {
+      await sendPurchaseOrder(payload).unwrap()
+      toast.success('Purchase order sent')
+      closePoSendModal()
+    } catch (err) {
+      const message = err?.data?.message || err?.error || 'Failed to send purchase order'
+      toast.error(String(message))
+    }
+  }, [poSendModal, sendPurchaseOrder, closePoSendModal])
+
+  const closePoDetail = useCallback(() => {
+    setPoDetailOpen(false)
+    setSelectedPoId(null)
+  }, [])
 
   const openSendModal = (docType = 'INVOICE') => {
     const contact = service?.buyerContact || service?.buyerEmail || ''
@@ -187,6 +259,24 @@ export default function ServiceDetail () {
       closeModal()
     }
   }
+
+  const woId = workOrder?.id
+
+  const handleDownloadProgressAttachment = async (progressId, attachment) => {
+    if (!woId || !progressId || !attachment?.id) return
+    try {
+      const blob = await downloadProgressAttachment({ woId, progressId, attachmentId: attachment.id }).unwrap()
+      const filename = attachment.filename || `progress-photo-${attachment.id}`
+      downloadBlob(blob, filename)
+    } catch (err) {
+      toast.error(String(err?.data?.message || err?.error || 'Unable to download attachment'))
+    }
+  }
+
+  const summaryTotalUpdates = progressSummary?.totalUpdates ?? progress.length
+  const summaryPhotoCount = progressSummary?.photoCount ?? progress.reduce((sum, entry) => sum + (Array.isArray(entry.attachments) ? entry.attachments.length : 0), 0)
+  const summaryLastUpdated = progressSummary?.lastUpdatedAt ? formatDateTime(progressSummary.lastUpdatedAt) : (progress.length ? formatDateTime(progress[progress.length - 1]?.createdAt) : '—')
+  const summaryLastStatus = progressSummary?.lastStatus || (progress.length ? progress[progress.length - 1]?.status : null)
 
   const handleDownload = async (docType = 'INVOICE') => {
     if (!service?.id) return
@@ -220,7 +310,6 @@ export default function ServiceDetail () {
   if (isFetching) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
-        <Toaster />
         <Container maxWidth='lg'>
           <Stack alignItems='center' spacing={2} sx={{ py: 12 }}>
             <CircularProgress color='primary' />
@@ -236,7 +325,6 @@ export default function ServiceDetail () {
   if (error || !service) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
-        <Toaster />
         <Container maxWidth='md'>
           <Card>
             <CardContent>
@@ -367,19 +455,6 @@ export default function ServiceDetail () {
 
   const totalTax = (cgstAmount ?? 0) + (sgstAmount ?? 0) + (igstAmount ?? 0)
 
-  const statusChip = useMemo(() => {
-    if (!workOrder?.status) return null
-    const label = String(workOrder.status).replace(/_/g, ' ').toLowerCase()
-    const text = label.replace(/(^|\s)\w/g, (m) => m.toUpperCase())
-    let color = 'default'
-    const upper = String(workOrder.status).toUpperCase()
-    if (upper === 'COMPLETED') color = 'success'
-    else if (upper === 'IN_PROGRESS') color = 'primary'
-    else if (upper === 'ASSIGNED') color = 'info'
-    else if (upper === 'ON_HOLD') color = 'error'
-    return <Chip label={text} size='small' color={color} variant={color === 'default' ? 'outlined' : 'filled'} />
-  }, [workOrder?.status])
-
   const progressStatusColor = (status) => {
     const upper = String(status || '').toUpperCase()
     switch (upper) {
@@ -427,7 +502,6 @@ export default function ServiceDetail () {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: (theme) => theme.palette.grey[100], py: { xs: 4, md: 8 } }}>
-      <Toaster />
       <Container maxWidth='lg'>
         <Stack spacing={3}>
           <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent='space-between' spacing={2}>
@@ -567,9 +641,30 @@ export default function ServiceDetail () {
                           <InfoRow label='Field Engineer' value={`${workOrder.assignedFE.name || '—'}${workOrder.assignedFE.id ? ` (ID ${workOrder.assignedFE.id})` : ''}`} />
                         </Grid>
                       )}
-                      {workOrder?.customerPO && (
+                      {customerPo && (
                         <Grid item xs={12} sm={6} md={3}>
-                          <InfoRow label='Customer PO' value={workOrder.customerPO.poNumber || '—'} />
+                          <InfoRow
+                            label='Customer PO'
+                            value={(
+                              <Stack spacing={1} alignItems='flex-start'>
+                                <Typography variant='body2' color='text.primary'>
+                                  {customerPo.poNumber || '—'}
+                                </Typography>
+                                {customerPo.fileUrl && (
+                                  <Button
+                                    size='small'
+                                    variant='outlined'
+                                    component='a'
+                                    href={customerPo.fileUrl}
+                                    target='_blank'
+                                    rel='noreferrer'
+                                  >
+                                    View PO
+                                  </Button>
+                                )}
+                              </Stack>
+                            )}
+                          />
                         </Grid>
                       )}
                     </>
@@ -693,12 +788,128 @@ export default function ServiceDetail () {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader
+              title='Purchase orders'
+              subheader='Review supplier orders raised for this service. Use the purchase order workspace to create new ones.'
+              action={(
+                <Button
+                  variant='contained'
+                  startIcon={<OpenInNewIcon fontSize='small' />}
+                  onClick={() => navigate('/office/purchase-orders/new')}
+                >
+                  Open purchase order workspace
+                </Button>
+              )}
+            />
+            <CardContent>
+              {isPoLoading ? (
+                <Stack direction='row' spacing={2} alignItems='center'>
+                  <CircularProgress size={24} />
+                  <Typography variant='body2' color='text.secondary'>Loading purchase orders…</Typography>
+                </Stack>
+              ) : purchaseOrders.length === 0 ? (
+                <Stack spacing={2} alignItems='flex-start'>
+                  <Typography variant='body2' color='text.secondary'>
+                    No purchase orders have been raised for this service yet.
+                  </Typography>
+                  <Button
+                    size='small'
+                    startIcon={<OpenInNewIcon fontSize='small' />}
+                    onClick={() => navigate('/office/purchase-orders/new')}
+                  >
+                    Create the first purchase order
+                  </Button>
+                </Stack>
+              ) : (
+                <TableContainer component={Paper} variant='outlined'>
+                  <Table size='small'>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Voucher</TableCell>
+                        <TableCell>Date</TableCell>
+                        <TableCell>Supplier</TableCell>
+                        <TableCell>Buyer</TableCell>
+                        <TableCell align='right'>Total</TableCell>
+                        <TableCell align='right'>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {purchaseOrders.map((row) => (
+                        <TableRow key={row.id} hover>
+                          <TableCell>
+                            <Stack spacing={0.5}>
+                              <Typography variant='body2' fontWeight={600}>
+                                {row.voucherNumber || `PO-${row.id}`}
+                              </Typography>
+                              {row.serviceWan && (
+                                <Typography variant='caption' color='text.secondary'>
+                                  {row.serviceWan}
+                                </Typography>
+                              )}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2'>{formatDate(row.date)}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Stack spacing={0.5}>
+                              <Typography variant='body2'>{row.supplierName || '—'}</Typography>
+                              {row.supplierEmail && (
+                                <Typography variant='caption' color='text.secondary'>
+                                  {row.supplierEmail}
+                                </Typography>
+                              )}
+                            </Stack>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant='body2'>{row.buyerName || '—'}</Typography>
+                          </TableCell>
+                          <TableCell align='right'>
+                            <Typography variant='body2' fontWeight={600}>{fmtINR(row.grandTotal)}</Typography>
+                          </TableCell>
+                          <TableCell align='right'>
+                            <Stack direction='row' spacing={1} justifyContent='flex-end'>
+                              <Tooltip title='View details'>
+                                <span>
+                                  <IconButton size='small' onClick={() => handlePoView(row.id)}>
+                                    <OpenInNewIcon fontSize='small' />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title='Download PDF'>
+                                <span>
+                                  <IconButton size='small' onClick={() => handlePoDownload(row.id)}>
+                                    <FileDown size={18} />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title='Send to supplier'>
+                                <span>
+                                  <IconButton size='small' onClick={() => handlePoSendOpen(row)}>
+                                    <Send size={18} />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </CardContent>
+          </Card>
+
           {(workOrder || progress.length > 0) && (
             <Card>
               <CardHeader
                 avatar={<HistoryRoundedIcon color='primary' />}
                 title='Progress updates'
-                subheader={workOrder ? 'Latest updates from the field team' : 'No linked work order was found'}
+                subheader={workOrder
+                  ? `Last update ${summaryLastUpdated} • ${summaryTotalUpdates} update${summaryTotalUpdates === 1 ? '' : 's'} • ${summaryPhotoCount} photo${summaryPhotoCount === 1 ? '' : 's'} • Latest status ${formatServiceType(summaryLastStatus)}`
+                  : 'No linked work order was found'}
               />
               <CardContent>
                 {progress.length === 0 ? (
@@ -738,9 +949,9 @@ export default function ServiceDetail () {
                             </Typography>
                           )}
                           <Stack direction='row' spacing={2} sx={{ mt: 1 }}>
-                            {entry.byFE?.name && (
+                            {(entry.byFE?.name || entry.byFE?.displayName) && (
                               <Typography variant='caption' color='text.secondary'>
-                                By {entry.byFE.name}{entry.byFE.id ? ` (ID ${entry.byFE.id})` : ''}
+                                By {(entry.byFE?.displayName || entry.byFE?.name)}{entry.byFE?.id ? ` (ID ${entry.byFE.id})` : ''}
                               </Typography>
                             )}
                             {entry.photoUrl && (
@@ -749,6 +960,21 @@ export default function ServiceDetail () {
                               </Link>
                             )}
                           </Stack>
+                          {Array.isArray(entry.attachments) && entry.attachments.length > 0 && (
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                              {entry.attachments.map((attachment) => (
+                                <Button
+                                  key={attachment.id || attachment.downloadPath}
+                                  size='small'
+                                  variant='text'
+                                  onClick={() => handleDownloadProgressAttachment(entry.id, attachment)}
+                                  disabled={isServiceAttachmentDownloading}
+                                >
+                                  {attachment.filename || 'Download photo'}
+                                </Button>
+                              ))}
+                            </Stack>
+                          )}
                         </Box>
                       )
                     })}
@@ -876,6 +1102,180 @@ export default function ServiceDetail () {
           </Card>
         </Stack>
       </Container>
+
+
+      <Dialog open={poDetailOpen} onClose={closePoDetail} maxWidth='md' fullWidth>
+        <DialogTitle>Purchase order details</DialogTitle>
+        <DialogContent dividers>
+          {!selectedPoDetail ? (
+            <Stack alignItems='center' justifyContent='center' sx={{ py: 6 }}>
+              <CircularProgress />
+            </Stack>
+          ) : (
+            <Stack spacing={3}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6}>
+                  <Stack spacing={1}>
+                    <Typography variant='subtitle2'>Voucher</Typography>
+                    <Typography variant='body1' fontWeight={600}>
+                      {selectedPoDetail.header?.voucherNumber || `PO-${selectedPoDetail.header?.id}`}
+                    </Typography>
+                    <Typography variant='body2' color='text.secondary'>
+                      Date: {formatDate(selectedPoDetail.header?.date)}
+                    </Typography>
+                  </Stack>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Stack spacing={1}>
+                    <Typography variant='subtitle2'>Supplier</Typography>
+                    <Typography variant='body1'>{selectedPoDetail.supplier?.name || '—'}</Typography>
+                    <Typography variant='body2' color='text.secondary'>
+                      {selectedPoDetail.supplier?.address || '—'}
+                    </Typography>
+                    {(selectedPoDetail.supplier?.gstin || selectedPoDetail.supplier?.stateName) && (
+                      <Typography variant='body2' color='text.secondary'>
+                        GSTIN: {selectedPoDetail.supplier?.gstin || '—'} • State: {selectedPoDetail.supplier?.stateName || '—'}
+                      </Typography>
+                    )}
+                  </Stack>
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Paper variant='outlined' sx={{ p: 2 }}>
+                    <Typography variant='subtitle2' gutterBottom>Invoice To</Typography>
+                    <Typography variant='body2' fontWeight={600}>{selectedPoDetail.buyer?.name || '—'}</Typography>
+                    <Typography variant='body2' color='text.secondary'>{selectedPoDetail.buyer?.address || '—'}</Typography>
+                    <Typography variant='caption' color='text.secondary'>
+                      GSTIN: {selectedPoDetail.buyer?.gstin || '—'}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Paper variant='outlined' sx={{ p: 2 }}>
+                    <Typography variant='subtitle2' gutterBottom>Supplier</Typography>
+                    <Typography variant='body2' fontWeight={600}>{selectedPoDetail.supplier?.name || '—'}</Typography>
+                    <Typography variant='body2' color='text.secondary'>{selectedPoDetail.supplier?.address || '—'}</Typography>
+                    <Typography variant='caption' color='text.secondary'>
+                      GSTIN: {selectedPoDetail.supplier?.gstin || '—'}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              <TableContainer component={Paper} variant='outlined'>
+                <Table size='small'>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Sl No.</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell align='right'>Quantity</TableCell>
+                      <TableCell align='right'>Unit</TableCell>
+                      <TableCell align='right'>Rate (₹)</TableCell>
+                      <TableCell align='right'>Amount (₹)</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(selectedPoDetail.items || []).map((item, index) => (
+                      <TableRow key={`${item.description}-${index}`}>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>{item.description || '—'}</TableCell>
+                        <TableCell align='right'>{item.quantity ?? '—'}</TableCell>
+                        <TableCell align='right'>{item.unit || '—'}</TableCell>
+                        <TableCell align='right'>{fmtINR(item.rate)}</TableCell>
+                        <TableCell align='right'>{fmtINR(item.amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <Paper variant='outlined' sx={{ p: 2, alignSelf: 'flex-end', width: { xs: '100%', sm: 360 } }}>
+                <Stack spacing={1.25}>
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='body2'>Subtotal</Typography>
+                    <Typography variant='body2' fontWeight={600}>{fmtINR(selectedPoDetail.totals?.subTotal)}</Typography>
+                  </Stack>
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='body2'>CGST {selectedPoDetail.totals?.cgstRate ?? 0}%</Typography>
+                    <Typography variant='body2' fontWeight={600}>{fmtINR(selectedPoDetail.totals?.cgstAmount)}</Typography>
+                  </Stack>
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='body2'>SGST {selectedPoDetail.totals?.sgstRate ?? 0}%</Typography>
+                    <Typography variant='body2' fontWeight={600}>{fmtINR(selectedPoDetail.totals?.sgstAmount)}</Typography>
+                  </Stack>
+                  <Divider sx={{ my: 1 }} />
+                  <Stack direction='row' justifyContent='space-between'>
+                    <Typography variant='subtitle1' fontWeight={700}>Grand total</Typography>
+                    <Typography variant='subtitle1' fontWeight={700}>{fmtINR(selectedPoDetail.totals?.grandTotal)}</Typography>
+                  </Stack>
+                  {selectedPoDetail.amountInWords && (
+                    <Typography variant='caption' color='text.secondary'>
+                      Amount chargeable in words: {selectedPoDetail.amountInWords}
+                    </Typography>
+                  )}
+                </Stack>
+              </Paper>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePoDetail} color='inherit'>Close</Button>
+          {selectedPoDetail?.header?.id && (
+            <Button
+              onClick={() => handlePoSendOpen({
+                id: selectedPoDetail.header.id,
+                supplierEmail: selectedPoDetail.header.supplierEmail,
+                supplierWhatsapp: selectedPoDetail.header.supplierWhatsapp
+              })}
+              startIcon={<Send size={18} />}
+            >
+              Send
+            </Button>
+          )}
+          {selectedPoDetail?.header?.id && (
+            <Button
+              variant='contained'
+              startIcon={<FileDown size={18} />}
+              onClick={() => handlePoDownload(selectedPoDetail.header.id)}
+            >
+              Download PDF
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={poSendModal.open} onClose={closePoSendModal} maxWidth='xs' fullWidth>
+        <DialogTitle>Send purchase order</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <FormControl component='fieldset'>
+              <FormLabel component='legend'>Delivery method</FormLabel>
+              <RadioGroup
+                row
+                value={poSendModal.method}
+                onChange={(_, value) => setPoSendModal((prev) => ({ ...prev, method: value }))}
+              >
+                <FormControlLabel value='email' control={<Radio />} label='Email' />
+                <FormControlLabel value='whatsapp' control={<Radio />} label='WhatsApp' />
+              </RadioGroup>
+            </FormControl>
+            <TextField
+              label={poSendModal.method === 'email' ? 'Supplier email' : 'Supplier WhatsApp number'}
+              value={poSendModal.contact}
+              onChange={(event) => setPoSendModal((prev) => ({ ...prev, contact: event.target.value }))}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePoSendModal} color='inherit'>Cancel</Button>
+          <Button onClick={handlePoSendSubmit} variant='contained' disabled={sendPoState.isLoading}>
+            {sendPoState.isLoading ? 'Sending…' : 'Send purchase order'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={modal.open} onClose={closeModal} maxWidth='sm' fullWidth>
         <DialogTitle>Send document</DialogTitle>
