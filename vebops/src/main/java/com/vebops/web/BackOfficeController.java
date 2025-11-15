@@ -49,8 +49,10 @@ import com.vebops.dto.CreateItemRequest;
 import com.vebops.dto.CreateKitRequest;
 import com.vebops.dto.CreateStoreRequest;
 import com.vebops.dto.CustomerDto;
+import com.vebops.dto.DispatchBoardRow;
 import com.vebops.dto.DraftFromKitRequest;
 import com.vebops.dto.FieldEngineerDto;
+import com.vebops.dto.FieldEngineerPerformanceDto;
 import com.vebops.dto.IssueItemRequest;
 import com.vebops.dto.ProgressRequest;
 import com.vebops.dto.ProposalPdfRequest;
@@ -137,6 +139,11 @@ public class BackOfficeController {
             @RequestParam(required = false) FEStatus status,
             @PageableDefault(size = 20, sort = "id", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
         return bo.listFieldEngineers(status, pageable);
+    }
+
+    @GetMapping("/field-engineers/performance")
+    public ResponseEntity<List<FieldEngineerPerformanceDto>> fieldEngineerPerformance() {
+        return bo.fieldEngineerPerformance();
     }
 
     @PutMapping("/field-engineers/{id}")
@@ -517,6 +524,12 @@ public class BackOfficeController {
             @RequestParam(defaultValue = "true") boolean attachPdf,
             @Valid @RequestBody ProposalShareRequest body) {
         return bo.sendProposalEmail(id, body, attachPdf);
+    }
+
+    @GetMapping("/wo/dispatch-board")
+    public ResponseEntity<List<DispatchBoardRow>> dispatchBoard(
+            @RequestParam(name = "limit", defaultValue = "15") int limit) {
+        return bo.dispatchBoard(limit);
     }
 
 }

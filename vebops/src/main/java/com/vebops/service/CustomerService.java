@@ -9,10 +9,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.core.io.InputStreamResource;
@@ -40,6 +42,10 @@ import com.vebops.domain.WorkOrderProgress;
 import com.vebops.domain.WorkOrderProgressAttachment;
 import com.vebops.domain.enums.DocumentEntityType;
 import com.vebops.domain.enums.DocumentKind;
+import com.vebops.domain.enums.InvoiceStatus;
+import com.vebops.domain.enums.ProposalStatus;
+import com.vebops.domain.enums.WOStatus;
+import com.vebops.dto.CustomerDashboardSummary;
 import com.vebops.exception.BusinessException;
 import com.vebops.exception.NotFoundException;
 import com.vebops.repository.CustomerPORepository;
@@ -132,6 +138,87 @@ public class CustomerService {
             ))
             .collect(Collectors.toList());
         return ResponseEntity.ok(rows);
+    }
+
+    public ResponseEntity<CustomerDashboardSummary> dashboard(Long customerId) {
+        Long tid = tenant();
+        Customer me = currentCustomerOrThrow();
+        Long cid = (customerId != null) ? customerId : me.getId();
+        if (!cid.equals(me.getId())) {
+            throw new BusinessException("You can only view your own dashboard");
+        }
+
+        List<Proposal> proposals = proposalRepo.findByTenantIdAndCustomer_Id(tid, cid);
+        proposals.forEach(p -> {
+            if (p.getStatus() != null) {
+                p.getStatus().name();
+            }
+        });
+        List<WorkOrder> workOrders = workOrderRepo.findByTenantIdAndServiceRequest_Customer_IdOrderByCreatedAtDesc(tid, cid);
+        workOrders.forEach(wo -> {
+            if (wo.getStatus() != null) {
+                wo.getStatus().name();
+            }
+        });
+        List<Invoice> invoices = invoiceRepo.findByTenantIdAndCustomer_Id(tid, cid);
+
+        long openProposals = proposals.stream()
+                .filter(p -> p.getStatus() == ProposalStatus.DRAFT || p.getStatus() == ProposalStatus.SENT)
+                .count();
+        long awaitingPo = proposals.stream()
+                .filter(p -> p.getStatus() == ProposalStatus.SENT)
+                .count();
+        long approvedProposals = proposals.stream()
+                .filter(p -> p.getStatus() == ProposalStatus.APPROVED)
+                .count();
+
+        EnumSet<WOStatus> activeStatuses = EnumSet.of(WOStatus.NEW, WOStatus.ASSIGNED, WOStatus.IN_PROGRESS, WOStatus.ON_HOLD);
+        long activeWorkOrders = workOrders.stream()
+                .filter(wo -> wo.getStatus() != null && activeStatuses.contains(wo.getStatus()))
+                .count();
+        long inProgressWorkOrders = workOrders.stream()
+                .filter(wo -> wo.getStatus() == WOStatus.IN_PROGRESS)
+                .count();
+        long completedWorkOrders = workOrders.stream()
+                .filter(wo -> wo.getStatus() == WOStatus.COMPLETED)
+                .count();
+
+        EnumSet<InvoiceStatus> pendingStatuses = EnumSet.of(
+                InvoiceStatus.DRAFT,
+                InvoiceStatus.SENT,
+                InvoiceStatus.PARTIALLY_PAID,
+                InvoiceStatus.OVERDUE
+        );
+        long pendingInvoices = invoices.stream()
+                .filter(inv -> inv.getStatus() != null && pendingStatuses.contains(inv.getStatus()))
+                .count();
+        BigDecimal outstandingAmount = invoices.stream()
+                .filter(inv -> inv.getStatus() != null && pendingStatuses.contains(inv.getStatus()))
+                .map(inv -> Optional.ofNullable(inv.getTotal()).orElse(BigDecimal.ZERO))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Instant lastProgress = null;
+        for (WorkOrder wo : workOrders) {
+            Instant progress = latestProgressInstant(tid, wo.getId());
+            if (progress == null) {
+                progress = wo.getUpdatedAt();
+            }
+            if (progress != null && (lastProgress == null || progress.isAfter(lastProgress))) {
+                lastProgress = progress;
+            }
+        }
+
+        return ResponseEntity.ok(new CustomerDashboardSummary(
+                openProposals,
+                awaitingPo,
+                approvedProposals,
+                activeWorkOrders,
+                inProgressWorkOrders,
+                completedWorkOrders,
+                pendingInvoices,
+                outstandingAmount,
+                lastProgress
+        ));
     }
 
     /**
@@ -408,6 +495,15 @@ public class CustomerService {
                 ? null
                 : String.format("/customer/work-orders/%d/progress/%d/attachments/%d", woId, progressId, id);
         return new ProgressAttachmentView(id, filename, contentType, size, uploadedAt, downloadPath);
+    }
+
+    private Instant latestProgressInstant(Long tenantId, Long workOrderId) {
+        if (tenantId == null || workOrderId == null) {
+            return null;
+        }
+        return workOrderProgressRepo.findTop1ByTenantIdAndWorkOrder_IdOrderByCreatedAtDesc(tenantId, workOrderId)
+                .map(WorkOrderProgress::getCreatedAt)
+                .orElse(null);
     }
 
     private String resolveSiteAddress(WorkOrder wo) {

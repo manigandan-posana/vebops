@@ -24,6 +24,26 @@ export const customerApi = baseApi.injectEndpoints({
       providesTags: ['Proposals'],
     }),
 
+    getDashboard: b.query({
+      query: (params) => ({
+        url: '/customer/dashboard',
+        method: 'GET',
+        params,
+      }),
+      transformResponse: (res) => ({
+        openProposals: Number(res?.openProposals ?? 0),
+        awaitingPurchaseOrder: Number(res?.awaitingPurchaseOrder ?? res?.awaitingPo ?? 0),
+        approvedProposals: Number(res?.approvedProposals ?? 0),
+        activeWorkOrders: Number(res?.activeWorkOrders ?? 0),
+        inProgressWorkOrders: Number(res?.inProgressWorkOrders ?? 0),
+        completedWorkOrders: Number(res?.completedWorkOrders ?? 0),
+        pendingInvoices: Number(res?.pendingInvoices ?? 0),
+        outstandingAmount: Number(res?.outstandingAmount ?? 0),
+        lastProgressAt: res?.lastProgressAt ?? null,
+      }),
+      providesTags: ['Proposals', 'WorkOrders', 'Invoices'],
+    }),
+
     /** Customer uploads a PO NUMBER (and optional URL) for a proposal. */
     uploadPO: b.mutation({
       query: ({ id, poNumber, url }) => {
@@ -235,6 +255,7 @@ export const customerApi = baseApi.injectEndpoints({
 
 export const {
   useGetMyProposalsQuery,
+  useGetDashboardQuery,
   useUploadPOMutation,
   useGetInvoicePdfQuery,
   useGetMyInvoicesQuery,

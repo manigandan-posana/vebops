@@ -18,6 +18,7 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long> {
     List<WorkOrder> findByTenantIdAndServiceRequest_Id(Long tenantId, Long srId);
     List<WorkOrder> findByTenantIdAndServiceRequest_Customer_IdOrderByCreatedAtDesc(Long tenantId, Long customerId);
     List<WorkOrder> findByTenantId(Long tenantId);
+    List<WorkOrder> findByTenantIdAndAssignedFE_Id(Long tenantId, Long feId);
     Page<WorkOrder> findByTenantId(Long tenantId, Pageable pageable);
     Page<WorkOrder> findByTenantIdAndStatus(Long tenantId, WOStatus status, Pageable pageable);
     Page<WorkOrder> findByTenantIdAndServiceRequest_Id(Long tenantId, Long srId, Pageable pageable);
