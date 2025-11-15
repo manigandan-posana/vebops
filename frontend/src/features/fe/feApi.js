@@ -22,6 +22,19 @@ export const feApi = baseApi.injectEndpoints({
           : [{ type: 'WorkOrders', id: 'LIST' }],
     }),
 
+    getDashboard: b.query({
+      query: () => ({ url: '/fe/dashboard', method: 'GET' }),
+      transformResponse: (res) => ({
+        totalAssignments: Number(res?.totalAssignments ?? res?.assigned ?? 0),
+        inProgress: Number(res?.inProgress ?? 0),
+        dueToday: Number(res?.dueToday ?? 0),
+        overdue: Number(res?.overdue ?? 0),
+        awaitingMaterials: Number(res?.awaitingMaterials ?? 0),
+        lastProgressAt: res?.lastProgressAt ?? null,
+      }),
+      providesTags: ['WorkOrders'],
+    }),
+
     // body must be { status, byFeId, remarks, photoUrl?, photoName?, photoContentType?, photoSize?, photoData? }
     postProgress: b.mutation({
       async queryFn (payload, _api, _extra, baseQuery) {
@@ -100,6 +113,7 @@ export const feApi = baseApi.injectEndpoints({
 // (tip) ensure baseApi.createApi({ tagTypes: ['WorkOrders'] }) at root
 export const {
   useGetAssignedQuery,
+  useGetDashboardQuery,
   useLazyGetCompletionReportPdfQuery,
   usePostProgressMutation,
   useGetWorkOrderDetailQuery,
